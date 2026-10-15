@@ -5,6 +5,7 @@ import { Pressable, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { usePalette } from "../components/theme";
+import LoginScreen, { AuthLoading } from "../features/auth/LoginScreen";
 import { DataProvider, useData } from "../firebase/data";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -38,6 +39,14 @@ function ErrorBanner() {
   );
 }
 
+/** 로그인 전에는 로그인 화면, 저장된 로그인을 읽는 동안은 잠깐 기다림 */
+function AuthGate() {
+  const { authChecked, user } = useData();
+  if (!authChecked) return <AuthLoading />;
+  if (!user) return <LoginScreen />;
+  return <AppTabs />;
+}
+
 function AppTabs() {
   const c = usePalette();
   return (
@@ -66,7 +75,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <DataProvider>
-        <AppTabs />
+        <AuthGate />
       </DataProvider>
     </SafeAreaProvider>
   );

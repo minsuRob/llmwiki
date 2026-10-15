@@ -10,7 +10,7 @@ import { GOOGLE_SUPPORTED, describeUser, signInWithGoogle } from "../../firebase
 
 export default function SettingsScreen() {
   const c = usePalette();
-  const { user, state, mode, run, resetUser } = useData();
+  const { user, state, mode, run, resetUser, setError } = useData();
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const act = async (key: string, fn: () => Promise<string | null>) => {
@@ -57,17 +57,21 @@ export default function SettingsScreen() {
                 void act("google", async () => {
                   const r = await run(() => signInWithGoogle(user));
                   if (!r || r.kind === "cancelled") return null;
+                  setError(null); // 앞서 막혔던 시도의 알림이 남지 않게
                   return r.kind === "linked" ? `${r.email ?? "Google"} 에 지금 기록을 이었어요.` : `${r.email ?? "Google"} 계정으로 들어왔어요(이미 있던 계정이라 그 데이터를 보여 줘요).`;
                 })
               }
             />
           ) : null}
           {user && !user.isAnonymous ? (
-            <Btn c={c} label="로그아웃" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), "로그아웃했어요. 익명으로 다시 시작해요."))} />
+            <Btn c={c} label="로그아웃" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), null))} />
           ) : (
-            <Btn c={c} label="새 익명 계정으로 시작" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), "새 계정으로 바꿨어요."))} />
+            <Btn c={c} label="익명 계정 나가기" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), null))} />
           )}
         </View>
+        {user?.isAnonymous ? (
+          <Text style={{ fontSize: 12, color: c.danger }}>익명 계정에서 나가면 이 데이터로 다시 들어올 수 없어요. 남기려면 먼저 Google 을 이어 주세요.</Text>
+        ) : null}
         {user?.isAnonymous && !GOOGLE_SUPPORTED ? <Text style={{ fontSize: 12, color: c.muted }}>Google 로그인은 지금 웹에서만 돼요.</Text> : null}
         {note ? <Text style={{ fontSize: 13, color: c.ok }}>{note}</Text> : null}
       </View>

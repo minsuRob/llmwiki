@@ -1,5 +1,5 @@
 /**
- * 로그인 + 실시간 데이터. 처음 열면 익명으로 로그인하고, users/{uid} 아래 여섯 모음을 구독한다.
+ * 로그인 + 실시간 데이터. 로그인 전에는 로그인 화면(features/auth)이 뜨고, 로그인하면 users/{uid} 아래 여섯 모음을 구독한다.
  * 서버(함수)가 쓰면 화면이 바로 따라온다 — 앱은 상태를 직접 바꾸지 않는다.
  */
 import { onIdTokenChanged, signInAnonymously, signOut, type User } from "firebase/auth";
@@ -16,6 +16,10 @@ const COLLS: Coll[] = ["tasks", "events", "scraps", "messages", "nodes", "edges"
 
 interface DataApi {
   user: User | null;
+  /** 저장된 로그인 상태를 다 읽었나 — 그 전엔 로그인 화면도 띄우지 않는다 */
+  authChecked: boolean;
+  /** 로그인 없이 써 보기(익명) */
+  startAnonymous: () => Promise<void>;
   /** 로그인 · 첫 구독이 끝났나 */
   ready: boolean;
   state: AppState;
@@ -33,6 +37,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   // Google 을 이으면 uid 는 같고 User 객체도 같다 — 화면이 바뀐 로그인 방식을 다시 그리게 한 번씩 센다
   const [authTick, setAuthTick] = useState(0);
+  const [authChecked, setAuthChecked] = useState(false);
   const [state, setState] = useState<AppState>(emptyState());
   const [loaded, setLoaded] = useState<Set<Coll>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +47,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       onIdTokenChanged(auth, (u) => {
         setUser(u);
         setAuthTick((t) => t + 1);
-        if (!u) signInAnonymously(auth).catch((e) => setError(`로그인하지 못했어요: ${errorText(e)}`));
+        setAuthChecked(true);
       }),
     [],
   );
@@ -77,14 +82,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /** 로그아웃 — 로그인 화면으로 돌아간다 */
   const resetUser = useCallback(async () => {
     await signOut(auth);
+    setState(emptyState());
+  }, []);
+
+  const startAnonymous = useCallback(async () => {
+    try {
+      await signInAnonymously(auth);
+    } catch (e) {
+      setError(`로그인하지 못했어요: ${errorText(e)}`);
+    }
   }, []);
 
   const api = useMemo<DataApi>(
-    () => ({ user, ready: !!user && loaded.size === COLLS.length, state, error, setError, run, resetUser, mode: USE_EMULATORS ? "emulator" : "cloud" }),
+    () => ({ user, authChecked, startAnonymous, ready: !!user && loaded.size === COLLS.length, state, error, setError, run, resetUser, mode: USE_EMULATORS ? "emulator" : "cloud" }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, authTick, loaded, state, error, run, resetUser],
+    [user, authTick, authChecked, startAnonymous, loaded, state, error, run, resetUser],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
