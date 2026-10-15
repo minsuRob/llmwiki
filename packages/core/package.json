@@ -1,0 +1,15 @@
+{
+  "name": "@llmwiki/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "할일 · 일정 · 기록 · 시냅스 공용 로직(순수 함수). 앱과 Cloud Functions 가 함께 쓴다.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --experimental-strip-types src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "~6.0.3"
+  }
+}

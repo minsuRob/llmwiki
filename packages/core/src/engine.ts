@@ -8,6 +8,7 @@
  * 보여 주기 · 제안 도구(show_tasks · propose_overdue · propose_tasks)는 데이터를 바꾸지 않고 카드만 더한다.
  */
 import { addDays, endOfWeek, isOverdue, parseLocal, sameDay, ymd } from "./dates.ts";
+import { recall } from "./synapse.ts";
 import { SCRAP_LABELS, newId, type AppState, type Card, type ScrapLabel, type Task, type TaskScope } from "./types.ts";
 
 export interface TurnLedger {
@@ -197,6 +198,18 @@ export function runTool(state: AppState, name: string, input: ToolInput, ledger:
       if (rows.length === 0) return { state, output: "Error: items 에 제목이 있는 할일이 없습니다." };
       ledger.cards.push({ kind: "suggest", id: newId(), note: str(input.note) || null, rows, closed: false });
       return { state, output: `Shown a suggestion card with ${rows.length} todos. NOT created yet — 사용자가 [추가] 를 눌러야 생긴다. '추가했어요' 라고 말하지 마세요.` };
+    }
+    case "recall": {
+      const query = str(input.query).slice(0, 100);
+      if (!query) return { state, output: "Error: query 가 비어 있습니다." };
+      const found = recall(state, query);
+      if (found.scrapIds.length + found.taskIds.length === 0) return { state, output: `"${query}" 와 이어진 기록 · 할일이 없습니다. 카드를 띄우지 않았습니다. 없다고 솔직히 말하세요.` };
+      ledger.cards.push({ kind: "recall", id: newId(), query, ...found });
+      const lines = [
+        ...found.scrapIds.map((id) => state.scraps.find((x) => x.id === id)).filter(Boolean).map((x) => `기록 | ${x!.createdAt.slice(0, 10)} | ${x!.text}`),
+        ...found.taskIds.map((id) => state.tasks.find((x) => x.id === id)).filter(Boolean).map((x) => `할일 | ${x!.title} | ${x!.done ? "완료" : "열림"}`),
+      ];
+      return { state, output: `Shown a recall card. 근거(이 줄만 근거로 답하고, 카드 내용을 그대로 다시 나열하지 마세요):\n${lines.join("\n")}` };
     }
     default:
       return { state, output: `Error: 모르는 도구 ${name}` };

@@ -57,6 +57,15 @@ export type Card =
       note: string | null;
       rows: { title: string; due: string | null; state: "open" | "added" | "skipped"; taskId?: string }[];
       closed: boolean;
+    }
+  | {
+      kind: "recall";
+      id: string;
+      query: string;
+      /** 찾은 개념과 그 이웃 — 노드 이름은 시냅스에서 지금 값으로 읽는다 */
+      nodeIds: string[];
+      scrapIds: string[];
+      taskIds: string[];
     };
 
 export type TaskScope = "today" | "tomorrow" | "week" | "overdue" | "all" | "done";
@@ -71,11 +80,41 @@ export interface ChatMessage {
   via?: "claude" | "local";
 }
 
+/** 시냅스 — 기록 · 할일에서 뽑은 개념(노드)과 같은 글에 함께 나온 관계(엣지) */
+export type NodeKind = "topic" | "person" | "emotion" | "project" | "tag";
+
+export interface GraphNode {
+  id: string;
+  /** 표준 이름 — 같은 개념의 변형은 이 이름 하나로 모은다 */
+  name: string;
+  kind: NodeKind;
+  /** 이 개념이 나온 글 */
+  refs: { type: "scrap" | "task"; id: string }[];
+  updatedAt: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  /** 두 노드 id — 사전순으로 a < b */
+  a: string;
+  b: string;
+  /** 함께 나온 글 수 */
+  weight: number;
+  /** 관계 이름(모델이 뽑았을 때만, 예: "원인", "담당") */
+  relation?: string;
+}
+
 export interface AppState {
   tasks: Task[];
   events: CalendarEvent[];
   scraps: Scrap[];
   messages: ChatMessage[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export function emptyState(): AppState {
+  return { tasks: [], events: [], scraps: [], messages: [], nodes: [], edges: [] };
 }
 
 export function newId(): string {

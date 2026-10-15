@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 
 import { closeCard, findCard, finishTurn, newLedger, resolveOverdue, resolveSuggest, runTool, tasksInScope, undoChanges } from "./engine.ts";
 import { planLocal, runLocalTurn } from "./local.ts";
-import type { AppState, ChatMessage } from "./types.ts";
+import { emptyState, type AppState, type ChatMessage } from "./types.ts";
 
 const NOW = new Date(2026, 9, 15, 10, 0); // 목
-const empty = (): AppState => ({ tasks: [], events: [], scraps: [], messages: [] });
+const empty = (): AppState => emptyState();
 
 /** 턴 결과를 대화에 붙인다(앱의 store 가 하는 일) */
 function withTurn(state: AppState, text: string, cards: ChatMessage["cards"]): AppState {

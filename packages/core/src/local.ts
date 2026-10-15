@@ -75,6 +75,14 @@ export function planLocal(text: string, now = new Date()): LocalPlan {
   if (/^(고마워|고맙|감사|땡큐|ㄱㅅ)/.test(t)) return { calls: [], reply: "천만에요. 또 필요하면 불러 주세요." };
   if (/(방금|아까).*(취소|되돌려|없던\s*걸로)|^(취소|되돌려)/.test(t)) return { calls: [], undoLast: true };
 
+  // 떠올리기 — "전에 채용 얘기 뭐라고 했지?", "발표 관련 기록"
+  const rec =
+    /^(?:전에|예전에|저번에|지난번에)?\s*(.+?)\s*(?:얘기|이야기|에\s*대해|관련|관해)?\s*(?:뭐라고\s*(?:했|썼|적었)(?:지|더라|었지)?|기록\s*(?:찾아|보여)|기록|메모\s*(?:찾아|보여)|있었나|했었나|적었나)\s*(?:줘|주세요|줄래)?\s*[?？.]*$/.exec(t);
+  if (rec && /(뭐라고|기록|메모|있었나|했었나|적었나)/.test(t) && !/^(메모|기록)\s*[:：]/.test(t)) {
+    const query = rec[1].replace(/(전에|예전에|저번에|지난번에)/g, "").replace(/\s*(얘기|이야기|관련|에 대해|관해)$/, "").trim();
+    if (query) return { calls: [{ name: "recall", input: { query } }] };
+  }
+
   // 기한 지난 할일 처리
   if (/(밀린|기한\s*지난|마감\s*지난|연체)/.test(t) && !SHOW_WORDS.test(t.replace(/알려/, ""))) {
     return { calls: [{ name: "propose_overdue", input: {} }] };
@@ -144,6 +152,7 @@ function describe(calls: PlannedCall[], outputs: string[], state: AppState, now:
     }
     if (c.name === "propose_overdue") parts.push(out.startsWith("Shown") ? "기한이 지난 할일이에요. 아래에서 하나씩 정리해 보세요" : "기한 지난 할일이 없어요. 잘하고 계세요!");
     if (c.name === "propose_tasks") parts.push("이런 할일이 보여요. 필요한 것만 추가해 주세요");
+    if (c.name === "recall") parts.push(out.startsWith("Shown") ? `"${String(c.input.query)}" 와 이어진 기록이에요` : `"${String(c.input.query)}" 와 이어진 기록을 찾지 못했어요`);
     if (c.name === "list_events") {
       const lines = out.split("\n").filter((l) => l.includes(" | "));
       parts.push(lines.length ? `다가오는 일정이에요:\n${lines.map((l) => { const [, title, start] = l.split(" | "); return `• ${title} — ${formatWhen(start, now)}`; }).join("\n")}` : "앞으로 일주일 동안 일정이 없어요");

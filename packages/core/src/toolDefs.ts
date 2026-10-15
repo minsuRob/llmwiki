@@ -3,13 +3,18 @@
  * 바꾸는 도구(add · update · complete · delete)는 바로 실행되고 턴 끝 [되돌리기] 카드로 묶인다.
  * 보여 주기 · 제안 도구(show_tasks · propose_*)는 카드만 띄우고 데이터를 바꾸지 않는다.
  */
-import type Anthropic from "@anthropic-ai/sdk";
+/** Messages API 의 사용자 정의 도구 모양(SDK 없이 쓰는 공용 패키지라 직접 적는다) */
+export interface ToolDef {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown> & { type: "object" };
+}
 
 const SCOPE = { type: "string", enum: ["today", "tomorrow", "week", "overdue", "all", "done"] } as const;
 const WHEN = "기기 시간대의 날짜 'YYYY-MM-DD' 또는 시각 'YYYY-MM-DDTHH:mm'. 사용자가 날짜를 말하지 않았으면 넣지 않는다.";
 const TASK_REF = "할일 id. id 를 모르면 할일 제목을 넣으면 열린 할일과 맞춰 찾는다.";
 
-export const TOOL_DEFS: Anthropic.Beta.BetaTool[] = [
+export const TOOL_DEFS: ToolDef[] = [
   {
     name: "add_task",
     description: "할일 하나를 만든다. 같은 제목의 열린 할일이 있으면 만들지 않고 Already exists 를 돌려준다(그땐 다시 부르지 않는다).",
@@ -97,5 +102,11 @@ export const TOOL_DEFS: Anthropic.Beta.BetaTool[] = [
       required: ["items"],
       additionalProperties: false,
     },
+  },
+  {
+    name: "recall",
+    description:
+      "시냅스(기록 · 할일에서 뽑은 개념 그래프)에서 질문과 이어진 개념을 찾아, 관련 기록 · 할일을 카드로 보여 준다. '전에 ~ 뭐라고 했지', '~ 관련 기록', '~ 얘기 했었나' 처럼 지난 기록을 떠올리는 질문에 쓴다. 결과에 없는 내용을 지어내지 않는다.",
+    input_schema: { type: "object", properties: { query: { type: "string", description: "찾을 개념 · 주제(한두 단어)" } }, required: ["query"], additionalProperties: false },
   },
 ];
