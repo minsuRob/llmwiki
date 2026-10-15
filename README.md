@@ -51,6 +51,30 @@ npm --prefix aria-rn run web:emulator
 
 에뮬레이터 UI: http://127.0.0.1:4000
 
+## 클라우드 (배포됨)
+
+- Firestore `(default)` — asia-northeast3(서울), 규칙 · 인덱스 배포됨
+- Auth — 익명 로그인 켜짐
+- Functions — `chat` · `cardAction` · `taskAction` · `rebuildSynapse`(asia-northeast3, Node 22). Blaze 요금제, 빌드 이미지는 하루 지나면 지운다
+
+다시 배포하기:
+
+```bash
+npm run deploy
+```
+
+배포된 API 를 같은 7개 시나리오로 확인하기(테스트가 만든 데이터 · 익명 계정은 끝나면 지운다):
+
+```bash
+npm run test:cloud
+```
+
+앱을 클라우드에 붙여 띄우기:
+
+```bash
+npm --prefix aria-rn run web
+```
+
 ## Claude
 
 API 키는 앱에 두지 않는다. 함수 환경변수 `ANTHROPIC_API_KEY` 가 있으면 `claude-opus-5-5` 가 도구를 고르고 기록에서 개념을 뽑는다. 없으면 한국어 규칙이 같은 도구를 부른다. 로컬에서는 `functions/.env.local`(커밋하지 않음)에 넣는다.

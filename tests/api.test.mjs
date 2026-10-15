@@ -11,13 +11,30 @@ import { connectAuthEmulator, getAuth, signInAnonymously, signOut } from "fireba
 import { collection, connectFirestoreEmulator, doc, getDocs, getFirestore, orderBy, query, setDoc, terminate } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 
-const app = initializeApp({ apiKey: "emulator", projectId: "llmwiki-minsu", authDomain: "localhost" });
+import { readFileSync, appendFileSync } from "node:fs";
+
+/**
+ * API_TARGET=cloud 이면 배포된 프로젝트(llmwiki-minsu)에 대고 돈다 — 쓴 사용자 uid 를 API_TEST_UIDS_FILE 에 적어
+ * tests/cloud-smoke.sh 가 끝난 뒤 데이터와 계정을 지운다. 아니면 로컬 에뮬레이터.
+ */
+const CLOUD = process.env.API_TARGET === "cloud";
+function webConfig() {
+  const src = readFileSync(new URL("../aria-rn/src/firebase/config.ts", import.meta.url), "utf8");
+  const pick = (k) => new RegExp(`${k}: "([^"]+)"`).exec(src)[1];
+  return { apiKey: pick("apiKey"), authDomain: pick("authDomain"), projectId: pick("projectId"), appId: pick("appId") };
+}
+const CONFIG = CLOUD ? webConfig() : { apiKey: "emulator", projectId: "llmwiki-minsu", authDomain: "localhost" };
+const noteUid = (u) => process.env.API_TEST_UIDS_FILE && appendFileSync(process.env.API_TEST_UIDS_FILE, `${u}\n`);
+
+const app = initializeApp(CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const fns = getFunctions(app, "asia-northeast3");
-connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-connectFirestoreEmulator(db, "127.0.0.1", 8080);
-connectFunctionsEmulator(fns, "127.0.0.1", 5001);
+if (!CLOUD) {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectFunctionsEmulator(fns, "127.0.0.1", 5001);
+}
 
 const TZ = "Asia/Seoul";
 const call = (name, data) => httpsCallable(fns, name)({ ...data, timeZone: TZ }).then((r) => r.data);
@@ -45,13 +62,16 @@ after(async () => {
 before(async () => {
   const cred = await signInAnonymously(auth);
   uid = cred.user.uid;
+  noteUid(uid);
 });
 
 test("로그인 없이는 부를 수 없다", async () => {
-  const other = getAuth(initializeApp({ apiKey: "emulator", projectId: "llmwiki-minsu" }, "anon"));
-  connectAuthEmulator(other, "http://127.0.0.1:9099", { disableWarnings: true });
+  const other = getAuth(initializeApp(CONFIG, "anon"));
   const fns2 = getFunctions(other.app, "asia-northeast3");
-  connectFunctionsEmulator(fns2, "127.0.0.1", 5001);
+  if (!CLOUD) {
+    connectAuthEmulator(other, "http://127.0.0.1:9099", { disableWarnings: true });
+    connectFunctionsEmulator(fns2, "127.0.0.1", 5001);
+  }
   await assert.rejects(httpsCallable(fns2, "chat")({ text: "안녕" }), /unauthenticated|로그인/);
 });
 
@@ -147,6 +167,7 @@ test("보안 규칙 — 앱은 자기 데이터를 읽기만, 남의 데이터�
   const mine = uid;
   await signOut(auth);
   await signInAnonymously(auth);
+  noteUid(auth.currentUser.uid);
   assert.notEqual(auth.currentUser.uid, mine);
   await assert.rejects(getDocs(collection(db, "users", mine, "tasks")), /permission/i);
 });

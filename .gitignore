@@ -5,3 +5,4 @@ node_modules/
 .secret.local
 functions/lib/
 .firebase/
+functions/.env
