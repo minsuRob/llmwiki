@@ -1,19 +1,23 @@
 /**
- * 대화 아래 카드 네 가지. 제목 · 마감 · 완료 여부는 카드에 적힌 글이 아니라 **지금 데이터**에서 읽는다.
+ * 대화 아래 카드 다섯 가지. 제목 · 마감 · 완료 여부는 카드에 적힌 글이 아니라 **지금 데이터**(Firestore 구독)에서 읽는다.
+ * 단추는 cardAction 함수를 부르고, 결과는 구독으로 화면에 돌아온다.
  * - changes: 이번 턴에 만든 · 끝낸 · 지운 것 + [되돌리기]
  * - task_list: 범위의 할일을 살아 있는 체크 목록으로
  * - overdue: 기한 지난 할일 — 줄마다 [완료] · [오늘로] · [삭제]
  * - suggest: 할일 제안 — 줄마다 [추가] · [빼기], [모두 추가]
- * Pressable 의 style 은 정적 객체만 쓴다(함수형 style 은 플랫폼마다 다르게 먹는다).
+ * - recall: 시냅스에서 떠올린 개념과 그 근거 기록 · 할일
  */
-import React from "react";
+import { router } from "expo-router";
+import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { formatWhen, isOverdue } from "../lib/dates.ts";
-import { tasksInScope } from "../lib/engine.ts";
-import type { Card, Task } from "../lib/types.ts";
-import { useApp } from "../lib/store.tsx";
-import { usePalette, type Palette } from "./theme.ts";
+import { formatWhen, isOverdue } from "../../../../packages/core/src/dates.ts";
+import { tasksInScope } from "../../../../packages/core/src/engine.ts";
+import type { Card, Task } from "../../../../packages/core/src/types.ts";
+import { usePalette } from "../../components/theme";
+import { Btn, Line, Shell, Tag } from "../../components/ui";
+import { cardAction, taskAction, type CardAction } from "../../firebase/api";
+import { useData } from "../../firebase/data";
 
 export function CardView({ card }: { card: Card }) {
   switch (card.kind) {
@@ -25,59 +29,28 @@ export function CardView({ card }: { card: Card }) {
       return <OverdueCard card={card} />;
     case "suggest":
       return <SuggestCard card={card} />;
+    case "recall":
+      return <RecallCard card={card} />;
   }
 }
 
-function Shell({ c, title, children, right }: { c: Palette; title: string; children: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <View style={{ backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 10, borderWidth: 1, borderColor: c.border, marginTop: 8 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: "700", color: c.text }}>{title}</Text>
-        {right}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-export function Btn({ label, onPress, primary, c, small }: { label: string; onPress: () => void; primary?: boolean; c: Palette; small?: boolean }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{ paddingHorizontal: small ? 10 : 14, paddingVertical: small ? 6 : 9, borderRadius: 10, backgroundColor: primary ? c.accent : c.soft }}
-    >
-      <Text style={{ fontSize: small ? 12 : 14, fontWeight: primary ? "700" : "500", color: primary ? c.accentText : c.text }}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function Tag({ label, c, tone }: { label: string; c: Palette; tone?: "ok" | "muted" }) {
-  return (
-    <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: c.soft }}>
-      <Text style={{ fontSize: 11, fontWeight: "600", color: tone === "ok" ? c.ok : c.muted }}>{label}</Text>
-    </View>
-  );
-}
-
-function Line({ c, title, sub, struck, subDanger, right }: { c: Palette; title: string; sub?: string | null; struck?: boolean; subDanger?: boolean; right?: React.ReactNode }) {
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.row, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}>
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text numberOfLines={2} style={{ fontSize: 14, color: struck ? c.muted : c.text, textDecorationLine: struck ? "line-through" : "none" }}>
-          {title}
-        </Text>
-        {sub ? <Text style={{ fontSize: 12, color: subDanger ? c.danger : c.muted }}>{sub}</Text> : null}
-      </View>
-      {right}
-    </View>
-  );
+/** 단추 하나씩 '처리 중' 을 보이고, 처리 중엔 같은 카드의 다른 단추를 막는다 */
+function useCardAction() {
+  const { run } = useData();
+  const [busy, setBusy] = useState<string | null>(null);
+  const act = async (key: string, req: CardAction) => {
+    if (busy) return;
+    setBusy(key);
+    await run(() => cardAction(req));
+    setBusy(null);
+  };
+  return { busy, act };
 }
 
 function ChangesCard({ card }: { card: Extract<Card, { kind: "changes" }> }) {
   const c = usePalette();
-  const { state, undo } = useApp();
+  const { state } = useData();
+  const { busy, act } = useCardAction();
   const task = (id: string) => state.tasks.find((t) => t.id === id);
   const parts: string[] = [];
   if (card.createdTaskIds.length) parts.push(`추가한 할일 ${card.createdTaskIds.length}`);
@@ -114,7 +87,7 @@ function ChangesCard({ card }: { card: Extract<Card, { kind: "changes" }> }) {
   }
 
   return (
-    <Shell c={c} title={title} right={card.undone ? null : <Btn c={c} small label="되돌리기" onPress={() => undo(card.id)} />}>
+    <Shell c={c} title={title} right={card.undone ? null : <Btn c={c} small label="되돌리기" busy={busy === "undo"} onPress={() => act("undo", { cardId: card.id, action: "undo" })} />}>
       <View style={{ gap: 6 }}>{rows}</View>
     </Shell>
   );
@@ -122,23 +95,29 @@ function ChangesCard({ card }: { card: Extract<Card, { kind: "changes" }> }) {
 
 function TaskListCard({ card }: { card: Extract<Card, { kind: "task_list" }> }) {
   const c = usePalette();
-  const { state, toggleTask } = useApp();
-  // 지금 데이터로 그린다 — 방금 체크한 할일도 자리를 지키며 지운 선으로 보인다
+  const { state, run } = useData();
+  const [busy, setBusy] = useState<string | null>(null);
+  // 방금 체크한 할일도 자리를 지키며 지운 선으로 보인다
   const tasks: Task[] = tasksInScope(state, card.scope, new Date(), { includeDone: true });
   const left = tasks.filter((t) => !t.done).length;
+  const toggle = async (id: string) => {
+    setBusy(id);
+    await run(() => taskAction({ op: "toggle", id }));
+    setBusy(null);
+  };
   return (
     <Shell c={c} title={`${card.title} ${left}`}>
       <View style={{ gap: 6 }}>
         {left === 0 ? <Text style={{ color: c.muted, fontSize: 13 }}>모두 끝냈어요 🎉</Text> : null}
         {tasks.map((t) => (
-          <Pressable key={t.id} onPress={() => toggleTask(t.id)} accessibilityRole="checkbox" accessibilityState={{ checked: t.done }}>
+          <Pressable key={t.id} onPress={() => void toggle(t.id)} disabled={busy === t.id} accessibilityRole="checkbox" accessibilityState={{ checked: t.done }} accessibilityLabel={t.title}>
             <Line
               c={c}
               title={t.title}
               sub={formatWhen(t.due)}
-              subDanger={isOverdue(t.due)}
+              subDanger={!t.done && isOverdue(t.due)}
               struck={t.done}
-              right={<Text style={{ fontSize: 18, color: t.done ? c.ok : c.muted }}>{t.done ? "☑" : "☐"}</Text>}
+              right={<Text style={{ fontSize: 18, color: t.done ? c.ok : c.muted, opacity: busy === t.id ? 0.4 : 1 }}>{t.done ? "☑" : "☐"}</Text>}
             />
           </Pressable>
         ))}
@@ -149,7 +128,8 @@ function TaskListCard({ card }: { card: Extract<Card, { kind: "task_list" }> }) 
 
 function OverdueCard({ card }: { card: Extract<Card, { kind: "overdue" }> }) {
   const c = usePalette();
-  const { state, overdueAction, close } = useApp();
+  const { state } = useData();
+  const { busy, act } = useCardAction();
   const open = card.rows.filter((r) => r.state === "open").length;
   const label = { completed: "완료", today: "오늘로 옮김", deleted: "삭제함", open: "" } as const;
   return (
@@ -170,9 +150,9 @@ function OverdueCard({ card }: { card: Extract<Card, { kind: "overdue" }> }) {
               />
               {r.state === "open" && !card.closed ? (
                 <View style={{ flexDirection: "row", gap: 6, paddingLeft: 4 }}>
-                  <Btn c={c} small primary label="완료" onPress={() => overdueAction(card.id, r.taskId, "complete")} />
-                  <Btn c={c} small label="오늘로" onPress={() => overdueAction(card.id, r.taskId, "today")} />
-                  <Btn c={c} small label="삭제" onPress={() => overdueAction(card.id, r.taskId, "delete")} />
+                  <Btn c={c} small primary label="완료" busy={busy === `c${r.taskId}`} disabled={!!busy} onPress={() => act(`c${r.taskId}`, { cardId: card.id, action: "overdue_complete", taskId: r.taskId })} />
+                  <Btn c={c} small label="오늘로" busy={busy === `t${r.taskId}`} disabled={!!busy} onPress={() => act(`t${r.taskId}`, { cardId: card.id, action: "overdue_today", taskId: r.taskId })} />
+                  <Btn c={c} small label="삭제" busy={busy === `d${r.taskId}`} disabled={!!busy} onPress={() => act(`d${r.taskId}`, { cardId: card.id, action: "overdue_delete", taskId: r.taskId })} />
                 </View>
               ) : null}
             </View>
@@ -181,7 +161,7 @@ function OverdueCard({ card }: { card: Extract<Card, { kind: "overdue" }> }) {
       </View>
       {!card.closed && open > 0 ? (
         <View style={{ flexDirection: "row" }}>
-          <Btn c={c} small label="닫기" onPress={() => close(card.id)} />
+          <Btn c={c} small label="닫기" busy={busy === "close"} disabled={!!busy} onPress={() => act("close", { cardId: card.id, action: "close" })} />
         </View>
       ) : null}
     </Shell>
@@ -190,7 +170,7 @@ function OverdueCard({ card }: { card: Extract<Card, { kind: "overdue" }> }) {
 
 function SuggestCard({ card }: { card: Extract<Card, { kind: "suggest" }> }) {
   const c = usePalette();
-  const { suggestAction, addAllSuggested, close } = useApp();
+  const { busy, act } = useCardAction();
   const open = card.rows.filter((r) => r.state === "open").length;
   return (
     <Shell c={c} title={`이런 할일이 보여요 ${card.rows.length}`} right={card.closed ? <Tag c={c} label="정리 끝" /> : null}>
@@ -206,8 +186,8 @@ function SuggestCard({ card }: { card: Extract<Card, { kind: "suggest" }> }) {
             right={
               r.state === "open" && !card.closed ? (
                 <View style={{ flexDirection: "row", gap: 6 }}>
-                  <Btn c={c} small primary label="추가" onPress={() => suggestAction(card.id, i, "add")} />
-                  <Btn c={c} small label="빼기" onPress={() => suggestAction(card.id, i, "skip")} />
+                  <Btn c={c} small primary label="추가" busy={busy === `a${i}`} disabled={!!busy} onPress={() => act(`a${i}`, { cardId: card.id, action: "suggest_add", index: i })} />
+                  <Btn c={c} small label="빼기" busy={busy === `s${i}`} disabled={!!busy} onPress={() => act(`s${i}`, { cardId: card.id, action: "suggest_skip", index: i })} />
                 </View>
               ) : r.state === "added" ? (
                 <Tag c={c} tone="ok" label="추가함" />
@@ -222,11 +202,40 @@ function SuggestCard({ card }: { card: Extract<Card, { kind: "suggest" }> }) {
         <View style={{ gap: 8 }}>
           <Text style={{ fontSize: 12, color: c.muted }}>추가를 누르기 전엔 할일이 생기지 않아요.</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            {open >= 2 ? <Btn c={c} primary label="모두 추가" onPress={() => addAllSuggested(card.id)} /> : null}
-            <Btn c={c} label="닫기" onPress={() => close(card.id)} />
+            {open >= 2 ? <Btn c={c} primary label="모두 추가" busy={busy === "all"} disabled={!!busy} onPress={() => act("all", { cardId: card.id, action: "suggest_add_all" })} /> : null}
+            <Btn c={c} label="닫기" busy={busy === "close"} disabled={!!busy} onPress={() => act("close", { cardId: card.id, action: "close" })} />
           </View>
         </View>
       ) : null}
+    </Shell>
+  );
+}
+
+function RecallCard({ card }: { card: Extract<Card, { kind: "recall" }> }) {
+  const c = usePalette();
+  const { state } = useData();
+  const nodes = card.nodeIds.map((id) => state.nodes.find((n) => n.id === id)).filter((n): n is NonNullable<typeof n> => !!n);
+  const scraps = card.scrapIds.map((id) => state.scraps.find((s) => s.id === id)).filter((s): s is NonNullable<typeof s> => !!s && !s.deletedAt);
+  const tasks = card.taskIds.map((id) => state.tasks.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t && !t.deletedAt);
+  return (
+    <Shell c={c} title={`🧠 "${card.query}" 떠올리기`}>
+      {nodes.length ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {nodes.map((n) => (
+            <Pressable key={n.id} onPress={() => router.push({ pathname: "/synapse", params: { node: n.id } })} accessibilityRole="link" accessibilityLabel={`${n.name} 시냅스에서 보기`}>
+              <Tag c={c} tone="accent" label={n.name} />
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      <View style={{ gap: 6 }}>
+        {scraps.map((s) => (
+          <Line key={s.id} c={c} title={s.text} sub={`${s.label} · ${new Date(s.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}`} />
+        ))}
+        {tasks.map((t) => (
+          <Line key={t.id} c={c} title={`☐ ${t.title}`} sub={formatWhen(t.due)} struck={t.done} />
+        ))}
+      </View>
     </Shell>
   );
 }
