@@ -10,7 +10,8 @@
     "test": "npm run test:core && npm run test:functions && npm run test:api",
     "test:functions": "npm --prefix functions test",
     "test:cloud": "bash tests/cloud-smoke.sh",
-    "deploy": "firebase deploy --only functions,firestore --project llmwiki-minsu"
+    "deploy": "firebase deploy --only hosting,functions,firestore --project llmwiki-minsu",
+    "deploy:web": "firebase deploy --only hosting --project llmwiki-minsu"
   },
   "devDependencies": {
     "firebase": "^13.0.0"

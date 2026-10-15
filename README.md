@@ -53,14 +53,23 @@ npm --prefix aria-rn run web:emulator
 
 ## 클라우드 (배포됨)
 
+웹: **https://llmwiki-minsu.web.app** (Firebase Hosting — 열면 익명으로 로그인된다)
+
 - Firestore `(default)` — asia-northeast3(서울), 규칙 · 인덱스 배포됨
 - Auth — 익명 로그인 켜짐
 - Functions — `chat` · `cardAction` · `taskAction` · `rebuildSynapse`(asia-northeast3, Node 22). Blaze 요금제, 빌드 이미지는 하루 지나면 지운다
+- Hosting — `aria-rn/dist`(expo export). 한 페이지 앱이라 모든 경로를 index.html 로 돌린다. 아이콘 글꼴이 `assets/node_modules/…` 에 있어 node_modules 를 올림에서 빼면 안 된다
 
-다시 배포하기:
+다시 배포하기(웹 빌드 · 함수 · 규칙 전부):
 
 ```bash
 npm run deploy
+```
+
+웹만 다시 올리기(배포 전에 웹 빌드를 새로 한다):
+
+```bash
+npm run deploy:web
 ```
 
 배포된 API 를 같은 7개 시나리오로 확인하기(테스트가 만든 데이터 · 익명 계정은 끝나면 지운다):
