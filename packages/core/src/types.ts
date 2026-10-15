@@ -31,6 +31,9 @@ export interface Scrap {
   label: ScrapLabel;
   createdAt: string;
   deletedAt?: string | null;
+  /** 서버가 Claude 로 뽑아 둔 개념 · 관계(키가 있을 때만). 있으면 시냅스가 규칙 대신 이것을 쓴다 */
+  concepts?: { name: string; kind: NodeKind }[];
+  relations?: { from: string; to: string; relation?: string }[];
 }
 
 /**

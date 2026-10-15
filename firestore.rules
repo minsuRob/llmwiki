@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// 앱은 자기 데이터를 **읽기만** 한다. 바꾸는 일은 전부 Cloud Functions(관리자 권한)가 한다 —
+// 되돌리기 · 중복 차단 · 시냅스 다시 계산 같은 규칙이 한 곳(packages/core)에서만 돌게.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{collection}/{docId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

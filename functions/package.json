@@ -1,0 +1,23 @@
+{
+  "name": "llmwiki-functions",
+  "private": true,
+  "description": "Cloud Functions API — 대화 · 카드 · 할일 · 시냅스. 규칙은 packages/core 를 번들해 쓴다.",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=lib/index.js --external:firebase-functions --external:firebase-admin --external:@anthropic-ai/sdk",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "typescript": "~6.0.3"
+  }
+}

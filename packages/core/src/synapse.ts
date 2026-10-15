@@ -78,11 +78,11 @@ export function extractConcepts(text: string, label?: string): ExtractedConcept[
   return [...out.values()];
 }
 
-type Doc = { type: "scrap" | "task"; id: string; text: string; label?: string };
+type Doc = { type: "scrap" | "task"; id: string; text: string; label?: string; concepts?: ExtractedConcept[]; relations?: ExtractedRelation[] };
 
 function docsOf(state: AppState): Doc[] {
   const docs: Doc[] = [];
-  for (const s of state.scraps) if (!s.deletedAt) docs.push({ type: "scrap", id: s.id, text: s.text, label: s.label });
+  for (const s of state.scraps) if (!s.deletedAt) docs.push({ type: "scrap", id: s.id, text: s.text, label: s.label, concepts: s.concepts, relations: s.relations });
   for (const t of state.tasks) if (!t.deletedAt) docs.push({ type: "task", id: t.id, text: [t.title, t.notes ?? ""].join(" ") });
   return docs;
 }
@@ -145,9 +145,10 @@ export function rebuildGraph(state: AppState, now = new Date()): { nodes: GraphN
   let nodes: GraphNode[] = [];
   let edges: GraphEdge[] = [];
   for (const doc of docsOf(state)) {
-    ({ nodes, edges } = mergeConcepts(nodes, edges, { type: doc.type, id: doc.id }, extractConcepts(doc.text, doc.label), [], now));
+    const concepts = doc.concepts?.length ? doc.concepts : extractConcepts(doc.text, doc.label);
+    ({ nodes, edges } = mergeConcepts(nodes, edges, { type: doc.type, id: doc.id }, concepts, doc.relations ?? [], now));
   }
-  // 한 글에만 나온 주제는 아직 '개념' 이 아니다 — 감정 · 태그 · 두 글 이상에 나온 주제만 남긴다
+  // 한 글에만 나온 주제는 아직 '개념' 이 아니다 — 감정 · 태그 · 사람 · 프로젝트, 그리고 두 글 이상에 나온 주제만 남긴다
   const keep = new Set(nodes.filter((n) => n.kind !== "topic" || n.refs.length >= 2).map((n) => n.id));
   const remap = new Map<string, string>();
   nodes = nodes

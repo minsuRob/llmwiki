@@ -1,0 +1,15 @@
+{
+  "name": "llmwiki",
+  "private": true,
+  "description": "Aria 구조를 옮긴 할일 비서 — 앱(aria-rn) · API(functions) · 공용 로직(packages/core) · Firebase",
+  "scripts": {
+    "test:core": "npm --prefix packages/core test",
+    "build:functions": "npm --prefix functions run build",
+    "emulators": "npm run build:functions && firebase emulators:start --project llmwiki-minsu",
+    "test:api": "npm run build:functions && firebase emulators:exec --only auth,firestore,functions --project llmwiki-minsu \"node --test tests/api.test.mjs\"",
+    "test": "npm run test:core && npm run test:api"
+  },
+  "devDependencies": {
+    "firebase": "^13.0.0"
+  }
+}
