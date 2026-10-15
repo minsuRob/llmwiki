@@ -24,7 +24,8 @@ export interface ExtractedRelation {
 /** 감정 말 → 표준 감정 이름 */
 const EMOTIONS: [RegExp, string][] = [
   [/(기대|설레|설렘|두근)/, "설렘"],
-  [/(기쁘|기뻐|행복|좋았|뿌듯)/, "기쁨"],
+  // "기분이 좋다" 는 기쁨, "하면 좋겠다" 는 감정이 아니다 — 좋다 하나로는 잡지 않는다
+  [/(기분\s*좋|기분이\s*좋|기쁘|기뻐|행복|좋았|뿌듯)/, "기쁨"],
   [/(불안|걱정|초조|긴장)/, "불안"],
   [/(피곤|지침|지쳤|번아웃|힘들)/, "지침"],
   [/(짜증|화나|화났|분노|열받)/, "분노"],
@@ -59,22 +60,26 @@ export function normalizeTerm(raw: string): string | null {
   return t;
 }
 
-/** 규칙 길 — 글 하나에서 개념을 뽑는다. 감정은 표준 이름으로, #태그는 태그로, 나머지 명사꼴은 주제로 */
-export function extractConcepts(text: string, label?: string): ExtractedConcept[] {
+/** 규칙 길 — 글 하나에서 개념을 뽑는다. 감정은 표준 이름으로, #태그는 # 를 뗀 개념으로, 나머지 명사꼴은 주제로 */
+export function extractConcepts(text: string, _label?: string): ExtractedConcept[] {
   const out = new Map<string, ExtractedConcept>();
   const add = (name: string, kind: NodeKind) => {
     const key = name.toLowerCase();
-    if (!out.has(key)) out.set(key, { name, kind });
+    const prev = out.get(key);
+    // 같은 글에 "#발표" 와 "발표" 가 함께 나오면 주제로 둔다
+    if (!prev) out.set(key, { name, kind });
+    else if (prev.kind === "tag" && kind === "topic") out.set(key, { name, kind });
   };
   for (const [re, name] of EMOTIONS) if (re.test(text)) add(name, "emotion");
-  for (const m of text.matchAll(/#([\p{L}\p{N}_]+)/gu)) add(`#${m[1]}`, "tag");
+  // #태그는 # 를 떼고 같은 이름의 개념으로 모은다("#발표" 와 "발표" 는 한 개념)
+  for (const m of text.matchAll(/#([\p{L}\p{N}_]+)/gu)) add(m[1].toLowerCase(), "tag");
   for (const word of text.split(/\s+/)) {
     if (word.startsWith("#")) continue;
     if (EMOTIONS.some(([re]) => re.test(word))) continue;
     const t = normalizeTerm(word);
     if (t) add(t, "topic");
   }
-  if (label && label !== "메모" && label !== "기타") add(label, "topic");
+  // 라벨(_label: 결정 · 계획 …)은 기록의 분류일 뿐 생각의 내용이 아니다 — 개념으로 넣으면 모든 갈래를 한데 묶는 중심이 된다
   return [...out.values()];
 }
 
@@ -107,6 +112,13 @@ export function mergeConcepts(
   for (const c of concepts) {
     const key = c.name.toLowerCase();
     let node = byName.get(key);
+    if (node && node.kind === "tag" && c.kind === "topic") {
+      // 태그로 먼저 나온 말이 본문에서도 쓰이면 주제로 올린다
+      const upgraded = { ...node, kind: "topic" as const };
+      nextNodes[nextNodes.indexOf(node)] = upgraded;
+      byName.set(key, upgraded);
+      node = upgraded;
+    }
     if (!node) {
       node = { id: newId(), name: c.name, kind: c.kind, refs: [], updatedAt: now.toISOString() };
       byName.set(key, node);
