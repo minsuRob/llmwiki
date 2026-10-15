@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=lib/index.js --external:firebase-functions --external:firebase-admin --external:@anthropic-ai/sdk",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "TZ=UTC node --test --experimental-strip-types src/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.134.0",

@@ -63,7 +63,7 @@ export const chat = onCall<ChatRequest>({ region: REGION, timeoutSeconds: 120 },
     }
 
     // 답은 사용자 말 1ms 뒤 — 같은 시각이면 순서가 뒤집힐 수 있다
-    const replyMsg: ChatMessage = { id: newId(), role: "assistant", text: reply, cards, createdAt: new Date(now.getTime() + 1).toISOString(), via };
+    const replyMsg: ChatMessage = { id: newId(), role: "assistant", text: reply, cards, createdAt: new Date(Date.parse(userMsg.createdAt) + 1).toISOString(), via };
     return {
       state: { ...state, messages: [...state.messages, userMsg, replyMsg] },
       result: { messageId: replyMsg.id, text: reply, via },

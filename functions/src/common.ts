@@ -17,9 +17,24 @@ export function requireUid(req: CallableRequest<unknown>): string {
 
 /**
  * 사용자의 벽시계 시각 — core 는 Date 의 getHours 같은 지역 시각 함수로 오늘 · 내일을 계산한다.
- * 서버(UTC)에서 사용자 시간대의 연 · 월 · 일 · 시 · 분을 그대로 담은 Date 를 만들어 넘긴다.
- * (그래서 서버가 쓰는 createdAt 도 사용자 벽시계 기준이다 — 한 사용자 안에서 순서는 맞다)
+ * 서버(UTC)에서 사용자 시간대의 연 · 월 · 일 · 시 · 분을 담은 Date 를 만들어 넘긴다.
+ * 단, 저장하는 시각(createdAt 등 toISOString)은 **실제 순간**이어야 앱이 제 시간대로 다시 보인다 —
+ * 그래서 toISOString 만 벽시계와 실제의 차이를 빼서 돌려준다.
  */
+class WallClockDate extends Date {
+  private readonly offsetMs: number;
+  constructor(wallMs: number, offsetMs: number) {
+    super(wallMs);
+    this.offsetMs = offsetMs;
+  }
+  override toISOString(): string {
+    return new Date(this.getTime() - this.offsetMs).toISOString();
+  }
+  override toJSON(): string {
+    return this.toISOString();
+  }
+}
+
 export function wallClock(timeZone: string | undefined, at = new Date()): { now: Date; timeZone: string } {
   const tz = safeZone(timeZone);
   const parts = Object.fromEntries(
@@ -27,10 +42,8 @@ export function wallClock(timeZone: string | undefined, at = new Date()): { now:
       .formatToParts(at)
       .map((p) => [p.type, p.value]),
   );
-  return {
-    now: new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second), at.getMilliseconds()),
-    timeZone: tz,
-  };
+  const wall = new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second), at.getMilliseconds());
+  return { now: new WallClockDate(wall.getTime(), wall.getTime() - at.getTime()), timeZone: tz };
 }
 
 function safeZone(tz: string | undefined): string {
