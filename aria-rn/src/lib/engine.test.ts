@@ -106,6 +106,7 @@ test("기기 안 길 — 문장 → 도구 호출", () => {
   const dump = planLocal("이번 주 할 거\n- 발표 자료 만들기 목요일\n- 치과 예약\n- 엄마 생신 선물 20일까지", NOW).calls;
   assert.equal(dump[0].name, "propose_tasks");
   assert.equal(planLocal("방금 거 취소해", NOW).undoLast, true);
+  assert.deepEqual(planLocal("10월 13일 회의록 정리", NOW).calls, [{ name: "add_task", input: { title: "회의록 정리", due: "2026-10-13" } }]);
 });
 
 test("기기 안 길도 같은 카드를 만든다", () => {

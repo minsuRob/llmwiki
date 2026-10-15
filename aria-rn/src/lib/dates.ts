@@ -116,7 +116,8 @@ export function parseKoreanWhen(text: string, now = new Date()): ParsedWhen | nu
   });
   take(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/, (m) => {
     const d = new Date(now.getFullYear(), Number(m[1]) - 1, Number(m[2]));
-    if (d.getTime() < addDays(now, -1).getTime()) d.setFullYear(d.getFullYear() + 1);
+    // 반년 넘게 지난 날이면 내년(12월에 "1월 5일"). 며칠 전 날짜는 그대로 둔다 — 밀린 일을 적을 수 있게
+    if (d.getTime() < addDays(now, -180).getTime()) d.setFullYear(d.getFullYear() + 1);
     return d;
   });
   take(/(?<![\d:])(\d{1,2})\/(\d{1,2})(?![\d:])/, (m) => new Date(now.getFullYear(), Number(m[1]) - 1, Number(m[2])));

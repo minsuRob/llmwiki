@@ -20,7 +20,8 @@ export interface LocalPlan {
   undoLast?: boolean;
 }
 
-const EVENT_WORDS = /(회의|미팅|약속|예약|면담|모임|만나|세미나|인터뷰|면접|생일|기념일|결혼식|진료)/;
+// "회의록 정리" 는 혼자 하는 일 — 회의 뒤에 "록" 이 오면 일정으로 보지 않는다
+const EVENT_WORDS = /(회의(?!록)|미팅|약속|예약|면담|모임|만나|세미나|인터뷰|면접|생일|기념일|결혼식|진료)/;
 const SHOW_WORDS = /(보여|알려|뭐\s*있|뭐야|뭐지|목록|리스트|확인)/;
 const TASK_WORDS = /(할\s*일|할일|투두|todo)/i;
 const REQUEST_TAIL =

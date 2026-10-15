@@ -60,14 +60,15 @@ export function findTask(state: AppState, ref: unknown): Task | null {
   return open.find((t) => normTitle(t.title) === q) ?? open.find((t) => normTitle(t.title).includes(q)) ?? null;
 }
 
-export function tasksInScope(state: AppState, scope: TaskScope, now = new Date()): Task[] {
+/** includeDone: 카드처럼 방금 체크한 할일도 줄을 지키며 보일 때(완료한 것은 마감 기준으로만 고른다) */
+export function tasksInScope(state: AppState, scope: TaskScope, now = new Date(), opts: { includeDone?: boolean } = {}): Task[] {
   const live = liveTasks(state);
-  const open = live.filter((t) => !t.done);
+  const open = opts.includeDone && scope !== "done" ? live.filter((t) => !t.done || !!t.due) : live.filter((t) => !t.done);
   const byDue = (a: Task, b: Task) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.createdAt.localeCompare(b.createdAt);
   switch (scope) {
     case "today":
       // 오늘 할 일 = 오늘 마감 + 기한 지남
-      return open.filter((t) => sameDay(t.due, now) || isOverdue(t.due, now)).sort(byDue);
+      return open.filter((t) => sameDay(t.due, now) || (!t.done && isOverdue(t.due, now))).sort(byDue);
     case "tomorrow":
       return open.filter((t) => sameDay(t.due, addDays(now, 1))).sort(byDue);
     case "week": {
@@ -75,7 +76,7 @@ export function tasksInScope(state: AppState, scope: TaskScope, now = new Date()
       return open.filter((t) => t.due && t.due.slice(0, 10) >= ymd(now) && t.due.slice(0, 10) <= end).sort(byDue);
     }
     case "overdue":
-      return open.filter((t) => isOverdue(t.due, now)).sort(byDue);
+      return open.filter((t) => isOverdue(t.due, now) && (!t.done || !!opts.includeDone)).sort(byDue);
     case "done":
       return live.filter((t) => t.done).sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
     case "all":
