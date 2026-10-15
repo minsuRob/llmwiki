@@ -2,7 +2,7 @@
  * 로그인 + 실시간 데이터. 처음 열면 익명으로 로그인하고, users/{uid} 아래 여섯 모음을 구독한다.
  * 서버(함수)가 쓰면 화면이 바로 따라온다 — 앱은 상태를 직접 바꾸지 않는다.
  */
-import { onAuthStateChanged, signInAnonymously, signOut, type User } from "firebase/auth";
+import { onIdTokenChanged, signInAnonymously, signOut, type User } from "firebase/auth";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
@@ -31,25 +31,29 @@ const Ctx = createContext<DataApi | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  // Google 을 이으면 uid 는 같고 User 객체도 같다 — 화면이 바뀐 로그인 방식을 다시 그리게 한 번씩 센다
+  const [authTick, setAuthTick] = useState(0);
   const [state, setState] = useState<AppState>(emptyState());
   const [loaded, setLoaded] = useState<Set<Coll>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(
     () =>
-      onAuthStateChanged(auth, (u) => {
+      onIdTokenChanged(auth, (u) => {
         setUser(u);
+        setAuthTick((t) => t + 1);
         if (!u) signInAnonymously(auth).catch((e) => setError(`로그인하지 못했어요: ${errorText(e)}`));
       }),
     [],
   );
 
+  const uid = user?.uid ?? null;
   useEffect(() => {
-    if (!user) return;
+    if (!uid) return;
     setState(emptyState());
     setLoaded(new Set());
     const unsubs = COLLS.map((coll) => {
-      const base = collection(db, "users", user.uid, coll);
+      const base = collection(db, "users", uid, coll);
       const q = coll === "messages" ? query(base, orderBy("createdAt", "asc"), limit(200)) : base;
       return onSnapshot(
         q,
@@ -62,7 +66,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       );
     });
     return () => unsubs.forEach((u) => u());
-  }, [user]);
+  }, [uid]);
 
   const run = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | null> => {
     try {
@@ -79,7 +83,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const api = useMemo<DataApi>(
     () => ({ user, ready: !!user && loaded.size === COLLS.length, state, error, setError, run, resetUser, mode: USE_EMULATORS ? "emulator" : "cloud" }),
-    [user, loaded, state, error, run, resetUser],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, authTick, loaded, state, error, run, resetUser],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

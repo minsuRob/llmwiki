@@ -1,4 +1,4 @@
-/** 설정 — 연결 상태(에뮬레이터 · 클라우드) · 내 계정 · 휴지통 비우기 · 시냅스 다시 계산 */
+/** 설정 — 연결 상태(에뮬레이터 · 클라우드) · 내 계정(익명 → Google 연결) · 휴지통 비우기 · 시냅스 다시 계산 */
 import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
@@ -6,6 +6,7 @@ import { usePalette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { rebuildSynapse, taskAction } from "../../firebase/api";
 import { useData } from "../../firebase/data";
+import { GOOGLE_SUPPORTED, describeUser, signInWithGoogle } from "../../firebase/google";
 
 export default function SettingsScreen() {
   const c = usePalette();
@@ -36,12 +37,39 @@ export default function SettingsScreen() {
 
       <View style={section}>
         <Text style={{ fontSize: 16, fontWeight: "700", color: c.text }}>내 계정</Text>
-        <Text style={{ fontSize: 13, color: c.muted }} selectable>
-          익명 로그인 · {user?.uid ?? "-"}
+        <Text style={{ fontSize: 14, color: c.text }}>{describeUser(user)}</Text>
+        <Text style={{ fontSize: 12, color: c.muted }} selectable>
+          {user?.uid ?? "-"}
         </Text>
-        <View style={{ flexDirection: "row" }}>
-          <Btn c={c} label="새 익명 계정으로 시작" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), "새 계정으로 바꿨어요."))} />
+        {user?.isAnonymous ? (
+          <Text style={{ fontSize: 13, color: c.muted, lineHeight: 19 }}>
+            Google 로 로그인하면 지금 기록이 그 계정에 이어져서, 다른 기기 · 브라우저에서도 같은 데이터를 볼 수 있어요.
+          </Text>
+        ) : null}
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          {user?.isAnonymous && GOOGLE_SUPPORTED ? (
+            <Btn
+              c={c}
+              primary
+              label="Google 로 로그인"
+              busy={busy === "google"}
+              onPress={() =>
+                void act("google", async () => {
+                  const r = await run(() => signInWithGoogle(user));
+                  if (!r || r.kind === "cancelled") return null;
+                  return r.kind === "linked" ? `${r.email ?? "Google"} 에 지금 기록을 이었어요.` : `${r.email ?? "Google"} 계정으로 들어왔어요(이미 있던 계정이라 그 데이터를 보여 줘요).`;
+                })
+              }
+            />
+          ) : null}
+          {user && !user.isAnonymous ? (
+            <Btn c={c} label="로그아웃" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), "로그아웃했어요. 익명으로 다시 시작해요."))} />
+          ) : (
+            <Btn c={c} label="새 익명 계정으로 시작" busy={busy === "reset"} onPress={() => void act("reset", async () => (await resetUser(), "새 계정으로 바꿨어요."))} />
+          )}
         </View>
+        {user?.isAnonymous && !GOOGLE_SUPPORTED ? <Text style={{ fontSize: 12, color: c.muted }}>Google 로그인은 지금 웹에서만 돼요.</Text> : null}
+        {note ? <Text style={{ fontSize: 13, color: c.ok }}>{note}</Text> : null}
       </View>
 
       <View style={section}>
@@ -63,7 +91,6 @@ export default function SettingsScreen() {
           />
           <Btn c={c} label="휴지통 비우기(7일 지난 것)" busy={busy === "purge"} onPress={() => void act("purge", async () => ((await run(() => taskAction({ op: "purge" }))) ? "비웠어요." : null))} />
         </View>
-        {note ? <Text style={{ fontSize: 13, color: c.ok }}>{note}</Text> : null}
       </View>
     </ScrollView>
   );
