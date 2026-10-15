@@ -105,6 +105,8 @@ test("기기 안 길 — 문장 → 도구 호출", () => {
   assert.deepEqual(planLocal("메모: 다음 분기엔 채용을 늘리기로 했다", NOW).calls, [{ name: "add_scrap", input: { text: "다음 분기엔 채용을 늘리기로 했다", label: "결정" } }]);
   const dump = planLocal("이번 주 할 거\n- 발표 자료 만들기 목요일\n- 치과 예약\n- 엄마 생신 선물 20일까지", NOW).calls;
   assert.equal(dump[0].name, "propose_tasks");
+  assert.deepEqual((dump[0].input.items as { title: string }[]).map((i) => i.title), ["발표 자료 만들기", "치과 예약", "엄마 생신 선물"]);
+  assert.deepEqual(planLocal("헬스장 등록", NOW).calls, [{ name: "add_task", input: { title: "헬스장 등록", due: undefined } }]);
   assert.equal(planLocal("방금 거 취소해", NOW).undoLast, true);
   assert.deepEqual(planLocal("10월 13일 회의록 정리", NOW).calls, [{ name: "add_task", input: { title: "회의록 정리", due: "2026-10-13" } }]);
 });

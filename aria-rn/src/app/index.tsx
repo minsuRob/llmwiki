@@ -40,7 +40,7 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
-      <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, gap: 14, maxWidth: 720, width: "100%", alignSelf: "center" }}>
+      <ScrollView ref={scroll} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })} contentContainerStyle={{ padding: 16, gap: 14, maxWidth: 720, width: "100%", alignSelf: "center" }}>
         {state.messages.length === 0 ? (
           <View style={{ gap: 12, paddingTop: 24 }}>
             <Text style={{ fontSize: 22, fontWeight: "800", color: c.text }}>무엇을 정리할까요?</Text>
@@ -90,11 +90,12 @@ export default function ChatScreen() {
             multiline
             accessibilityLabel="메시지"
             onKeyPress={(e) => {
-              // 웹: Enter 로 보내고 Shift+Enter 로 줄바꿈
+              // 웹: Enter 로 보내고 Shift+Enter 로 줄바꿈.
+              // 한글 입력 중(조합 중)에 누른 Enter 는 글자 확정에 먼저 쓰인다 — 확정된 뒤(다음 틱)에 최신 글로 보낸다
               const ne = e.nativeEvent as unknown as { key: string; shiftKey?: boolean };
               if (Platform.OS === "web" && ne.key === "Enter" && !ne.shiftKey) {
                 (e as unknown as { preventDefault?: () => void }).preventDefault?.();
-                submit();
+                setTimeout(() => submit(), 30);
               }
             }}
             style={{ ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : {}), flex: 1, minHeight: 42, maxHeight: 140, borderRadius: 12, backgroundColor: c.row, color: c.text, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 }}

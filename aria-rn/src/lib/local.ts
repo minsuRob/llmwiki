@@ -25,7 +25,7 @@ const EVENT_WORDS = /(회의(?!록)|미팅|약속|예약|면담|모임|만나|�
 const SHOW_WORDS = /(보여|알려|뭐\s*있|뭐야|뭐지|목록|리스트|확인)/;
 const TASK_WORDS = /(할\s*일|할일|투두|todo)/i;
 const REQUEST_TAIL =
-  /\s*(추가해\s*줘|추가해|추가|넣어\s*줘|넣어|등록해\s*줘|등록|잡아\s*줘|잡아|기억해\s*줘|해야\s*(해|돼|함|지|겠다)|해야겠다|하자|할\s*것|좀|요)[.!~]*$/;
+  /\s*(추가해\s*줘|추가해|넣어\s*줘|넣어|등록해\s*줘|잡아\s*줘|기억해\s*줘|해야\s*(해|돼|함|지|겠다)|해야겠다|하자|할\s*것|좀|요)[.!~]*$/;
 
 /** 제목 다듬기 — 날짜 · 시각 말과 요청 꼬리를 뺀다 */
 export function cleanTitle(text: string, matched: string[]): string {
@@ -54,9 +54,15 @@ function itemCall(line: string, now: Date): PlannedCall | null {
   return { name: "add_task", input: { title, due: when?.value } };
 }
 
+/** 목록 머리말 — "이번 주 할 거", "오늘 할 일:" 처럼 항목이 아니라 제목인 줄 */
+const HEADER_LINE = /^(.*(할\s*(거|것|일)|할일|투두|todo|목록|리스트))\s*[:：]?$/i;
+
 function splitItems(text: string): string[] {
-  return text
-    .split(/\n|,|，|;|그리고/)
+  const lines = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  // 여러 줄이고 첫 줄이 머리말이면 뺀다
+  if (lines.length > 1 && (HEADER_LINE.test(lines[0]) || /[:：]$/.test(lines[0]))) lines.shift();
+  return lines
+    .flatMap((l) => l.split(/,|，|;|그리고/))
     .map((s) => s.replace(/^\s*(\d+[.)]|[-•*·])\s*/, "").trim())
     .filter(Boolean);
 }
