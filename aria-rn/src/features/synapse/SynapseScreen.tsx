@@ -1,7 +1,8 @@
 /**
- * 시냅스 — 기록 · 할일에서 뽑은 개념(노드)과 함께 나온 관계(엣지).
- * 위: 연결이 많은 개념 순 칩. 가운데: 고른 개념의 이웃 그래프. 아래: 그 개념이 나온 기록 · 할일.
- * 그래프는 서버가 글이 바뀔 때마다 다시 계산한다(functions/src/common.ts mutate).
+ * 시냅스 — 두 가지로 본다.
+ * - 그래프: 옵시디언 그래프 뷰처럼 기록 · 할일을 점으로, [[링크]] · 개념을 선으로(전체 · 로컬). VaultScreen
+ * - 개념: 기록 · 할일에서 뽑은 개념(노드)과 함께 나온 관계(엣지). 연결이 많은 개념 순 칩 + 고른 개념의 이웃.
+ * 개념 그래프는 서버가 글이 바뀔 때마다 다시 계산한다(functions/src/common.ts mutate).
  */
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -14,10 +15,39 @@ import { usePalette } from "../../components/theme";
 import { Line, PAGE } from "../../components/ui";
 import { useData } from "../../firebase/data";
 import { SynapseGraph } from "./SynapseGraph";
+import { VaultScreen } from "./VaultScreen";
 
 const KIND_LABEL: Record<NodeKind, string> = { topic: "주제", person: "사람", emotion: "감정", project: "일", tag: "태그" };
 
 export default function SynapseScreen() {
+  const c = usePalette();
+  const params = useLocalSearchParams<{ node?: string; doc?: string }>();
+  const [mode, setMode] = useState<"graph" | "concepts">(params.node ? "concepts" : "graph");
+  useEffect(() => {
+    if (params.node) setMode("concepts");
+    if (params.doc) setMode("graph");
+  }, [params.node, params.doc]);
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <View style={{ flexDirection: "row", gap: 6, padding: 12, paddingBottom: 0, alignSelf: "center", width: "100%", maxWidth: 1200 }}>
+        {(["graph", "concepts"] as const).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => setMode(m)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: mode === m }}
+            style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: mode === m ? c.accent : c.soft }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: mode === m ? c.accentText : c.text }}>{m === "graph" ? "그래프" : "개념"}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {mode === "graph" ? <VaultScreen focus={params.doc ?? null} /> : <ConceptScreen />}
+    </View>
+  );
+}
+
+function ConceptScreen() {
   const c = usePalette();
   const { state } = useData();
   const params = useLocalSearchParams<{ node?: string }>();

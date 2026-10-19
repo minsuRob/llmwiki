@@ -22,6 +22,7 @@ Firebase 프로젝트: `llmwiki-minsu`(이름 llmwiki)
 | 할일 탭(체크 · 휴지통 · 되살리기) | `features/tasks` | `taskAction` |
 | 일정 · 기록 탭 | `features/calendar` · `features/notes` | (읽기만) |
 | 시냅스(개념 그래프 · 떠올리기) | `features/synapse` | `rebuildSynapse` · 글이 바뀔 때마다 자동 |
+| 그래프(옵시디언식 — [[링크]] · 백링크 · 전체/로컬 · 필터 · 그룹 · 장력) | `features/synapse/VaultScreen.tsx` · `features/notes` | (읽기만, 계산은 `packages/core/src/vault.ts`) |
 
 앱은 Firestore 를 **읽기만** 하고(규칙이 막는다), 바꾸는 일은 전부 함수가 한다.
 

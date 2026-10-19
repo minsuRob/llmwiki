@@ -58,7 +58,7 @@ export const TOOL_DEFS: ToolDef[] = [
   },
   {
     name: "add_scrap",
-    description: "남겨 둘 만한 생각 · 결정 · 정보 · 감정을 기록(스크랩)으로 저장한다. 인사 · 질문 · 명령은 저장하지 않는다.",
+    description: "남겨 둘 만한 생각 · 결정 · 정보 · 감정을 기록(스크랩)으로 저장한다. 인사 · 질문 · 명령은 저장하지 않는다. 사용자가 쓴 [[제목]] 링크는 다른 노트로 이어지는 표시이니 그대로 둔다.",
     input_schema: {
       type: "object",
       properties: { text: { type: "string" }, label: { type: "string", enum: ["아이디어", "메모", "회고", "감정", "결정", "계획", "정보", "기타"] } },
