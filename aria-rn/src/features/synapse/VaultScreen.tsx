@@ -11,12 +11,14 @@ import { backlinks, buildVault, filterVault, localGraph, outgoingLinks, type Vau
 import { usePalette, type Palette } from "../../components/theme";
 import { Line } from "../../components/ui";
 import { useData } from "../../firebase/data";
+import { useT } from "../../i18n";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
 import { useGraphSettings } from "./useGraphSettings";
 import { KIND_NAME, VaultGraphView } from "./VaultGraphView";
 
 export function VaultScreen({ focus }: { focus: string | null }) {
   const c = usePalette();
+  const t = useT();
   const { state } = useData();
   const { width, height } = useWindowDimensions();
   const wide = width >= 900;
@@ -62,32 +64,30 @@ export function VaultScreen({ focus }: { focus: string | null }) {
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={{ padding: 12, gap: 12, width: "100%", maxWidth: 1200, alignSelf: "center" }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         {[
-          { key: false, label: "전체 그래프" },
-          { key: true, label: "로컬 그래프" },
-        ].map((t) => (
+          { key: false, label: "vault.globalGraph" },
+          { key: true, label: "vault.localGraph" },
+        ].map((tab) => (
           <Pressable
-            key={t.label}
-            onPress={() => setLocal(t.key)}
-            disabled={t.key && !selected}
+            key={tab.label}
+            onPress={() => setLocal(tab.key)}
+            disabled={tab.key && !selected}
             accessibilityRole="tab"
-            accessibilityState={{ selected: local === t.key, disabled: t.key && !selected }}
-            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: local === t.key ? c.accent : c.border, opacity: t.key && !selected ? 0.4 : 1 }}
+            accessibilityState={{ selected: local === tab.key, disabled: tab.key && !selected }}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: local === tab.key ? c.accent : c.border, opacity: tab.key && !selected ? 0.4 : 1 }}
           >
-            <Text style={{ fontSize: 12, color: local === t.key ? c.accent : c.text }}>{t.label}</Text>
+            <Text style={{ fontSize: 12, color: local === tab.key ? c.accent : c.text }}>{t(tab.label)}</Text>
           </Pressable>
         ))}
         <Text style={{ flex: 1, fontSize: 12, color: c.muted, minWidth: 120 }}>
-          노트 {counts.notes} · 링크 {counts.links}
-          {local && current ? ` · "${current.name}" 둘레 ${depth}걸음` : ""}
+          {t("vault.counts", { notes: counts.notes, links: counts.links })}
+          {local && current ? t("vault.localAround", { name: current.name, depth }) : ""}
         </Text>
         <Pressable onPress={() => setShowSettings((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: showSettings }} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: showSettings ? c.accent : c.soft }}>
-          <Text style={{ fontSize: 12, color: showSettings ? c.accentText : c.text }}>⚙︎ 설정</Text>
+          <Text style={{ fontSize: 12, color: showSettings ? c.accentText : c.text }}>{t("vault.settings")}</Text>
         </Pressable>
       </View>
       {vault.nodes.length === 0 ? (
-        <Text style={{ color: c.muted, fontSize: 14, lineHeight: 21 }}>
-          아직 노트가 없어요. 대화에서 "메모: [[LLM 공부]] 다시 보기" 처럼 [[제목]] 을 넣어 기록하면, 같은 제목의 할일 · 기록과 선으로 이어져요.
-        </Text>
+        <Text style={{ color: c.muted, fontSize: 14, lineHeight: 21 }}>{t("vault.empty")}</Text>
       ) : wide ? (
         <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
           <View style={{ flex: 1 }}>
@@ -106,13 +106,14 @@ export function VaultScreen({ focus }: { focus: string | null }) {
 }
 
 function NoteDetail({ c, vault, node, onSelect }: { c: Palette; vault: VaultGraph; node: VaultNode; onSelect: (id: string) => void }) {
+  const t = useT();
   const { state } = useData();
   const back = backlinks(vault, node.id);
   const out = outgoingLinks(vault, node.id);
   const byId = new Map(vault.nodes.map((n) => [n.id, n]));
   const concepts = vault.links.filter((l) => l.kind === "concept" && l.source === node.id).map((l) => byId.get(l.target)!).filter(Boolean);
   const mentions = node.kind === "concept" ? vault.links.filter((l) => l.kind === "concept" && l.target === node.id).map((l) => byId.get(l.source)!).filter(Boolean) : [];
-  const task = node.kind === "task" ? state.tasks.find((t) => t.id === node.refId) : undefined;
+  const task = node.kind === "task" ? state.tasks.find((x) => x.id === node.refId) : undefined;
   const scrap = node.kind === "scrap" ? state.scraps.find((s) => s.id === node.refId) : undefined;
 
   const list = (title: string, items: VaultNode[], empty?: string) =>
@@ -123,8 +124,8 @@ function NoteDetail({ c, vault, node, onSelect }: { c: Palette; vault: VaultGrap
         </Text>
         {items.length === 0 ? <Text style={{ fontSize: 12, color: c.muted }}>{empty}</Text> : null}
         {items.map((n) => (
-          <Pressable key={n.id} onPress={() => onSelect(n.id)} accessibilityRole="button" accessibilityLabel={`${n.name} 로 가기`}>
-            <Line c={c} title={n.kind === "concept" ? `#${n.name}` : n.name} sub={KIND_NAME[n.kind]} struck={n.kind === "task" && n.done} />
+          <Pressable key={n.id} onPress={() => onSelect(n.id)} accessibilityRole="button" accessibilityLabel={t("vault.goTo", { name: n.name })}>
+            <Line c={c} title={n.kind === "concept" ? `#${n.name}` : n.name} sub={t(KIND_NAME[n.kind])} struck={n.kind === "task" && n.done} />
           </Pressable>
         ))}
       </View>
@@ -133,17 +134,17 @@ function NoteDetail({ c, vault, node, onSelect }: { c: Palette; vault: VaultGrap
   return (
     <View style={{ backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, padding: 14, gap: 12 }}>
       <View style={{ gap: 4 }}>
-        <Text style={{ fontSize: 11, color: c.muted }}>{KIND_NAME[node.kind]}</Text>
+        <Text style={{ fontSize: 11, color: c.muted }}>{t(KIND_NAME[node.kind])}</Text>
         <Text style={{ fontSize: 17, fontWeight: "800", color: c.text }}>{node.kind === "concept" ? `#${node.name}` : node.name}</Text>
-        {task ? <Text style={{ fontSize: 12, color: c.muted }}>{[task.done ? "완료" : "열림", formatWhen(task.due)].filter(Boolean).join(" · ")}</Text> : null}
+        {task ? <Text style={{ fontSize: 12, color: c.muted }}>{[t(task.done ? "vault.done" : "vault.open"), formatWhen(task.due)].filter(Boolean).join(" · ")}</Text> : null}
         {task?.notes ? <Text style={{ fontSize: 13, color: c.text, lineHeight: 19 }}>{task.notes}</Text> : null}
         {scrap ? <Text style={{ fontSize: 13, color: c.text, lineHeight: 19 }}>{scrap.text}</Text> : null}
-        {node.kind === "missing" ? <Text style={{ fontSize: 12, color: c.muted }}>이 제목의 할일 · 기록이 아직 없어요. 같은 제목으로 만들면 바로 이어져요.</Text> : null}
+        {node.kind === "missing" ? <Text style={{ fontSize: 12, color: c.muted }}>{t("vault.missingHint")}</Text> : null}
       </View>
-      {node.kind === "concept" ? list("이 개념이 나온 글", mentions) : null}
-      {node.kind !== "concept" ? list("백링크", back, "이 노트를 [[링크]] 한 곳이 없어요") : null}
-      {list("나가는 링크", out)}
-      {list("개념", concepts)}
+      {node.kind === "concept" ? list(t("vault.mentions"), mentions) : null}
+      {node.kind !== "concept" ? list(t("vault.backlinks"), back, t("vault.noBacklinks")) : null}
+      {list(t("vault.outgoing"), out)}
+      {list(t("vault.concepts"), concepts)}
     </View>
   );
 }

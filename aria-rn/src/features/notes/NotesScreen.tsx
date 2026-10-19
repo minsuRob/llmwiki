@@ -10,6 +10,14 @@ import { SCRAP_LABELS } from "../../../../packages/core/src/types.ts";
 import { backlinks, buildVault, linkTargets } from "../../../../packages/core/src/vault.ts";
 import { usePalette, type Palette } from "../../components/theme";
 import { useData } from "../../firebase/data";
+import { useI18n, type T } from "../../i18n";
+
+/** 라벨은 저장된 값 그대로 두고 보일 때만 번역한다 — 모르는 라벨은 그대로 */
+export function scrapLabel(t: T, label: string): string {
+  const key = `notes.labels.${label}`;
+  const s = t(key);
+  return s === key ? label : s;
+}
 
 const openInGraph = (id: string) => router.push({ pathname: "/synapse", params: { doc: id } });
 
@@ -40,6 +48,7 @@ function LinkedText({ c, text, targets }: { c: Palette; text: string; targets: M
 
 export default function NotesScreen() {
   const c = usePalette();
+  const { lang, t } = useI18n();
   const { state } = useData();
   const [label, setLabel] = useState<string | null>(null);
   const scraps = state.scraps.filter((s) => !s.deletedAt && (!label || s.label === label)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -50,12 +59,12 @@ export default function NotesScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
         {[null, ...SCRAP_LABELS].map((l) => (
           <Pressable key={l ?? "all"} onPress={() => setLabel(l)} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: label === l ? c.accent : c.soft }}>
-            <Text style={{ fontSize: 13, color: label === l ? c.accentText : c.text }}>{l ?? "전체"}</Text>
+            <Text style={{ fontSize: 13, color: label === l ? c.accentText : c.text }}>{l ? scrapLabel(t, l) : t("notes.all")}</Text>
           </Pressable>
         ))}
       </ScrollView>
       {scraps.length === 0 ? (
-        <Text style={{ color: c.muted, textAlign: "center", marginTop: 24 }}>대화에서 "메모: …" 라고 말하면 여기에 남아요. [[제목]] 을 넣으면 그 노트와 이어져요</Text>
+        <Text style={{ color: c.muted, textAlign: "center", marginTop: 24 }}>{t("notes.empty")}</Text>
       ) : null}
       {scraps.map((s) => {
         const id = `scrap:${s.id}`;
@@ -66,15 +75,15 @@ export default function NotesScreen() {
             <LinkedText c={c} text={s.text} targets={targets} />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <Text style={{ fontSize: 12, color: c.muted }}>
-                {s.label} · {new Date(s.createdAt).toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" })}
+                {scrapLabel(t, s.label)} · {new Date(s.createdAt).toLocaleDateString(lang === "ko" ? "ko-KR" : "en-US", { month: "long", day: "numeric", weekday: "short" })}
               </Text>
               {back.length ? (
                 <Text style={{ fontSize: 12, color: c.muted }} numberOfLines={1}>
-                  · 백링크 {back.length}: {back.map((b) => b.name).join(", ")}
+                  {t("notes.backlinks", { count: back.length, names: back.map((b) => b.name).join(", ") })}
                 </Text>
               ) : null}
-              <Pressable onPress={() => openInGraph(id)} accessibilityRole="button" accessibilityLabel="그래프에서 보기" style={{ marginLeft: "auto" }}>
-                <Text style={{ fontSize: 12, color: c.accent }}>그래프에서 보기</Text>
+              <Pressable onPress={() => openInGraph(id)} accessibilityRole="button" accessibilityLabel={t("notes.openInGraph")} style={{ marginLeft: "auto" }}>
+                <Text style={{ fontSize: 12, color: c.accent }}>{t("notes.openInGraph")}</Text>
               </Pressable>
             </View>
           </View>

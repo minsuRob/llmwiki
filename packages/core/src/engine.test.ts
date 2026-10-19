@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { closeCard, findCard, finishTurn, newLedger, resolveOverdue, resolveSuggest, runTool, tasksInScope, undoChanges } from "./engine.ts";
 import { planLocal, runLocalTurn } from "./local.ts";
-import { emptyState, type AppState, type ChatMessage } from "./types.ts";
+import { emptyState, taskPriority, taskStatus, type AppState, type ChatMessage } from "./types.ts";
 
 const NOW = new Date(2026, 9, 15, 10, 0); // 목
 const empty = (): AppState => emptyState();
@@ -116,4 +116,36 @@ test("기기 안 길도 같은 카드를 만든다", () => {
   assert.equal(turn.state.tasks.length, 2);
   assert.equal(turn.cards[0].kind, "changes");
   assert.match(turn.text, /할일 2개를 추가했어요/);
+});
+
+test("상태 · 우선순위 — 옵시디언 일감 프론트매터처럼 붙이고, 완료는 done 으로, 옛 할일은 기본값", () => {
+  const l = newLedger();
+  let s = runTool(empty(), "add_task", { title: "LLM 공부", priority: "최우선", status: "대기" }, l, NOW).state;
+  assert.equal(s.tasks[0].priority, "최우선");
+  assert.equal(s.tasks[0].status, "대기");
+  s = runTool(s, "add_task", { title: "옛 할일" }, l, NOW).state;
+  assert.equal(taskStatus(s.tasks[1]), "진행중");
+  assert.equal(taskPriority(s.tasks[1]), "중간");
+
+  const l2 = newLedger();
+  s = runTool(s, "update_task", { task: "LLM", status: "완료" }, l2, NOW).state;
+  assert.equal(s.tasks[0].done, true);
+  assert.equal(taskStatus(s.tasks[0]), "완료");
+  assert.deepEqual(l2.completedTaskIds, [s.tasks[0].id]);
+  s = runTool(s, "update_task", { task: s.tasks[0].id, status: "보류" }, newLedger(), NOW).state;
+  assert.equal(s.tasks[0].done, false);
+  assert.equal(taskStatus(s.tasks[0]), "보류");
+  assert.match(runTool(s, "update_task", { task: "옛 할일", priority: "아주 급함" }, newLedger(), NOW).output, /^Error/);
+});
+
+test("규칙 길 — 'LLM 공부 최우선으로' · '헤르메스 보류'", () => {
+  assert.deepEqual(planLocal("LLM 공부 최우선으로", NOW).calls, [{ name: "update_task", input: { task: "LLM 공부", priority: "최우선" } }]);
+  assert.deepEqual(planLocal("헤르메스 보류", NOW).calls, [{ name: "update_task", input: { task: "헤르메스", status: "보류" } }]);
+  assert.deepEqual(planLocal("보고서 우선순위를 하순위로 내려 줘", NOW).calls, [{ name: "update_task", input: { task: "보고서", priority: "하순위" } }]);
+  let s = runTool(empty(), "add_task", { title: "헤르메스 연동" }, newLedger(), NOW).state;
+  const r = runLocalTurn(s, "헤르메스 보류해 줘", NOW);
+  s = r.state;
+  assert.equal(s.tasks[0].status, "보류");
+  assert.match(r.text, /"헤르메스 연동" 상태를 보류로 바꿨어요/);
+  assert.match(runLocalTurn(s, "없는일 최우선으로", NOW).text, /찾지 못했어요/);
 });

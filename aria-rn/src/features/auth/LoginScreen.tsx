@@ -11,9 +11,11 @@ import { Btn } from "../../components/ui";
 import { errorText } from "../../firebase/api";
 import { useData } from "../../firebase/data";
 import { GOOGLE_SUPPORTED, signInWithGoogle } from "../../firebase/google";
+import { useT } from "../../i18n";
 
 export default function LoginScreen() {
   const c = usePalette();
+  const t = useT();
   const { startAnonymous, mode } = useData();
   const [busy, setBusy] = useState<"google" | "anon" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export default function LoginScreen() {
     try {
       await signInWithGoogle(null);
     } catch (e) {
-      setError(errorText(e));
+      setError(errorText(e, t));
     }
     setBusy(null);
   };
@@ -41,23 +43,21 @@ export default function LoginScreen() {
       <View style={{ width: "100%", maxWidth: 380, gap: 16 }}>
         <View style={{ gap: 8 }}>
           <Text style={{ fontSize: 28, fontWeight: "800", color: c.text }}>llmwiki</Text>
-          <Text style={{ fontSize: 15, color: c.muted, lineHeight: 22 }}>
-            말하면 할일 · 일정 · 기록으로 정리하고, 기록이 쌓이면 생각이 어떻게 이어지는지 시냅스로 보여 드려요.
-          </Text>
+          <Text style={{ fontSize: 15, color: c.muted, lineHeight: 22 }}>{t("login.tagline")}</Text>
         </View>
 
         <View style={{ gap: 10, marginTop: 8 }}>
           {GOOGLE_SUPPORTED ? (
-            <Btn c={c} primary label="Google 로 로그인" busy={busy === "google"} disabled={busy !== null} onPress={() => void google()} />
+            <Btn c={c} primary label={t("login.google")} busy={busy === "google"} disabled={busy !== null} onPress={() => void google()} />
           ) : (
-            <Text style={{ fontSize: 13, color: c.muted }}>Google 로그인은 지금 웹에서만 돼요.</Text>
+            <Text style={{ fontSize: 13, color: c.muted }}>{t("login.googleWebOnly")}</Text>
           )}
-          <Btn c={c} label="로그인 없이 써 보기" busy={busy === "anon"} disabled={busy !== null} onPress={() => void anon()} />
+          <Btn c={c} label={t("login.anonymous")} busy={busy === "anon"} disabled={busy !== null} onPress={() => void anon()} />
         </View>
 
         <Text style={{ fontSize: 12, color: c.muted, lineHeight: 18 }}>
-          로그인 없이 시작해도 나중에 설정 탭에서 Google 을 이으면 지금 데이터가 그대로 남아요.
-          {mode === "emulator" ? " (로컬 에뮬레이터)" : ""}
+          {t("login.anonymousNote")}
+          {mode === "emulator" ? t("login.emulatorSuffix") : ""}
         </Text>
         {error ? (
           <Text style={{ fontSize: 13, color: c.danger }} accessibilityLiveRegion="polite">

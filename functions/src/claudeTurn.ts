@@ -11,7 +11,7 @@ import { formatWhen, ymd } from "../../packages/core/src/dates.ts";
 import { finishTurn, newLedger, runTool, tasksInScope } from "../../packages/core/src/engine.ts";
 import type { ExtractedConcept, ExtractedRelation } from "../../packages/core/src/synapse.ts";
 import { TOOL_DEFS } from "../../packages/core/src/toolDefs.ts";
-import type { AppState, Card, ChatMessage, NodeKind } from "../../packages/core/src/types.ts";
+import { taskPriority, taskStatus, type AppState, type Card, type ChatMessage, type NodeKind } from "../../packages/core/src/types.ts";
 
 export const MODEL = "claude-opus-5-5";
 const MAX_STEPS = 8;
@@ -23,6 +23,7 @@ const SYSTEM = `너는 사용자의 할일 · 일정 · 기록을 대신 정리�
 - 카드가 뜨는 도구(show_tasks · propose_overdue · propose_tasks · recall)를 불렀으면 카드 내용을 본문에 다시 나열하지 않는다. 바꾸는 도구(add · update · complete · delete)를 부르면 앱이 턴 끝에 [되돌리기] 카드를 붙이므로 몇 개를 했는지만 한 문장으로 말한다.
 - 지난 기록을 떠올리는 질문은 recall 로 근거를 찾고, 근거에 있는 것만 말한다.
 - 남과 만나는 약속만 일정(add_event)이고, 혼자 하는 일은 할일(add_task)이다.
+- 할일에는 상태(진행중 · 완료 · 보류 · 대기)와 우선순위(최우선 · 중간 · 하순위)가 있다. "X 최우선으로" · "X 보류" 는 update_task 로 바꾼다.
 - 날짜 · 시각은 아래 [지금] 기준으로 계산한다. 24시간제다(14:00 = 오후 2시). 말하지 않은 날짜를 지어내지 않는다.
 - 대상이 둘 이상이라 헷갈리면 실행하지 말고 한 줄로 되묻는다.
 - 답은 사용자가 쓴 언어로, 1~3문장. 인사 · 감사 같은 짧은 말에는 짧게 반응만 한다.`;
@@ -35,7 +36,7 @@ function contextBlock(state: AppState, now: Date, timeZone: string): string {
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
   const today = tasksInScope(state, "today", now);
   const overdue = tasksInScope(state, "overdue", now).length;
-  const lines = today.slice(0, 15).map((t) => `- id=${t.id} | ${t.title} | ${formatWhen(t.due, now) ?? "마감 없음"}`);
+  const lines = today.slice(0, 15).map((t) => `- id=${t.id} | ${t.title} | ${formatWhen(t.due, now) ?? "마감 없음"} | ${taskStatus(t)} · ${taskPriority(t)}`);
   return [
     `[지금] ${ymd(now)} (${dayNames[now.getDay()]}) ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}, 시간대 ${timeZone}`,
     `[오늘 할 일 ${today.length}개 · 그중 기한 지남 ${overdue}개 — 읽기 전용, 바꾸려면 도구]`,

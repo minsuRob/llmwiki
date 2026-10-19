@@ -162,6 +162,23 @@ test("할일 탭 API — 만들기 · 체크 · 휴지통 · 되살리기", asyn
   await assert.rejects(call("taskAction", { op: "toggle", id: "nope" }), /찾지 못했어요|not-found/);
 });
 
+test("할일 상태 · 우선순위 — 탭에서 바꾸고, 대화(규칙 길)로도 바꾼다", async () => {
+  const { id } = await call("taskAction", { op: "create", title: "LLM 공부", priority: "최우선" });
+  let t = (await list("tasks")).find((x) => x.id === id);
+  assert.equal(t.priority, "최우선");
+  await call("taskAction", { op: "update", id, status: "대기" });
+  assert.equal((await list("tasks")).find((x) => x.id === id).status, "대기");
+  await call("taskAction", { op: "update", id, status: "완료" });
+  t = (await list("tasks")).find((x) => x.id === id);
+  assert.equal(t.done, true);
+  await assert.rejects(call("taskAction", { op: "update", id, priority: "아주 급함" }), /priority|invalid-argument/);
+
+  const { id: h } = await call("taskAction", { op: "create", title: "헤르메스 연동" });
+  const r = await chat("헤르메스 보류");
+  assert.match(r.text, /보류로 바꿨어요/);
+  assert.equal((await list("tasks")).find((x) => x.id === h).status, "보류");
+});
+
 test("보안 규칙 — 앱은 자기 데이터를 읽기만, 남의 데이터는 못 읽는다", async () => {
   await assert.rejects(setDoc(doc(db, "users", uid, "tasks", "hack"), { title: "직접 쓰기" }), /permission/i);
   const mine = uid;

@@ -8,7 +8,7 @@
  * - 걸러 보기(검색 · 태그 · 미연결 · 없는 노트) · 색 그룹 · 로컬 그래프(깊이) · 힘 배치(중심 · 반발 · 링크)는
  *   전부 순수 함수다. 화면은 계산된 좌표를 그리기만 한다.
  */
-import type { AppState, NodeKind } from "./types.ts";
+import { asTaskPriority, asTaskStatus, taskPriority, taskStatus, type AppState, type NodeKind, type TaskPriority, type TaskStatus } from "./types.ts";
 
 export type VaultKind = "scrap" | "task" | "concept" | "missing";
 
@@ -21,6 +21,9 @@ export interface VaultNode {
   refId?: string;
   conceptKind?: NodeKind;
   done?: boolean;
+  /** 할일만 — 옵시디언 일감 프론트매터의 상태 · 우선순위(기본값까지 채운 값) */
+  status?: TaskStatus;
+  priority?: TaskPriority;
 }
 
 export interface VaultLink {
@@ -138,13 +141,15 @@ interface Doc {
   name: string;
   body: string;
   done?: boolean;
+  status?: TaskStatus;
+  priority?: TaskPriority;
 }
 
 function docsOf(state: AppState): Doc[] {
   const docs: Doc[] = [];
   for (const t of state.tasks) {
     if (t.deletedAt) continue;
-    docs.push({ id: `task:${t.id}`, kind: "task", refId: t.id, keys: [titleKey(t.title)], name: t.title, body: [t.title, t.notes ?? ""].join("\n"), done: t.done });
+    docs.push({ id: `task:${t.id}`, kind: "task", refId: t.id, keys: [titleKey(t.title)], name: t.title, body: [t.title, t.notes ?? ""].join("\n"), done: t.done, status: taskStatus(t), priority: taskPriority(t) });
   }
   for (const s of state.scraps) {
     if (s.deletedAt) continue;
@@ -162,7 +167,7 @@ export function buildVault(state: AppState): VaultGraph {
   // 할일 제목이 기록 첫 줄보다 먼저 — 같은 이름이면 할일로 잇는다
   for (const d of docs) for (const k of d.keys) if (k && !byKey.has(k)) byKey.set(k, d);
 
-  const nodes: VaultNode[] = docs.map((d) => ({ id: d.id, kind: d.kind, name: d.name, refId: d.refId, ...(d.kind === "task" ? { done: !!d.done } : {}) }));
+  const nodes: VaultNode[] = docs.map((d) => ({ id: d.id, kind: d.kind, name: d.name, refId: d.refId, ...(d.kind === "task" ? { done: !!d.done, status: d.status, priority: d.priority } : {}) }));
   const links: VaultLink[] = [];
   const seen = new Set<string>();
   const missing = new Map<string, VaultNode>();
@@ -231,6 +236,7 @@ const KIND_WORDS: Record<string, VaultKind> = { 기록: "scrap", 메모: "scrap"
  * - 그냥 말: 이름에 들어 있다
  * - tag:#발표 · tag:발표: 그 개념과 이어진 글(개념 점 자신도)
  * - path:할일 · path:기록 · path:개념: 종류(옵시디언의 폴더 자리)
+ * - status:보류 · 상태:진행중 / priority:최우선 · 우선순위:하순위: 할일의 프론트매터(옵시디언 [상태:보류] 자리)
  * - -말: 위 조건의 반대
  */
 export function matchQuery(graph: VaultGraph, node: VaultNode, query: string): boolean {
@@ -244,6 +250,12 @@ export function matchQuery(graph: VaultGraph, node: VaultNode, query: string): b
       ok =
         (node.kind === "concept" && node.name.toLowerCase() === tag) ||
         graph.links.some((l) => l.kind === "concept" && l.source === node.id && graph.nodes.some((n) => n.id === l.target && n.name.toLowerCase() === tag));
+    } else if (/^(status|상태):/.test(term)) {
+      const want = asTaskStatus(term.slice(term.indexOf(":") + 1));
+      ok = !!want && node.kind === "task" && node.status === want;
+    } else if (/^(priority|우선순위):/.test(term)) {
+      const want = asTaskPriority(term.slice(term.indexOf(":") + 1));
+      ok = !!want && node.kind === "task" && node.priority === want;
     } else if (term.startsWith("path:")) {
       const kind = KIND_WORDS[term.slice(5)];
       ok = !!kind && node.kind === kind;

@@ -25,7 +25,7 @@ function sample(): AppState {
   const s = emptyState();
   s.tasks = [
     { id: "t1", title: "LLM 공부", done: false, createdAt: T },
-    { id: "t2", title: "오픈 헤르메스 개발", notes: "[[LLM 공부]] 와 같이 본다", done: false, createdAt: T },
+    { id: "t2", title: "오픈 헤르메스 개발", notes: "[[LLM 공부]] 와 같이 본다", done: false, createdAt: T, status: "보류", priority: "최우선" },
     { id: "t3", title: "지운 일", done: false, createdAt: T, deletedAt: T },
   ];
   s.scraps = [
@@ -151,4 +151,16 @@ test("이름 표시 — 텍스트 표시 시작점이 클수록 작게 봐도 �
   assert.ok(showLabelAt(1, 0));
   assert.ok(!showLabelAt(0.3, 0));
   assert.ok(showLabelAt(0.3, 1));
+});
+
+test("검색 문법 — status: · priority: (옵시디언 일감 프론트매터), 없으면 진행중 · 중간", () => {
+  const g = buildVault(sample());
+  const byId = (id: string) => g.nodes.find((n) => n.id === id)!;
+  assert.ok(matchQuery(g, byId("task:t2"), "status:보류"));
+  assert.ok(matchQuery(g, byId("task:t2"), "상태:hold 우선순위:최우선"));
+  assert.ok(matchQuery(g, byId("task:t1"), "status:진행중 priority:중간"));
+  assert.ok(!matchQuery(g, byId("task:t1"), "status:보류"));
+  assert.ok(!matchQuery(g, byId("scrap:s1"), "priority:중간"), "기록에는 우선순위가 없다");
+  assert.ok(matchQuery(g, byId("task:t1"), "-status:보류"));
+  assert.ok(!matchQuery(g, byId("task:t2"), "status:아무거나"));
 });

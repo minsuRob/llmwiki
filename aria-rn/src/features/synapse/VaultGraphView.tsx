@@ -8,6 +8,7 @@ import { PanResponder, Platform, Pressable, Text, View, type LayoutChangeEvent }
 
 import { degrees, groupColor, layoutVault, nodeRadius, showLabelAt, type GraphSettings, type Point, type VaultGraph, type VaultNode } from "../../../../packages/core/src/vault.ts";
 import type { Palette } from "../../components/theme";
+import { useT } from "../../i18n";
 
 const MIN_SCALE = 0.15;
 const MAX_SCALE = 4;
@@ -30,6 +31,7 @@ export function VaultGraphView({
   /** 바뀌면 이전 좌표를 버리고 처음부터 다시 배치한다(옵시디언 "애니메이션 재생") */
   relayoutKey: number;
 }) {
+  const t = useT();
   const [size, setSize] = useState({ w: 0, h: height });
   const [view, setView] = useState({ x: 0, y: 0, scale: 0.6 });
   const viewRef = useRef(view);
@@ -131,10 +133,10 @@ export function VaultGraphView({
       ref={box}
       onLayout={(e: LayoutChangeEvent) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
       style={{ height, borderRadius: 16, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}
-      accessibilityLabel={`그래프 — 점 ${graph.nodes.length}개, 선 ${graph.links.length}개`}
+      accessibilityLabel={t("vault.graphLabel", { nodes: graph.nodes.length, links: graph.links.length })}
       {...pan.panHandlers}
     >
-      <Pressable style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }} onPress={() => onSelect(null)} accessibilityLabel="고른 점 풀기" />
+      <Pressable style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }} onPress={() => onSelect(null)} accessibilityLabel={t("vault.clearSelection")} />
       {size.w > 0
         ? graph.links.map((l) => {
             const a = positions.get(l.source);
@@ -201,7 +203,7 @@ export function VaultGraphView({
                 key={n.id}
                 onPress={() => onSelect(on ? null : n.id)}
                 accessibilityRole="button"
-                accessibilityLabel={`${n.name}, ${KIND_NAME[n.kind]}`}
+                accessibilityLabel={`${n.name}, ${t(KIND_NAME[n.kind])}`}
                 accessibilityState={{ selected: on }}
                 hitSlop={6}
                 style={{ position: "absolute", left: s.x - 70, top: s.y - r, width: 140, alignItems: "center", opacity: dim ? 0.2 : 1 }}
@@ -226,15 +228,15 @@ export function VaultGraphView({
           })
         : null}
       {graph.nodes.length === 0 ? (
-        <Text style={{ position: "absolute", top: height / 2 - 10, width: "100%", textAlign: "center", color: c.muted, fontSize: 13 }}>조건에 맞는 노트가 없어요</Text>
+        <Text style={{ position: "absolute", top: height / 2 - 10, width: "100%", textAlign: "center", color: c.muted, fontSize: 13 }}>{t("vault.noMatch")}</Text>
       ) : null}
       <View style={{ position: "absolute", right: 10, bottom: 10, flexDirection: "row", gap: 6 }}>
         {[
-          { label: "−", hint: "축소", on: () => zoomAt(1 / 1.3) },
-          { label: "+", hint: "확대", on: () => zoomAt(1.3) },
-          { label: "⤢", hint: "전체 보기", on: fit },
+          { label: "−", hint: "vault.zoomOut", on: () => zoomAt(1 / 1.3) },
+          { label: "+", hint: "vault.zoomIn", on: () => zoomAt(1.3) },
+          { label: "⤢", hint: "vault.fit", on: fit },
         ].map((b) => (
-          <Pressable key={b.hint} onPress={b.on} accessibilityRole="button" accessibilityLabel={b.hint} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: c.soft, alignItems: "center", justifyContent: "center" }}>
+          <Pressable key={b.hint} onPress={b.on} accessibilityRole="button" accessibilityLabel={t(b.hint)} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: c.soft, alignItems: "center", justifyContent: "center" }}>
             <Text style={{ fontSize: 16, color: c.text }}>{b.label}</Text>
           </Pressable>
         ))}
@@ -243,4 +245,5 @@ export function VaultGraphView({
   );
 }
 
-export const KIND_NAME: Record<VaultNode["kind"], string> = { scrap: "기록", task: "할일", concept: "개념", missing: "아직 없는 노트" };
+/** 종류 이름의 번역 키 — 그릴 때 t() 로 */
+export const KIND_NAME: Record<VaultNode["kind"], string> = { scrap: "vault.kinds.scrap", task: "vault.kinds.task", concept: "vault.kinds.concept", missing: "vault.kinds.missing" };
