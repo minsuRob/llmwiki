@@ -7,6 +7,7 @@ import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestor
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { emptyState, type AppState } from "../../../packages/core/src/types.ts";
+import { useT } from "../i18n";
 import { errorText } from "./api";
 import { auth, db } from "./client";
 import { USE_EMULATORS } from "./config";
@@ -41,6 +42,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(emptyState());
   const [loaded, setLoaded] = useState<Set<Coll>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
+  const tRef = React.useRef(t);
+  React.useLayoutEffect(() => {
+    tRef.current = t;
+  });
 
   useEffect(
     () =>
@@ -67,7 +73,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           setState((s) => ({ ...s, [coll]: docs }));
           setLoaded((prev) => (prev.has(coll) ? prev : new Set(prev).add(coll)));
         },
-        (e) => setError(`데이터를 읽지 못했어요: ${errorText(e)}`),
+        (e) => setError(tRef.current("app.readFailed", { error: errorText(e, tRef.current) })),
       );
     });
     return () => unsubs.forEach((u) => u());
@@ -77,7 +83,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       return await fn();
     } catch (e) {
-      setError(errorText(e));
+      setError(errorText(e, tRef.current));
       return null;
     }
   }, []);
@@ -92,7 +98,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       await signInAnonymously(auth);
     } catch (e) {
-      setError(`로그인하지 못했어요: ${errorText(e)}`);
+      setError(tRef.current("app.signInFailed", { error: errorText(e, tRef.current) }));
     }
   }, []);
 

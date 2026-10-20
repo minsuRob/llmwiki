@@ -13,6 +13,8 @@ import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/
 
 import { readFileSync, appendFileSync } from "node:fs";
 
+import { fromGroupby, fromInthiswork } from "../packages/core/src/jobs.ts";
+
 /**
  * API_TARGET=cloud 이면 배포된 프로젝트(llmwiki-minsu)에 대고 돈다 — 쓴 사용자 uid 를 API_TEST_UIDS_FILE 에 적어
  * tests/cloud-smoke.sh 가 끝난 뒤 데이터와 계정을 지운다. 아니면 로컬 에뮬레이터.
@@ -30,10 +32,14 @@ const app = initializeApp(CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const fns = getFunctions(app, "asia-northeast3");
+// emulators:exec 가 넣어 주는 주소를 따른다(포트를 바꿔 띄워도 돈다). FUNCTIONS_EMULATOR_PORT 는 직접 준다
+const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099";
+const [FS_HOST, FS_PORT] = (process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080").split(":");
+const FN_PORT = Number(process.env.FUNCTIONS_EMULATOR_PORT ?? 5001);
 if (!CLOUD) {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectFunctionsEmulator(fns, "127.0.0.1", 5001);
+  connectAuthEmulator(auth, `http://${AUTH_HOST}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, FS_HOST, Number(FS_PORT));
+  connectFunctionsEmulator(fns, "127.0.0.1", FN_PORT);
 }
 
 const TZ = "Asia/Seoul";
@@ -69,8 +75,8 @@ test("로그인 없이는 부를 수 없다", async () => {
   const other = getAuth(initializeApp(CONFIG, "anon"));
   const fns2 = getFunctions(other.app, "asia-northeast3");
   if (!CLOUD) {
-    connectAuthEmulator(other, "http://127.0.0.1:9099", { disableWarnings: true });
-    connectFunctionsEmulator(fns2, "127.0.0.1", 5001);
+    connectAuthEmulator(other, `http://${AUTH_HOST}`, { disableWarnings: true });
+    connectFunctionsEmulator(fns2, "127.0.0.1", FN_PORT);
   }
   await assert.rejects(httpsCallable(fns2, "chat")({ text: "안녕" }), /unauthenticated|로그인/);
 });
@@ -160,6 +166,50 @@ test("할일 탭 API — 만들기 · 체크 · 휴지통 · 되살리기", asyn
   await call("taskAction", { op: "restore", id });
   assert.equal((await list("tasks")).find((t) => t.id === id).deletedAt ?? null, null);
   await assert.rejects(call("taskAction", { op: "toggle", id: "nope" }), /찾지 못했어요|not-found/);
+});
+
+test("할일 상태 · 우선순위 — 탭에서 바꾸고, 대화(규칙 길)로도 바꾼다", async () => {
+  const { id } = await call("taskAction", { op: "create", title: "LLM 공부", priority: "최우선" });
+  let t = (await list("tasks")).find((x) => x.id === id);
+  assert.equal(t.priority, "최우선");
+  await call("taskAction", { op: "update", id, status: "대기" });
+  assert.equal((await list("tasks")).find((x) => x.id === id).status, "대기");
+  await call("taskAction", { op: "update", id, status: "완료" });
+  t = (await list("tasks")).find((x) => x.id === id);
+  assert.equal(t.done, true);
+  await assert.rejects(call("taskAction", { op: "update", id, priority: "아주 급함" }), /priority|invalid-argument/);
+
+  const { id: h } = await call("taskAction", { op: "create", title: "헤르메스 연동" });
+  const r = await chat("헤르메스 보류");
+  assert.match(r.text, /보류로 바꿨어요/);
+  assert.equal((await list("tasks")).find((x) => x.id === h).status, "보류");
+});
+
+test("취준 공고 — 넣기 · 지난 공고 빼기 · 다시 넣어도 그대로 · 정리 · 본문", async () => {
+  const gb = (id, over = {}) =>
+    fromGroupby({ id, status: "완료", company: `회사${id}`, title: "백엔드 개발자", main: "API 개발", due: "마감일 미기재", dev: true, devReason: "개발", ...over });
+  const itw = fromInthiswork(
+    { id: 900, company: "인디", pos: "AI 엔지니어", link: "https://inthiswork.com/archives/900", apply: null, jobs: [], it: true, aititle: true, tasks: ["LLM"], due: "2099.1.2", date: "2026-10-15" },
+    "공고 본문",
+  );
+  const jobs = [gb(1), gb(2), gb(3, { due: "2020-01-01" }), itw.job];
+  const r1 = await call("jobsSync", { op: "upsert", jobs, texts: [itw.text] });
+  assert.deepEqual(r1, { written: 3, unchanged: 0, removed: 0, expired: 1 });
+  const stored = await list("jobs");
+  assert.deepEqual(stored.map((j) => j.id).sort(), ["gb-1", "gb-2", "itw-900"], "지난 공고(gb-3)는 넣지 않는다");
+  assert.equal(stored.find((j) => j.id === "itw-900").dueDate, "2099-01-02");
+  assert.equal((await list("jobTexts")).find((t) => t.id === "itw-900").text, "공고 본문");
+
+  const r2 = await call("jobsSync", { op: "upsert", jobs, texts: [itw.text] });
+  assert.equal(r2.written, 0, "다시 넣어도 바뀐 게 없으면 쓰지 않는다");
+  assert.equal(r2.unchanged, 3);
+
+  const r3 = await call("jobsSync", { op: "prune", sources: ["groupby"], keepIds: ["gb-1", "itw-900"] });
+  assert.equal(r3.removed, 1);
+  assert.deepEqual((await list("jobs")).map((j) => j.id).sort(), ["gb-1", "itw-900"]);
+
+  await assert.rejects(call("jobsSync", { op: "upsert", jobs: [{ ...gb(4), dueDate: "2026-12-01" }] }), /dueDate/);
+  await assert.rejects(setDoc(doc(db, "users", uid, "jobs", "hack"), { title: "직접 쓰기" }), /permission/i);
 });
 
 test("보안 규칙 — 앱은 자기 데이터를 읽기만, 남의 데이터는 못 읽는다", async () => {

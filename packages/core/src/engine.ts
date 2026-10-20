@@ -9,7 +9,21 @@
  */
 import { addDays, endOfWeek, isOverdue, parseLocal, sameDay, ymd } from "./dates.ts";
 import { recall } from "./synapse.ts";
-import { SCRAP_LABELS, newId, type AppState, type Card, type ScrapLabel, type Task, type TaskScope } from "./types.ts";
+import {
+  SCRAP_LABELS,
+  asTaskPriority,
+  asTaskStatus,
+  newId,
+  taskPriority,
+  taskStatus,
+  type AppState,
+  type Card,
+  type ScrapLabel,
+  type Task,
+  type TaskPriority,
+  type TaskScope,
+  type TaskStatus,
+} from "./types.ts";
 
 export interface TurnLedger {
   createdTaskIds: string[];
@@ -101,7 +115,21 @@ function asScope(v: unknown): TaskScope {
 }
 
 function taskLine(t: Task): string {
-  return `${t.id} | ${t.title} | ${t.due ?? "마감 없음"} | ${t.done ? "완료" : "열림"}`;
+  return `${t.id} | ${t.title} | ${t.due ?? "마감 없음"} | ${taskStatus(t)} | ${taskPriority(t)}`;
+}
+
+/**
+ * 상태 · 우선순위를 바꾼다(할일 탭과 도구가 같이 쓴다).
+ * "완료" 는 done 으로 옮기고, 끝낸 할일에 다른 상태를 주면 다시 연다. 우선순위 "중간" 은 기본값이라 지운다.
+ */
+export function applyTaskMeta(t: Task, meta: { status?: TaskStatus | null; priority?: TaskPriority | null }, nowIso: string): Task {
+  let next: Task = { ...t };
+  if (meta.priority !== undefined) next.priority = meta.priority && meta.priority !== "중간" ? meta.priority : null;
+  if (meta.status !== undefined) {
+    if (meta.status === "완료") next = { ...next, done: true, completedAt: next.done ? next.completedAt : nowIso, status: null };
+    else next = { ...next, done: false, completedAt: null, status: meta.status && meta.status !== "진행중" ? meta.status : null };
+  }
+  return next;
 }
 
 /** 도구 하나를 실행한다. 모르는 도구 · 틀린 입력은 상태를 바꾸지 않고 오류 한 줄을 돌려준다 */
@@ -113,9 +141,13 @@ export function runTool(state: AppState, name: string, input: ToolInput, ledger:
       if (!title) return { state, output: "Error: title 이 비어 있습니다." };
       const dup = liveTasks(state).find((t) => !t.done && normTitle(t.title) === normTitle(title));
       if (dup) return { state, output: `Already exists — 같은 할일이 이미 있습니다(id=${dup.id}). 다시 만들지 마세요.` };
-      const task: Task = { id: newId(), title, notes: str(input.notes) || undefined, due: normalizeDue(input.due), done: false, createdAt: nowIso };
+      const base: Task = { id: newId(), title, notes: str(input.notes) || undefined, due: normalizeDue(input.due), done: false, createdAt: nowIso };
+      // 새 할일은 열린 채로 — "완료" 상태로는 만들지 않는다
+      const status = asTaskStatus(input.status);
+      const task = applyTaskMeta(base, { priority: asTaskPriority(input.priority) ?? undefined, status: status && status !== "완료" ? status : undefined }, nowIso);
       ledger.createdTaskIds.push(task.id);
-      return { state: { ...state, tasks: [...state.tasks, task] }, output: `Added task id=${task.id} title=${title} due=${task.due ?? "none"}` };
+      const meta = [task.status && `status=${task.status}`, task.priority && `priority=${task.priority}`].filter(Boolean).join(" ");
+      return { state: { ...state, tasks: [...state.tasks, task] }, output: `Added task id=${task.id} title=${title} due=${task.due ?? "none"}${meta ? ` ${meta}` : ""}` };
     }
     case "update_task": {
       const t = findTask(state, input.task);
@@ -124,7 +156,24 @@ export function runTool(state: AppState, name: string, input: ToolInput, ledger:
       if (str(input.title)) patch.title = str(input.title).slice(0, 200);
       if (input.due !== undefined) patch.due = input.due === null || str(input.due) === "" ? null : normalizeDue(input.due);
       if (input.notes !== undefined) patch.notes = str(input.notes) || undefined;
-      return { state: { ...state, tasks: state.tasks.map((x) => (x.id === t.id ? { ...x, ...patch } : x)) }, output: `Updated task id=${t.id}` };
+      const meta: { status?: TaskStatus; priority?: TaskPriority } = {};
+      if (input.status !== undefined) {
+        const st = asTaskStatus(input.status);
+        if (!st) return { state, output: `Error: status 는 진행중 · 완료 · 보류 · 대기 중 하나입니다(${str(input.status)}).` };
+        meta.status = st;
+      }
+      if (input.priority !== undefined) {
+        const pr = asTaskPriority(input.priority);
+        if (!pr) return { state, output: `Error: priority 는 최우선 · 중간 · 하순위 중 하나입니다(${str(input.priority)}).` };
+        meta.priority = pr;
+      }
+      // 완료로 바꾸면 체크한 것과 같다 — [되돌리기] 가 다시 열 수 있게 ledger 에 남긴다
+      if (meta.status === "완료" && !t.done) ledger.completedTaskIds.push(t.id);
+      const next = applyTaskMeta({ ...t, ...patch }, meta, nowIso);
+      return {
+        state: { ...state, tasks: state.tasks.map((x) => (x.id === t.id ? next : x)) },
+        output: `Updated task id=${t.id} status=${taskStatus(next)} priority=${taskPriority(next)}`,
+      };
     }
     case "complete_task": {
       const t = findTask(state, input.task);

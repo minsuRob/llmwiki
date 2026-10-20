@@ -1,7 +1,8 @@
 /**
- * 시냅스 — 기록 · 할일에서 뽑은 개념(노드)과 함께 나온 관계(엣지).
- * 위: 연결이 많은 개념 순 칩. 가운데: 고른 개념의 이웃 그래프. 아래: 그 개념이 나온 기록 · 할일.
- * 그래프는 서버가 글이 바뀔 때마다 다시 계산한다(functions/src/common.ts mutate).
+ * 시냅스 — 두 가지로 본다.
+ * - 그래프: 옵시디언 그래프 뷰처럼 기록 · 할일을 점으로, [[링크]] · 개념을 선으로(전체 · 로컬). VaultScreen
+ * - 개념: 기록 · 할일에서 뽑은 개념(노드)과 함께 나온 관계(엣지). 연결이 많은 개념 순 칩 + 고른 개념의 이웃.
+ * 개념 그래프는 서버가 글이 바뀔 때마다 다시 계산한다(functions/src/common.ts mutate).
  */
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -13,12 +14,45 @@ import type { NodeKind } from "../../../../packages/core/src/types.ts";
 import { usePalette } from "../../components/theme";
 import { Line, PAGE } from "../../components/ui";
 import { useData } from "../../firebase/data";
+import { useI18n, useT } from "../../i18n";
+import { scrapLabel } from "../notes/NotesScreen";
 import { SynapseGraph } from "./SynapseGraph";
+import { VaultScreen } from "./VaultScreen";
 
-const KIND_LABEL: Record<NodeKind, string> = { topic: "주제", person: "사람", emotion: "감정", project: "일", tag: "태그" };
+const KIND_LABEL: Record<NodeKind, string> = { topic: "synapse.kinds.topic", person: "synapse.kinds.person", emotion: "synapse.kinds.emotion", project: "synapse.kinds.project", tag: "synapse.kinds.tag" };
 
 export default function SynapseScreen() {
   const c = usePalette();
+  const t = useT();
+  const params = useLocalSearchParams<{ node?: string; doc?: string }>();
+  const [mode, setMode] = useState<"graph" | "concepts">(params.node ? "concepts" : "graph");
+  useEffect(() => {
+    if (params.node) setMode("concepts");
+    if (params.doc) setMode("graph");
+  }, [params.node, params.doc]);
+  return (
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <View style={{ flexDirection: "row", gap: 6, padding: 12, paddingBottom: 0, alignSelf: "center", width: "100%", maxWidth: 1200 }}>
+        {(["graph", "concepts"] as const).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => setMode(m)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: mode === m }}
+            style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: mode === m ? c.accent : c.soft }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: mode === m ? c.accentText : c.text }}>{t(`synapse.modes.${m}`)}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {mode === "graph" ? <VaultScreen focus={params.doc ?? null} /> : <ConceptScreen />}
+    </View>
+  );
+}
+
+function ConceptScreen() {
+  const c = usePalette();
+  const { lang, t } = useI18n();
   const { state } = useData();
   const params = useLocalSearchParams<{ node?: string }>();
   const graph = useMemo(() => ({ nodes: state.nodes, edges: state.edges }), [state.nodes, state.edges]);
@@ -37,10 +71,8 @@ export default function SynapseScreen() {
   if (graph.nodes.length === 0) {
     return (
       <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={{ ...PAGE, paddingTop: 40 }}>
-        <Text style={{ fontSize: 20, fontWeight: "800", color: c.text }}>아직 시냅스가 비어 있어요</Text>
-        <Text style={{ fontSize: 14, color: c.muted, lineHeight: 21 }}>
-          대화에서 "메모: …" 로 생각을 남기거나 할일을 추가하면, 두 번 이상 나온 주제와 감정 · #태그가 개념으로 이어져 여기에 쌓여요. 그다음 "전에 ○○ 얘기 뭐라고 했지?" 라고 물으면 근거를 모아 보여 드려요.
-        </Text>
+        <Text style={{ fontSize: 20, fontWeight: "800", color: c.text }}>{t("synapse.emptyTitle")}</Text>
+        <Text style={{ fontSize: 14, color: c.muted, lineHeight: 21 }}>{t("synapse.emptyBody")}</Text>
       </ScrollView>
     );
   }
@@ -51,13 +83,11 @@ export default function SynapseScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE}>
-      <Text style={{ fontSize: 13, color: c.muted }}>
-        개념 {graph.nodes.length} · 연결 {graph.edges.length}
-      </Text>
+      <Text style={{ fontSize: 13, color: c.muted }}>{t("synapse.stats", { nodes: graph.nodes.length, edges: graph.edges.length })}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
         {[null, "topic", "emotion", "person", "project", "tag"].map((k) => (
           <Pressable key={k ?? "all"} onPress={() => setKind(k as NodeKind | null)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: kind === k ? c.accent : c.soft }}>
-            <Text style={{ fontSize: 12, color: kind === k ? c.accentText : c.text }}>{k ? KIND_LABEL[k as NodeKind] : "전체"}</Text>
+            <Text style={{ fontSize: 12, color: kind === k ? c.accentText : c.text }}>{t(k ? KIND_LABEL[k as NodeKind] : "synapse.all")}</Text>
           </Pressable>
         ))}
       </ScrollView>
@@ -71,7 +101,7 @@ export default function SynapseScreen() {
               onPress={() => setSelected(n.id)}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
-              accessibilityLabel={`${n.name}, ${KIND_LABEL[n.kind]}`}
+              accessibilityLabel={t("synapse.chipLabel", { name: n.name, kind: t(KIND_LABEL[n.kind]) })}
               style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: on ? c.accent : c.surface, borderWidth: 1, borderColor: on ? c.accent : c.border }}
             >
               <Text style={{ fontSize: size, color: on ? c.accentText : c.text, fontWeight: on ? "700" : "500" }}>{n.name}</Text>
@@ -83,15 +113,13 @@ export default function SynapseScreen() {
       {current ? (
         <>
           <SynapseGraph c={c} center={current} neighbors={neighbors(graph, current.id)} onSelect={setSelected} />
-          <Text style={{ fontSize: 15, fontWeight: "700", color: c.text, marginTop: 4 }}>
-            "{current.name}" 이 나온 곳 {scraps.length + tasks.length}
-          </Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: c.text, marginTop: 4 }}>{t("synapse.appearsIn", { name: current.name, count: scraps.length + tasks.length })}</Text>
           <View style={{ gap: 6 }}>
             {scraps.map((s) => (
-              <Line key={s.id} c={c} title={s.text} sub={`기록 · ${s.label} · ${new Date(s.createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}`} />
+              <Line key={s.id} c={c} title={s.text} sub={t("synapse.scrapSub", { label: scrapLabel(t, s.label), date: new Date(s.createdAt).toLocaleDateString(lang === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric" }) })} />
             ))}
-            {tasks.map((t) => (
-              <Line key={t.id} c={c} title={`☐ ${t.title}`} sub={["할일", formatWhen(t.due)].filter(Boolean).join(" · ")} struck={t.done} />
+            {tasks.map((tk) => (
+              <Line key={tk.id} c={c} title={`☐ ${tk.title}`} sub={[t("synapse.task"), formatWhen(tk.due)].filter(Boolean).join(" · ")} struck={tk.done} />
             ))}
           </View>
         </>

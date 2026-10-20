@@ -8,6 +8,7 @@ import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
 
 import type { GraphNode } from "../../../../packages/core/src/types.ts";
 import type { Palette } from "../../components/theme";
+import { useT } from "../../i18n";
 
 export interface Neighbor {
   node: GraphNode;
@@ -19,6 +20,7 @@ const HEIGHT = 300;
 const KIND_ICON: Record<GraphNode["kind"], string> = { topic: "", person: "👤 ", emotion: "💭 ", project: "📁 ", tag: "" };
 
 export function SynapseGraph({ c, center, neighbors, onSelect }: { c: Palette; center: GraphNode; neighbors: Neighbor[]; onSelect: (id: string) => void }) {
+  const t = useT();
   const [width, setWidth] = useState(0);
   const shown = neighbors.slice(0, 8);
   const cx = width / 2;
@@ -35,7 +37,7 @@ export function SynapseGraph({ c, center, neighbors, onSelect }: { c: Palette; c
     <View
       onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
       style={{ height: HEIGHT, borderRadius: 16, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}
-      accessibilityLabel={`${center.name} 과 이어진 개념 ${shown.length}개`}
+      accessibilityLabel={t("synapse.graphLabel", { name: center.name, count: shown.length })}
     >
       {width > 0 ? (
         <>
@@ -63,7 +65,7 @@ export function SynapseGraph({ c, center, neighbors, onSelect }: { c: Palette; c
               key={`n-${p.node.id}`}
               onPress={() => onSelect(p.node.id)}
               accessibilityRole="button"
-              accessibilityLabel={`${p.node.name}, 함께 나온 글 ${p.weight}개`}
+              accessibilityLabel={t("synapse.neighborLabel", { name: p.node.name, count: p.weight })}
               style={{ position: "absolute", left: p.x - 60, top: p.y - 18, width: 120, alignItems: "center" }}
             >
               <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }}>
@@ -84,7 +86,7 @@ export function SynapseGraph({ c, center, neighbors, onSelect }: { c: Palette; c
             </View>
           </View>
           {shown.length === 0 ? (
-            <Text style={{ position: "absolute", bottom: 16, width: "100%", textAlign: "center", color: c.muted, fontSize: 12 }}>아직 이어진 개념이 없어요</Text>
+            <Text style={{ position: "absolute", bottom: 16, width: "100%", textAlign: "center", color: c.muted, fontSize: 12 }}>{t("synapse.noNeighbors")}</Text>
           ) : null}
         </>
       ) : null}

@@ -11,6 +11,51 @@ export interface Task {
   completedAt?: string | null;
   /** 휴지통 — 지운 시각. 7일 안에 되살릴 수 있다 */
   deletedAt?: string | null;
+  /** 옵시디언 일감 프론트매터 "상태". "완료" 는 done 이 맡으므로 저장하지 않는다. 없으면 진행중 */
+  status?: TaskStatus | null;
+  /** 옵시디언 일감 프론트매터 "우선순위". 없으면 중간 */
+  priority?: TaskPriority | null;
+  /** 작업실 — 이 할일이 속한 업무(work.ts). 없으면 예전처럼 홀로 선 할일 */
+  workItemId?: string | null;
+  /** 누가 만들었나 — 사용자가 직접(user) · AI 제안을 사용자가 받아들임(ai). 없으면 user */
+  origin?: "user" | "ai";
+  /** 근거 — 자료 · AI 작업 */
+  basis?: { sourceIds?: string[]; runId?: string } | null;
+  /** 먼저 끝나야 하는 할일 id */
+  dependsOn?: string[];
+}
+
+export const TASK_STATUSES = ["진행중", "완료", "보류", "대기"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_PRIORITIES = ["최우선", "중간", "하순위"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+/** 말 → 상태. "진행 중" · "hold" 처럼 흔한 변형도 받는다. 모르면 null */
+export function asTaskStatus(v: unknown): TaskStatus | null {
+  const s = typeof v === "string" ? v.replace(/\s+/g, "").toLowerCase() : "";
+  if (!s) return null;
+  if ((TASK_STATUSES as readonly string[]).includes(s)) return s as TaskStatus;
+  const alias: Record<string, TaskStatus> = { 진행: "진행중", doing: "진행중", inprogress: "진행중", 완료됨: "완료", done: "완료", 홀드: "보류", hold: "보류", onhold: "보류", 대기중: "대기", todo: "대기", waiting: "대기" };
+  return alias[s] ?? null;
+}
+
+/** 말 → 우선순위. "high" · "낮음" 같은 변형도 받는다. 모르면 null */
+export function asTaskPriority(v: unknown): TaskPriority | null {
+  const s = typeof v === "string" ? v.replace(/\s+/g, "").toLowerCase() : "";
+  if (!s) return null;
+  if ((TASK_PRIORITIES as readonly string[]).includes(s)) return s as TaskPriority;
+  const alias: Record<string, TaskPriority> = { 높음: "최우선", 긴급: "최우선", high: "최우선", 보통: "중간", medium: "중간", mid: "중간", 낮음: "하순위", 하: "하순위", low: "하순위" };
+  return alias[s] ?? null;
+}
+
+/** 지금 상태 — 끝냈으면 완료, 아니면 적어 둔 상태(없으면 진행중) */
+export function taskStatus(t: Pick<Task, "done" | "status">): TaskStatus {
+  if (t.done) return "완료";
+  return t.status && t.status !== "완료" ? t.status : "진행중";
+}
+
+export function taskPriority(t: Pick<Task, "priority">): TaskPriority {
+  return t.priority ?? "중간";
 }
 
 export interface CalendarEvent {

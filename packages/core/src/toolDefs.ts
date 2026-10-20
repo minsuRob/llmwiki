@@ -12,6 +12,8 @@ export interface ToolDef {
 
 const SCOPE = { type: "string", enum: ["today", "tomorrow", "week", "overdue", "all", "done"] } as const;
 const WHEN = "기기 시간대의 날짜 'YYYY-MM-DD' 또는 시각 'YYYY-MM-DDTHH:mm'. 사용자가 날짜를 말하지 않았으면 넣지 않는다.";
+const STATUS = { type: "string", enum: ["진행중", "완료", "보류", "대기"], description: "옵시디언 일감의 상태. 사용자가 말했을 때만 넣는다." } as const;
+const PRIORITY = { type: "string", enum: ["최우선", "중간", "하순위"], description: "옵시디언 일감의 우선순위. 사용자가 말했을 때만 넣는다." } as const;
 const TASK_REF = "할일 id. id 를 모르면 할일 제목을 넣으면 열린 할일과 맞춰 찾는다.";
 
 export const TOOL_DEFS: ToolDef[] = [
@@ -20,17 +22,31 @@ export const TOOL_DEFS: ToolDef[] = [
     description: "할일 하나를 만든다. 같은 제목의 열린 할일이 있으면 만들지 않고 Already exists 를 돌려준다(그땐 다시 부르지 않는다).",
     input_schema: {
       type: "object",
-      properties: { title: { type: "string", description: "짧은 할일 제목(사용자 언어)" }, due: { type: "string", description: WHEN }, notes: { type: "string" } },
+      properties: {
+        title: { type: "string", description: "짧은 할일 제목(사용자 언어)" },
+        due: { type: "string", description: WHEN },
+        notes: { type: "string" },
+        status: { ...STATUS, enum: ["진행중", "보류", "대기"] },
+        priority: PRIORITY,
+      },
       required: ["title"],
       additionalProperties: false,
     },
   },
   {
     name: "update_task",
-    description: "열린 할일의 제목 · 마감 · 메모를 바꾼다. 마감을 지우려면 due 에 빈 문자열.",
+    description:
+      "할일의 제목 · 마감 · 메모 · 상태 · 우선순위를 바꾼다. 마감을 지우려면 due 에 빈 문자열. 'X 최우선으로' 는 priority, 'X 보류' · 'X 대기' 는 status. status 완료는 complete_task 와 같다.",
     input_schema: {
       type: "object",
-      properties: { task: { type: "string", description: TASK_REF }, title: { type: "string" }, due: { type: "string", description: WHEN }, notes: { type: "string" } },
+      properties: {
+        task: { type: "string", description: TASK_REF },
+        title: { type: "string" },
+        due: { type: "string", description: WHEN },
+        notes: { type: "string" },
+        status: STATUS,
+        priority: PRIORITY,
+      },
       required: ["task"],
       additionalProperties: false,
     },
@@ -58,7 +74,7 @@ export const TOOL_DEFS: ToolDef[] = [
   },
   {
     name: "add_scrap",
-    description: "남겨 둘 만한 생각 · 결정 · 정보 · 감정을 기록(스크랩)으로 저장한다. 인사 · 질문 · 명령은 저장하지 않는다.",
+    description: "남겨 둘 만한 생각 · 결정 · 정보 · 감정을 기록(스크랩)으로 저장한다. 인사 · 질문 · 명령은 저장하지 않는다. 사용자가 쓴 [[제목]] 링크는 다른 노트로 이어지는 표시이니 그대로 둔다.",
     input_schema: {
       type: "object",
       properties: { text: { type: "string" }, label: { type: "string", enum: ["아이디어", "메모", "회고", "감정", "결정", "계획", "정보", "기타"] } },

@@ -4,7 +4,9 @@
  */
 import { httpsCallable } from "firebase/functions";
 
+import { translate, type T } from "../i18n";
 import { functions } from "./client";
+import type { TaskPriority, TaskStatus } from "../../../packages/core/src/types.ts";
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -25,8 +27,9 @@ export const cardAction = callable<CardAction, { ok: boolean }>("cardAction");
 
 /** 할일 탭 — functions/src/features/tasks.ts */
 export type TaskAction =
-  | { op: "create"; title: string; due?: string | null }
+  | { op: "create"; title: string; due?: string | null; status?: TaskStatus; priority?: TaskPriority }
   | { op: "toggle" | "delete" | "restore"; id: string }
+  | { op: "update"; id: string; status?: TaskStatus; priority?: TaskPriority }
   | { op: "purge" };
 export const taskAction = callable<TaskAction, { id?: string; ok?: boolean }>("taskAction");
 
@@ -34,12 +37,12 @@ export const taskAction = callable<TaskAction, { id?: string; ok?: boolean }>("t
 export const rebuildSynapse = callable<Record<string, never>, { nodes: number; edges: number; via: "claude" | "rules" }>("rebuildSynapse");
 
 /** 서버 오류 → 사용자에게 보일 한 줄 */
-export function errorText(e: unknown): string {
+export function errorText(e: unknown, t: T = (k, p) => translate("ko", k, p)): string {
   const msg = e instanceof Error ? e.message : String(e);
-  if (/operation-not-allowed/i.test(msg)) return "Google 로그인이 아직 꺼져 있어요(Firebase 콘솔에서 켜야 해요).";
-  if (/popup-blocked/i.test(msg)) return "브라우저가 로그인 창을 막았어요. 팝업을 허용하고 다시 눌러 주세요.";
-  if (/unauthorized-domain/i.test(msg)) return "이 주소는 로그인 허용 도메인이 아니에요.";
-  if (/unauthenticated/i.test(msg)) return "로그인이 풀렸어요. 앱을 다시 열어 주세요.";
-  if (/internal|unavailable|network|Failed to fetch/i.test(msg)) return "서버에 닿지 못했어요. 잠시 뒤 다시 해 주세요.";
+  if (/operation-not-allowed/i.test(msg)) return t("app.err.googleOff");
+  if (/popup-blocked/i.test(msg)) return t("app.err.popupBlocked");
+  if (/unauthorized-domain/i.test(msg)) return t("app.err.domain");
+  if (/unauthenticated/i.test(msg)) return t("app.err.unauthenticated");
+  if (/internal|unavailable|network|Failed to fetch/i.test(msg)) return t("app.err.network");
   return msg.replace(/^FirebaseError:\s*/, "").slice(0, 160);
 }

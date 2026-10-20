@@ -6,15 +6,18 @@ import { addDays, formatWhen, hasTime, ymd } from "../../../../packages/core/src
 import { liveTasks } from "../../../../packages/core/src/engine.ts";
 import { usePalette } from "../../components/theme";
 import { useData } from "../../firebase/data";
+import { useT } from "../../i18n";
+
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 export default function CalendarScreen() {
   const c = usePalette();
+  const tr = useT();
   const { state } = useData();
   const now = new Date();
   const days = Array.from({ length: 14 }, (_, i) => addDays(now, i));
   const events = state.events.filter((e) => !e.deletedAt);
   const tasks = liveTasks(state).filter((t) => !t.done && t.due);
-  const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
 
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, gap: 10, maxWidth: 720, width: "100%", alignSelf: "center" }}>
@@ -26,15 +29,15 @@ export default function CalendarScreen() {
         return (
           <View key={key} style={{ flexDirection: "row", gap: 12, opacity: empty ? 0.55 : 1 }}>
             <View style={{ width: 52, alignItems: "center", paddingTop: 2 }}>
-              <Text style={{ fontSize: 12, color: d.getDay() === 0 ? c.danger : c.muted }}>{i === 0 ? "오늘" : dayNames[d.getDay()]}</Text>
+              <Text style={{ fontSize: 12, color: d.getDay() === 0 ? c.danger : c.muted }}>{tr(i === 0 ? "calendar.today" : `calendar.weekdays.${WEEKDAYS[d.getDay()]}`)}</Text>
               <Text style={{ fontSize: 20, fontWeight: "800", color: c.text }}>{d.getDate()}</Text>
             </View>
             <View style={{ flex: 1, gap: 6, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
-              {empty ? <Text style={{ color: c.muted, fontSize: 13, paddingTop: 6 }}>비어 있음</Text> : null}
+              {empty ? <Text style={{ color: c.muted, fontSize: 13, paddingTop: 6 }}>{tr("calendar.empty")}</Text> : null}
               {evs.map((e) => (
                 <View key={e.id} style={{ backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
                   <Text style={{ color: c.accentText, fontWeight: "700" }}>{e.title}</Text>
-                  <Text style={{ color: c.accentText, fontSize: 12, opacity: 0.85 }}>{hasTime(e.start) ? formatWhen(e.start, now)?.split(" ").slice(1).join(" ") : "종일"}</Text>
+                  <Text style={{ color: c.accentText, fontSize: 12, opacity: 0.85 }}>{hasTime(e.start) ? formatWhen(e.start, now)?.split(" ").slice(1).join(" ") : tr("calendar.allDay")}</Text>
                 </View>
               ))}
               {tks.map((t) => (

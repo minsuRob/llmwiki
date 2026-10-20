@@ -7,6 +7,7 @@
 import { GoogleAuthProvider, linkWithPopup, signInWithCredential, signInWithPopup, type User } from "firebase/auth";
 import { Platform } from "react-native";
 
+import type { T } from "../i18n";
 import { auth } from "./client";
 
 export const GOOGLE_SUPPORTED = Platform.OS === "web";
@@ -45,9 +46,9 @@ export async function signInWithGoogle(current: User | null): Promise<GoogleResu
 }
 
 /** 로그인 방식 한 줄 — 설정 화면 */
-export function describeUser(user: User | null): string {
-  if (!user) return "로그인 중…";
-  if (user.isAnonymous) return "익명 로그인";
+export function describeUser(user: User | null, t: T): string {
+  if (!user) return t("settings.account.signingIn");
+  if (user.isAnonymous) return t("settings.account.anonymous");
   const google = user.providerData.find((p) => p.providerId === "google.com");
-  return google ? `Google · ${google.email ?? user.email ?? ""}` : (user.email ?? "로그인됨");
+  return google ? t("settings.account.google", { email: google.email ?? user.email ?? "" }) : (user.email ?? t("settings.account.signedIn"));
 }

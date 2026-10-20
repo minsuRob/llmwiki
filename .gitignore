@@ -6,3 +6,4 @@ node_modules/
 functions/lib/
 .firebase/
 functions/.env
+.local-drive/

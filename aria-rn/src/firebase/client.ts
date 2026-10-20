@@ -8,7 +8,7 @@ import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 
 import { createAuth } from "./auth";
-import { EMULATOR_HOST, FUNCTIONS_REGION, USE_EMULATORS, firebaseConfig } from "./config";
+import { EMULATOR_HOST, EMULATOR_PORTS, FUNCTIONS_REGION, USE_EMULATORS, firebaseConfig } from "./config";
 
 export const app = initializeApp(firebaseConfig);
 export const auth = createAuth(app);
@@ -16,7 +16,7 @@ export const db = getFirestore(app);
 export const functions = getFunctions(app, FUNCTIONS_REGION);
 
 if (USE_EMULATORS) {
-  connectAuthEmulator(auth, `http://${EMULATOR_HOST}:9099`, { disableWarnings: true });
-  connectFirestoreEmulator(db, EMULATOR_HOST, 8080);
-  connectFunctionsEmulator(functions, EMULATOR_HOST, 5001);
+  connectAuthEmulator(auth, `http://${EMULATOR_HOST}:${EMULATOR_PORTS.auth}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, EMULATOR_HOST, EMULATOR_PORTS.firestore);
+  connectFunctionsEmulator(functions, EMULATOR_HOST, EMULATOR_PORTS.functions);
 }

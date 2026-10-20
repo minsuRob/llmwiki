@@ -11,7 +11,8 @@
     "test:functions": "npm --prefix functions test",
     "test:cloud": "bash tests/cloud-smoke.sh",
     "deploy": "firebase deploy --only hosting,functions,firestore --project llmwiki-minsu",
-    "deploy:web": "firebase deploy --only hosting --project llmwiki-minsu"
+    "deploy:web": "firebase deploy --only hosting --project llmwiki-minsu",
+    "local-drive": "node tools/local-drive/server.mjs --dir .local-drive --port 8790 --seed"
   },
   "devDependencies": {
     "firebase": "^13.0.0"

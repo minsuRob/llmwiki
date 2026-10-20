@@ -5,7 +5,7 @@
  */
 import { formatWhen, parseKoreanWhen } from "./dates.ts";
 import { finishTurn, newLedger, runTool, SCOPE_TITLES, tasksInScope } from "./engine.ts";
-import type { AppState, Card, TaskScope } from "./types.ts";
+import { asTaskPriority, asTaskStatus, type AppState, type Card, type TaskScope } from "./types.ts";
 
 export interface PlannedCall {
   name: string;
@@ -102,6 +102,16 @@ export function planLocal(text: string, now = new Date()): LocalPlan {
     return { calls: [{ name: "add_scrap", input: { text: memo, label } }] };
   }
 
+  // 상태 · 우선순위 — "LLM 공부 최우선으로", "헤르메스 보류", "보고서 우선순위 하순위로 내려 줘"
+  const meta =
+    /^([^\n]+?)\s*(?:을|를)?\s*(최\s*우선|중간|하\s*순위|진행\s*중|보류|대기)\s*(?:으로|로)?\s*(?:해\s*줘|해|바꿔\s*줘|바꿔|변경해\s*줘|변경|둬\s*줘|둬|올려\s*줘|올려|내려\s*줘|내려|돌려\s*줘|돌려)?\s*(?:요)?[.!~]*$/.exec(t);
+  if (meta) {
+    const task = cleanTitle(meta[1].replace(/\s*(우선\s*순위|상태)\s*(?:을|를|는|은)?$/, ""), []);
+    const priority = asTaskPriority(meta[2]);
+    const status = asTaskStatus(meta[2]);
+    if (task) return { calls: [{ name: "update_task", input: priority ? { task, priority } : { task, status } }] };
+  }
+
   // 완료 · 삭제
   const done = /^(.+?)\s*(다\s*했어|끝냈어|끝났어|완료했어|완료|했어|처리했어)[.!~]*$/.exec(t);
   if (done) return { calls: [{ name: "complete_task", input: { task: cleanTitle(done[1], []) } }] };
@@ -126,6 +136,13 @@ export function planLocal(text: string, now = new Date()): LocalPlan {
   return { calls: [], reply: "어떤 걸 정리할까요? 예: \"내일 오후 3시 팀 회의\", \"금요일까지 보고서 쓰기\"" };
 }
 
+/** "최우선으로" · "보류로" — 받침 있으면 으로(ㄹ 받침은 로) */
+function withRo(word: string): string {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  const jong = code >= 0 && code < 11172 ? code % 28 : 0;
+  return `${word}${jong === 0 || jong === 8 ? "로" : "으로"}`;
+}
+
 /** 도구 결과를 한국어 한두 문장으로 */
 function describe(calls: PlannedCall[], outputs: string[], state: AppState, now: Date): string {
   const added = calls.filter((c, i) => c.name === "add_task" && outputs[i].startsWith("Added")).length;
@@ -139,11 +156,19 @@ function describe(calls: PlannedCall[], outputs: string[], state: AppState, now:
     const c = calls[i];
     const out = outputs[i];
     if (out.startsWith("Error")) {
-      parts.push(c.name === "complete_task" || c.name === "delete_task" ? `"${String(c.input.task)}" 할일을 찾지 못했어요` : "처리하지 못했어요");
+      parts.push(
+        c.name === "complete_task" || c.name === "delete_task" || c.name === "update_task" ? `"${String(c.input.task)}" 할일을 찾지 못했어요` : "처리하지 못했어요",
+      );
       continue;
     }
     if (c.name === "complete_task") parts.push(out.startsWith("이미") ? "이미 끝낸 할일이에요" : "완료로 표시했어요. 수고했어요!");
     if (c.name === "delete_task") parts.push("휴지통으로 옮겼어요(7일 안에 되살릴 수 있어요)");
+    if (c.name === "update_task") {
+      const id = /id=(\S+)/.exec(out)?.[1];
+      const title = state.tasks.find((x) => x.id === id)?.title ?? String(c.input.task);
+      const what = c.input.priority ? `우선순위를 ${withRo(String(c.input.priority))}` : `상태를 ${withRo(String(c.input.status))}`;
+      parts.push(`"${title}" ${what} 바꿨어요`);
+    }
     if (c.name === "add_scrap") parts.push("기록으로 남겨 뒀어요");
     if (c.name === "show_tasks") {
       const scope = c.input.scope as TaskScope;
