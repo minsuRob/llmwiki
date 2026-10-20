@@ -7,13 +7,12 @@
 // - claude · codex: 이 컴퓨터의 CLI 를 비대화형으로(조사 모드: 읽기 · 웹만, 파일 수정 · 셸 금지 / Codex 는 읽기 전용 샌드박스).
 // - gemma: 오라클 서버 작업 큐(oracle.mjs). 서버가 Gemma 를 켜고 묶음을 읽혀 답을 만든다.
 // 답을 업무에 반영하지 않는다. 앱의 '작업 결과 가져오기'에 붙여 넣거나 파일로 넣으면 같은 검사를 거쳐 '제안'으로만 들어간다.
-import { spawn } from 'node:child_process';
-import { createReadStream, existsSync } from 'node:fs';
+// 실행 본문은 lib.mjs — 데스크톱 셸도 같은 코드를 쓴다. 여기는 인자 · 파일 · 출력만.
+import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 
-import { EXECUTORS } from './executors.mjs';
-import { outputOf, runGemma } from './oracle.mjs';
+import { commandFor, fetchGemma, runHandoff } from './lib.mjs';
 
 const { values: o, positionals: [who, bundle] } = parseArgs({
   allowPositionals: true,
@@ -27,55 +26,33 @@ if (!['claude', 'codex', 'gemma'].includes(who)) usage();
 if (!o.fetch && (!bundle || !existsSync(bundle))) usage();
 const outPath = o.out ?? (bundle ? bundle.replace(/(-ai)?\.md$/i, '') + '-result.md' : `gemma-${o.fetch}-result.md`);
 
-function exec(cmd, args, stdinFile, timeoutMs = 30 * 60_000) {
-  return new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'inherit'] });
-    let stdout = '';
-    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs);
-    child.stdout.on('data', (d) => { stdout += d; });
-    child.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, stdout, error: String(e) }); });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout }); });
-    createReadStream(stdinFile).pipe(child.stdin);
-  });
+if (o['dry-run']) {
+  if (who === 'gemma') console.log(`(dry-run) ${bundle} → 오라클 서버 jobs/in 에 올리고 handoff_gemma 작업을 넣는다`);
+  else {
+    const { cmd, args } = commandFor(who, { bundlePath: bundle, model: o.model, mode: 'research' });
+    console.log(`(dry-run) ${cmd} ${args.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')} < ${bundle}`);
+  }
+  process.exit(0);
 }
 
-// 결과 맨 앞 한 줄 — 앱이 실행 기록(모델 · 걸린 시간)에 남기고, 판단 기록(채택률)에 쓴다
-const GEMMA_MODEL = process.env.GEMMA_MODEL ?? 'gemma-4-E4B q4_0 (llama.cpp, Oracle A1)';
-const started = Date.now();
-let model = null;
 let text;
-if (who === 'gemma') {
-  if (o['dry-run']) {
-    console.log(`(dry-run) ${bundle} → 오라클 서버 jobs/in 에 올리고 handoff_gemma 작업을 넣는다`);
-    process.exit(0);
-  }
-  if (o.fetch) {
-    text = await outputOf(o.fetch);
+try {
+  if (who === 'gemma' && o.fetch) {
+    text = await fetchGemma(o.fetch);
     if (text == null) { console.error(`작업 ${o.fetch} 은 아직 끝나지 않았다`); process.exit(1); }
   } else {
-    const r = await runGemma(bundle, { onTick: (s) => process.stderr.write(`\r[gemma ${s.id}] ${s.status}${s.status === 'queued' && s.ahead ? ` · 앞 작업 ${s.ahead}` : ''}      `) });
-    process.stderr.write('\n');
-    text = r.text ?? '';
+    const r = await runHandoff({
+      executor: who, bundlePath: bundle, model: o.model, mode: 'research',
+      onProgress: (s) => { if (who === 'gemma') process.stderr.write(`\r[gemma ${s.jobId}] ${s.status}${s.status === 'queued' && s.ahead ? ` · 앞 작업 ${s.ahead}` : ''}      `); },
+    });
+    if (who === 'gemma') process.stderr.write('\n');
+    text = r.text;
   }
-} else {
-  const ex = EXECUTORS[who];
-  const { cmd, args } = ex.command({ bundlePath: bundle, model: o.model, mode: 'research' });
-  if (o['dry-run']) {
-    console.log(`(dry-run) ${cmd} ${args.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')} < ${bundle}`);
-    process.exit(0);
-  }
-  const r = await exec(cmd, args, bundle);
-  if (r.code !== 0) {
-    console.error(`${cmd} 가 실패했다(코드 ${r.code})${r.error ? `: ${r.error}` : ''}`);
-    process.exit(1);
-  }
-  const out = ex.readOutput(r.stdout);
-  text = out.text;
-  model = o.model ?? out.meta?.model ?? null;
+} catch (e) {
+  if (who === 'gemma') process.stderr.write('\n');
+  console.error(e.message);
+  process.exit(1);
 }
-if (who === 'gemma') model = GEMMA_MODEL;
-const head = `<!-- llmwiki-run ${JSON.stringify({ executor: who, ...(model ? { model } : {}), latencyMs: Date.now() - started })} -->`;
-text = text.startsWith('<!-- llmwiki-run') ? text : `${head}\n${text}`;
 
 await writeFile(outPath, text);
 process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);

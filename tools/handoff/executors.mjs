@@ -10,13 +10,19 @@
 // 조사 위임 기본 권한: 웹 조사·읽기만. 파일 수정·셸 실행은 막는다.
 const RESEARCH_TOOLS = ['WebSearch', 'WebFetch', 'Read', 'Grep', 'Glob'];
 const BLOCKED_TOOLS = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
+// 데스크톱 셸: 웹 조사만. 묶음에 발췌가 다 들어 있으니 로컬 파일을 읽을 이유가 없다(빈 임시 폴더에서 돈다).
+const WEB_TOOLS = ['WebSearch', 'WebFetch'];
+const WEB_BLOCKED = [...BLOCKED_TOOLS, 'Read', 'Grep', 'Glob'];
 
 export const claude = {
   id: 'claude', label: 'Claude Code', kind: 'cli', status: 'ready',
   // claude -p: 비대화형. 묶음은 표준입력으로 넘겨 명령줄 길이 제한을 피한다.
+  // mode: 'research'(터미널) | 'web'(데스크톱)
   command({ bundlePath, mcpConfig, model, mode = 'research' }) {
     const args = ['-p', '--output-format', 'json'];
     if (mode === 'research') args.push('--allowedTools', RESEARCH_TOOLS.join(','), '--disallowedTools', BLOCKED_TOOLS.join(','));
+    // web: 사용자 설정의 MCP 서버가 섞이지 않게(--strict-mcp-config), 세션도 남기지 않는다
+    if (mode === 'web') args.push('--allowedTools', WEB_TOOLS.join(','), '--disallowedTools', WEB_BLOCKED.join(','), '--strict-mcp-config', '--no-session-persistence');
     if (mcpConfig) args.push('--mcp-config', mcpConfig);
     if (model) args.push('--model', model);
     return { cmd: 'claude', args, stdinFile: bundlePath };
