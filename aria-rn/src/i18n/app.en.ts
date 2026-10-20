@@ -23,6 +23,7 @@ export default {
     allTasks: "All tasks",
     calendar: "Calendar",
     notes: "Notes",
+    jobs: "Job posts (reference)",
     graph: "Graph",
     settings: "Settings",
     more: "More",

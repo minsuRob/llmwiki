@@ -26,13 +26,15 @@ const HIDDEN: { name: string; title: string }[] = [
   { name: "tasks", title: "nav.allTasks" },
   { name: "calendar", title: "nav.calendar" },
   { name: "notes", title: "nav.notes" },
+  { name: "jobs", title: "nav.jobs" },
   { name: "synapse", title: "nav.graph" },
   { name: "settings", title: "nav.settings" },
 ];
-const MENU: { href: "/tasks" | "/calendar" | "/notes" | "/synapse" | "/settings"; title: string; icon: IconName }[] = [
+const MENU: { href: "/tasks" | "/calendar" | "/notes" | "/jobs" | "/synapse" | "/settings"; title: string; icon: IconName }[] = [
   { href: "/tasks", title: "nav.allTasks", icon: "checkbox-outline" },
   { href: "/calendar", title: "nav.calendar", icon: "calendar-outline" },
   { href: "/notes", title: "nav.notes", icon: "document-text-outline" },
+  { href: "/jobs", title: "nav.jobs", icon: "newspaper-outline" },
   { href: "/synapse", title: "nav.graph", icon: "git-network-outline" },
   { href: "/settings", title: "nav.settings", icon: "settings-outline" },
 ];

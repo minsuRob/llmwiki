@@ -23,6 +23,7 @@ export default {
     allTasks: "전체 할 일",
     calendar: "일정",
     notes: "기록",
+    jobs: "취준 공고(참고)",
     graph: "그래프",
     settings: "설정",
     more: "더 보기",
