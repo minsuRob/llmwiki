@@ -145,6 +145,7 @@ export default {
     reviewBelow: "Accept or dismiss them under 'Review' below.",
   },
   attention: {
+    injectionReported: "The AI found {count} instruction(s) inside the sources and reported them instead of following — please check the sources",
     forbiddenFields: "The result had confirm/complete fields ({fields}) — ignored",
     badRefs: "{count} reference(s) point to sources or lines not in the bundle",
     dueUnsupported: "{count} due date(s) are not in the cited lines — please check",
@@ -237,7 +238,7 @@ export default {
   },
   handoff: {
     title: "Continue with AI",
-    intro: "Describe the task to hand off and I'll bundle the goal, current state, confirmed decisions, source excerpts and the expected return format. Paste it into Claude or Codex.",
+    intro: "Describe the task to hand off and I'll bundle the goal, current state, confirmed decisions, source excerpts and the expected return format. Hand it to Claude, Codex or Gemma (how to run it appears after bundling).",
     tool: "Tool",
     scope: "Scope of this task",
     scopePlaceholder: "e.g. Draft the report from the October sales sheet",
@@ -297,7 +298,7 @@ export default {
     forRun: "Which request is this result for?",
     noRun: "Import without a request",
     paste: "Paste result",
-    pastePlaceholder: "Paste the answer from Claude or Codex as is",
+    pastePlaceholder: "Paste the answer from Claude, Codex or Gemma (-result.md) as is",
     importText: "Import",
     file: "From file",
     hint: "The raw text is kept as is. Decisions, tasks and the latest version come in only as proposals, and the work isn't marked done just because the AI says so.",

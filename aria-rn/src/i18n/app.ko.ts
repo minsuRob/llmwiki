@@ -145,6 +145,7 @@ export default {
     reviewBelow: "아래 '확인할 것' 에서 받아들이거나 뺄 수 있어요.",
   },
   attention: {
+    injectionReported: "AI 가 자료 안에서 지시문 {count}개를 찾아 따르지 않고 보고했어요 — 자료를 확인해 주세요",
     forbiddenFields: "결과에 확정 · 완료 필드({fields})가 있어 무시했어요",
     badRefs: "묶음에 없는 자료 · 줄을 근거로 댄 곳이 {count}개 있어요",
     dueUnsupported: "근거 줄에 없는 마감이 {count}개 있어요 — 마감을 확인해 주세요",
@@ -237,7 +238,7 @@ export default {
   },
   handoff: {
     title: "AI 로 이어하기",
-    intro: "이번에 맡길 작업을 적으면, 목표 · 지금 상태 · 확정된 결정 · 자료 발췌 · 돌려받을 형식을 한 번에 묶어 드려요. Claude · Codex 에 붙여 넣으세요.",
+    intro: "이번에 맡길 작업을 적으면, 목표 · 지금 상태 · 확정된 결정 · 자료 발췌 · 돌려받을 형식을 한 번에 묶어 드려요. Claude · Codex · Gemma 에 넘기세요(묶은 뒤 실행 방법이 나와요).",
     tool: "쓸 도구",
     scope: "이번 작업 범위",
     scopePlaceholder: "예: 10월 매출 시트로 보고서 초안 쓰기",
@@ -297,7 +298,7 @@ export default {
     forRun: "어느 요청의 결과인가요?",
     noRun: "요청 없이 가져오기",
     paste: "결과 붙여넣기",
-    pastePlaceholder: "Claude · Codex 의 답을 그대로 붙여 넣으세요",
+    pastePlaceholder: "Claude · Codex · Gemma 의 답(-result.md)을 그대로 붙여 넣으세요",
     importText: "가져오기",
     file: "파일에서",
     hint: "원문은 그대로 저장돼요. 결정 · 할 일 · 최신본은 제안으로만 들어오고, AI 가 '완료' 라고 써도 업무를 끝내지 않아요.",

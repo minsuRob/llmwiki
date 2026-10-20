@@ -493,10 +493,13 @@ export function importResult(item: WorkItem, text: string, nowIso: string, opts:
     flags.add("run_mismatch");
     attention.push({ key: "attention.runMismatch" });
   }
-  if (scanInjection(normalized).length) {
+  // AI 가 '자료에 이런 지시문이 있었다' 고 unverified 에 보고한 것은 따로 — 결과 전체를 의심하지 않는다
+  const reported = parsed.unverified.filter((u) => scanInjection(u).length);
+  const rest = reported.reduce((t, u) => t.split(u).join(""), normalized);
+  if (scanInjection(rest).length) {
     flags.add("injection_suspect");
     attention.push({ key: "attention.injection" });
-  }
+  } else if (reported.length) attention.push({ key: "attention.injectionReported", params: { count: reported.length } });
   const newOutputs: Output[] = [];
   const newDecisions: Decision[] = [];
   const newProposals: Proposal[] = [];

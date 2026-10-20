@@ -45,13 +45,14 @@ export function QuickAdd() {
     setNote({ text: target ? t("quick.savedLinked") : t("quick.saved") });
   };
 
+  // 대화 화면은 아래에 입력줄 · 보내기 단추가 있어 그 위로 올린다
   return (
     <>
       <Pressable
         onPress={show}
         accessibilityRole="button"
         accessibilityLabel={t("quick.open")}
-        style={{ position: "absolute", right: 18, bottom: 78, width: 52, height: 52, borderRadius: 26, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 }}
+        style={{ position: "absolute", right: 18, bottom: path === "/chat" ? 150 : 78, width: 52, height: 52, borderRadius: 26, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 }}
       >
         <Ionicons name="add" size={28} color={c.accentText} />
       </Pressable>
