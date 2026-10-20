@@ -15,6 +15,7 @@ const TABS: { name: string; title: string; icon: IconName }[] = [
   { name: "tasks", title: "할일", icon: "checkbox-outline" },
   { name: "calendar", title: "일정", icon: "calendar-outline" },
   { name: "notes", title: "기록", icon: "document-text-outline" },
+  { name: "jobs", title: "취준", icon: "briefcase-outline" },
   { name: "synapse", title: "시냅스", icon: "git-network-outline" },
   { name: "settings", title: "설정", icon: "settings-outline" },
 ];

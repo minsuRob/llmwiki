@@ -24,6 +24,7 @@ Firebase 프로젝트: `llmwiki-minsu`(이름 llmwiki)
 | 할일 탭(체크 · 휴지통 · 되살리기) | `features/tasks` | `taskAction` |
 | 일정 · 기록 탭 | `features/calendar` · `features/notes` | (읽기만) |
 | 시냅스(개념 그래프 · 떠올리기) | `features/synapse` | `rebuildSynapse` · 글이 바뀔 때마다 자동 |
+| 취준 공고(그룹바이 · 인디스워크, 검색 · 필터 · 본문) | `features/jobs` | `jobsSync` · `functions/scripts/import-jobs.ts` |
 
 앱은 Firestore 를 **읽기만** 하고(규칙이 막는다), 바꾸는 일은 전부 함수가 한다.
 
@@ -39,7 +40,9 @@ npm install && npm --prefix functions install && npm --prefix packages/core inst
 npm test
 ```
 
-`npm test` 는 공용 로직 · 함수 단위 테스트와 에뮬레이터 통합 테스트(7개 시나리오)를 차례로 돌린다.
+`npm test` 는 공용 로직 · 함수 단위 테스트와 에뮬레이터 통합 테스트(8개 시나리오)를 차례로 돌린다.
+
+에뮬레이터 포트(9099 · 8080 · 5001)가 다른 프로그램에 잡혀 있으면, 포트만 바꾼 설정 파일로 `firebase emulators:exec --config <파일>` 을 돌리고 `FUNCTIONS_EMULATOR_PORT` 를 준다. 앱은 `EXPO_PUBLIC_EMULATOR_PORTS="auth,firestore,functions"` 로 같은 포트에 붙는다.
 
 앱을 에뮬레이터에 붙여 띄우기(터미널 둘):
 
@@ -59,7 +62,7 @@ npm --prefix aria-rn run web:emulator
 
 - Firestore `(default)` — asia-northeast3(서울), 규칙 · 인덱스 배포됨
 - Auth — 익명 로그인 켜짐
-- Functions — `chat` · `cardAction` · `taskAction` · `rebuildSynapse`(asia-northeast3, Node 22). Blaze 요금제, 빌드 이미지는 하루 지나면 지운다
+- Functions — `chat` · `cardAction` · `taskAction` · `rebuildSynapse` · `jobsSync`(asia-northeast3, Node 22). Blaze 요금제, 빌드 이미지는 하루 지나면 지운다
 - Hosting — `aria-rn/dist`(expo export). 한 페이지 앱이라 모든 경로를 index.html 로 돌린다. 아이콘 글꼴이 `assets/node_modules/…` 에 있어 node_modules 를 올림에서 빼면 안 된다
 
 다시 배포하기(웹 빌드 · 함수 · 규칙 전부):
@@ -85,6 +88,25 @@ npm run test:cloud
 ```bash
 npm --prefix aria-rn run web
 ```
+
+## 취준 공고 넣기
+
+로컬 구직 폴더(Obsidian `Personal/구직`)를 읽어 `users/{uid}/jobs`(목록) · `users/{uid}/jobTexts`(본문)에 맞춘다. 원본은 읽기만 한다.
+
+- 그룹바이: `.groupby-data/out/<id>.json`(상세 조사). 조사하지 못한(삭제된) 공고는 뺀다
+- 인디스워크: `인디스워크/.data/posts.json` + `text/<id>.txt`
+- 마감 글이 날짜로 시작할 때만 마감일로 보고, 마감일이 오늘(서울)보다 앞이면 넣지 않고 이미 있으면 지운다
+- 다시 돌려도 바뀐 공고만 쓰고, 원본에서 사라진 공고는 지운다
+
+```bash
+node functions/scripts/import-jobs.ts --src "<구직 폴더>" --dry-run
+```
+
+```bash
+node functions/scripts/import-jobs.ts --src "<구직 폴더>" --uid <uid> --target cloud --via admin
+```
+
+`--via admin` 은 Admin SDK 로 바로 쓰고(`gcloud auth application-default login` 필요), `--via function` 은 그 uid 로 `jobsSync` 함수를 부른다. 같은 코드(`functions/src/jobsStore.ts`)로 쓴다.
 
 ## Claude
 
