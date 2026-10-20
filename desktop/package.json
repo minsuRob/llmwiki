@@ -10,7 +10,8 @@
     "start": "electron .",
     "dev": "electron .",
     "test": "node --test 'test/*.test.mjs' '../tools/handoff/*.test.mjs'",
-    "build": "node scripts/build.mjs && electron-builder --config electron-builder.yml"
+    "build": "node scripts/build.mjs",
+    "signing:check": "node scripts/signing.mjs --check"
   },
   "devDependencies": {
     "electron": "44.5.1",
