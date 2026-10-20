@@ -22,7 +22,7 @@ export const claude = {
     return { cmd: 'claude', args, stdinFile: bundlePath };
   },
   readOutput(stdout) {
-    try { const j = JSON.parse(stdout); return { text: j.result ?? '', meta: { cost_usd: j.total_cost_usd, turns: j.num_turns, session: j.session_id, is_error: j.is_error } }; }
+    try { const j = JSON.parse(stdout); return { text: j.result ?? '', meta: { cost_usd: j.total_cost_usd, turns: j.num_turns, session: j.session_id, is_error: j.is_error, model: Object.keys(j.modelUsage ?? {})[0] ?? null } }; }
     catch { return { text: stdout, meta: { parse: 'raw' } }; }
   },
 };

@@ -97,6 +97,9 @@ export interface AiRun {
   /** 자료 발췌를 몇 줄까지 넘겼나(S1 → 줄 수) — 없는 줄 참조를 잡는다 */
   refLines?: Record<string, number>;
   flags?: RunFlag[];
+  /** 실행자가 남긴 모델 · 걸린 시간(결과 머리의 <!-- llmwiki-run {...} --> 에서) */
+  model?: string | null;
+  latencyMs?: number | null;
   startedAt: string;
   finishedAt?: string | null;
 }
@@ -136,6 +139,8 @@ export interface Proposal {
   /** AI 가 댄 근거("S1:12") */
   refs?: string[];
   flags?: ProposalFlag[];
+  /** 사람이 받아들이거나 뺀 시각 — 판단 기록(judgments.ts)에 쓴다 */
+  decidedAt?: string | null;
 }
 
 /** 번역 키 + 값 — 앱이 문구로 바꾼다 */
@@ -523,7 +528,7 @@ export function confirmDecision(item: WorkItem, decisionId: string, nowIso: stri
 export function rejectDecision(item: WorkItem, decisionId: string, nowIso: string): WorkItem {
   const dec = item.decisions.find((x) => x.id === decisionId);
   if (!dec || dec.status !== "proposed") return item;
-  return withChange(item, { key: "change.rejectDecision" }, nowIso, (d) => ({ ...d, decisions: d.decisions.map((x) => (x.id === decisionId ? { ...x, status: "rejected" as const } : x)) }));
+  return withChange(item, { key: "change.rejectDecision" }, nowIso, (d) => ({ ...d, decisions: d.decisions.map((x) => (x.id === decisionId ? { ...x, status: "rejected" as const, decidedAt: nowIso } : x)) }));
 }
 
 /** 결과물 이어 붙이기(사람이) — 초안으로 들어온다 */
@@ -551,7 +556,7 @@ export function markLatest(item: WorkItem, outputId: string, nowIso: string, opt
   const next = withChange(item, { key: "change.markLatest", params: { title: target.title } }, nowIso, (d) => ({
     ...d,
     outputs: d.outputs.map((x) => ({ ...x, isLatest: x.id === outputId })),
-    proposals: d.proposals.map((p) => (p.kind === "output_latest" && p.outputId === outputId && p.status === "open" ? { ...p, status: "accepted" as const } : p)),
+    proposals: d.proposals.map((p) => (p.kind === "output_latest" && p.outputId === outputId && p.status === "open" ? { ...p, status: "accepted" as const, decidedAt: nowIso } : p)),
   }));
   return { kind: "ok", item: next };
 }
@@ -580,14 +585,14 @@ export function acceptProposal(item: WorkItem, proposalId: string, nowIso: strin
         ];
     }
     if (p.kind === "due_change" && p.taskId) actions = actions.map((a) => (a.id === p.taskId ? { ...a, due: p.due ?? null } : a));
-    return { ...d, actions, proposals: d.proposals.map((x) => (x.id === proposalId ? { ...x, status: "accepted" as const } : x)) };
+    return { ...d, actions, proposals: d.proposals.map((x) => (x.id === proposalId ? { ...x, status: "accepted" as const, decidedAt: nowIso } : x)) };
   });
 }
 
 export function rejectProposal(item: WorkItem, proposalId: string, nowIso: string): WorkItem {
   const p = item.proposals.find((x) => x.id === proposalId);
   if (!p || p.status !== "open") return item;
-  return withChange(item, { key: "change.rejectProposal" }, nowIso, (d) => ({ ...d, proposals: d.proposals.map((x) => (x.id === proposalId ? { ...x, status: "rejected" as const } : x)) }));
+  return withChange(item, { key: "change.rejectProposal" }, nowIso, (d) => ({ ...d, proposals: d.proposals.map((x) => (x.id === proposalId ? { ...x, status: "rejected" as const, decidedAt: nowIso } : x)) }));
 }
 
 /** 확인이 필요한 것 — 열린 제안 · 제안된 결정 · 확인되지 않은 내용 */

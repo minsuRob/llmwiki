@@ -13,6 +13,7 @@ import { GOOGLE_SUPPORTED, describeUser, signInWithGoogle } from "../../firebase
 import { useI18n, type Lang } from "../../i18n";
 import { ConflictPanel } from "../work/ConflictPanel";
 import { confirmAsk } from "../work/io";
+import { JudgmentsCard } from "../work/JudgmentsCard";
 import { when } from "../work/parts";
 import { useWork } from "../work/WorkContext";
 
@@ -121,6 +122,7 @@ export default function SettingsScreen() {
       </View>
 
       <ConflictPanel c={c} />
+      <JudgmentsCard c={c} />
 
       <View style={section}>
         <Text style={h}>{t("settings.migrate.title")}</Text>

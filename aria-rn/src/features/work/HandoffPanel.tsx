@@ -17,6 +17,9 @@ import { useWork } from "./WorkContext";
 
 const TOOLS: AiTool[] = ["claude", "codex", "gemma", "other"];
 
+/** Gemma 에 맞는 작은 일 — 고르면 범위 · 완료 조건을 채운다(고쳐 써도 된다) */
+const GEMMA_PRESETS = ["summary", "injectionCheck"] as const;
+
 const fileNameOf = (title: string) => `${title.replace(/[\\/:*?"<>|]/g, "_")}-ai.md`;
 
 export function HandoffPanel({ c, item, onClose }: { c: Palette; item: WorkItem; onClose: () => void }) {
@@ -60,7 +63,25 @@ export function HandoffPanel({ c, item, onClose }: { c: Palette; item: WorkItem;
               <Text style={{ flex: 1, fontSize: 13, color: c.text }}>{t("handoff.includeCross", { count: cross })}</Text>
             </Pressable>
           ) : null}
-          {tool === "gemma" ? <Muted c={c}>{t("handoff.gemmaHint")}</Muted> : null}
+          {tool === "gemma" ? (
+            <View style={{ gap: 6 }}>
+              <Muted c={c}>{t("handoff.gemmaHint")}</Muted>
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                {GEMMA_PRESETS.map((k) => (
+                  <Btn
+                    key={k}
+                    c={c}
+                    small
+                    label={t(`handoff.preset.${k}.label`)}
+                    onPress={() => {
+                      setScope(t(`handoff.preset.${k}.scope`));
+                      setDone(t(`handoff.preset.${k}.done`));
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
           <Muted c={c}>{t("handoff.accessNote")}</Muted>
           <View style={{ flexDirection: "row" }}>
             <Btn c={c} primary label={t("handoff.make")} busy={busy} disabled={!scope.trim()} onPress={() => void make()} />

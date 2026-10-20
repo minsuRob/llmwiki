@@ -39,6 +39,10 @@ function exec(cmd, args, stdinFile, timeoutMs = 30 * 60_000) {
   });
 }
 
+// 결과 맨 앞 한 줄 — 앱이 실행 기록(모델 · 걸린 시간)에 남기고, 판단 기록(채택률)에 쓴다
+const GEMMA_MODEL = process.env.GEMMA_MODEL ?? 'gemma-4-E4B q4_0 (llama.cpp, Oracle A1)';
+const started = Date.now();
+let model = null;
 let text;
 if (who === 'gemma') {
   if (o['dry-run']) {
@@ -65,8 +69,13 @@ if (who === 'gemma') {
     console.error(`${cmd} 가 실패했다(코드 ${r.code})${r.error ? `: ${r.error}` : ''}`);
     process.exit(1);
   }
-  text = ex.readOutput(r.stdout).text;
+  const out = ex.readOutput(r.stdout);
+  text = out.text;
+  model = o.model ?? out.meta?.model ?? null;
 }
+if (who === 'gemma') model = GEMMA_MODEL;
+const head = `<!-- llmwiki-run ${JSON.stringify({ executor: who, ...(model ? { model } : {}), latencyMs: Date.now() - started })} -->`;
+text = text.startsWith('<!-- llmwiki-run') ? text : `${head}\n${text}`;
 
 await writeFile(outPath, text);
 process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
