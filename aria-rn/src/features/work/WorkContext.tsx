@@ -185,25 +185,42 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     (u: string) => {
       const remote = new DriveFileStore(driveDeps, { root: tRef.current("drive.folder.root"), summaries: tRef.current("drive.folder.summaries"), appData: tRef.current("drive.folder.appData") });
       const mirror = new KvFileStore(kv, `llmwiki:work:${u}:drive-mirror`);
-      return { remote, store: new MirroredStore(remote, mirror, () => driveDeps.token() != null) };
+      return { remote, mirror, store: new MirroredStore(remote, mirror, () => driveDeps.token() != null) };
     },
     [driveDeps],
+  );
+
+  const readState = useCallback(
+    async (repo: WorkRepo) => {
+      const [loaded, pending] = await Promise.all([repo.load(), uidRef.current ? readPending(uidRef.current) : Promise.resolve([] as WorkItem[])]);
+      return { s: { ...loaded, items: [...loaded.items.filter((i) => !pending.some((p) => p.id === i.id)), ...pending] }, pending };
+    },
+    [],
   );
 
   const loadFrom = useCallback(
     async (store: FileStore) => {
       const repo = new WorkRepo(store, fallbackManifest(), render);
-      const loaded = await repo.load();
-      const pending = uidRef.current ? await readPending(uidRef.current) : [];
-      const s = { ...loaded, items: [...loaded.items.filter((i) => !pending.some((p) => p.id === i.id)), ...pending] };
+      const { s, pending } = await readState(repo);
       repoRef.current = repo;
       setState(s);
       if (pending.length) setSaves((m) => ({ ...m, ...Object.fromEntries(pending.map((p) => [p.id, { state: "failed" as SaveState, at: nowIso() }])) }));
-      setConflicts((await repo.listConflicts().catch(() => [])).filter((c) => !c.resolved));
+      // 충돌 사본은 화면을 막지 않고 뒤에서
+      void repo
+        .listConflicts()
+        .then((cs) => setConflicts(cs.filter((c) => !c.resolved)))
+        .catch(() => undefined);
       return { repo, s };
     },
-    [fallbackManifest, render],
+    [fallbackManifest, render, readState],
   );
+
+  /** Drive 에서 다 읽기 전까지 저장은 기다린다 — 기기 사본으로 먼저 보여 준 사이에 누른 것도 잃지 않게 */
+  const syncingRef = useRef<Promise<void> | null>(null);
+  const getRepo = useCallback(async () => {
+    if (!repoRef.current && syncingRef.current) await syncingRef.current;
+    return repoRef.current;
+  }, []);
 
   // 처음 · 사용자가 바뀔 때 — 고른 저장소에서 읽는다(Drive 면 토큰이 없으니 사본에서)
   useEffect(() => {
@@ -216,6 +233,16 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const ws = await AsyncStorage.getItem(prefKey(uid, "workspace")).catch(() => null);
       if (ws) setWorkspaceIdState(ws);
       if (mode === "drive") {
+        const { remote, mirror, store } = makeDriveStore(uid);
+        // 기기 사본으로 먼저 보여 준다 — Drive 토큰 · 폴더 · 파일 읽기는 수 초 걸릴 수 있다. 다 읽으면 그것으로 바꾼다
+        let synced = () => undefined as void;
+        syncingRef.current = new Promise<void>((r) => (synced = r));
+        const preview = await readState(new WorkRepo(mirror, fallbackManifest(), render)).catch(() => null);
+        if (alive && preview && (preview.s.items.length || preview.s.sources.length)) {
+          setState(preview.s);
+          setStorage("drive");
+          setLoadedUid(uid);
+        }
         // 로컬 Drive(개발용)는 동의 화면이 없어 바로 다시 붙는다.
         // 실제 Drive 는 이 탭에 기억한 토큰(sessionStorage · 만료 전)이 있으면 그대로 쓴다 — 새로고침해도 다시 동의하지 않게
         // 그것도 없으면 서버에 이어 둔 열쇠로 새 토큰을 받는다(팝업 없음 — 새 탭에서도 바로 이어진다)
@@ -223,9 +250,13 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
         if (localDriveUrl) tokenRef.current = { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 };
         else tokenRef.current = recallDriveToken(uid);
         if (!localDriveUrl && tokenRef.current && serverCapable()) {
-          // 탭에 남은 토큰으로 이어졌어도, 서버에 이어 둔 열쇠가 있는지 알아 둔다(만료 때 조용히 새로 받게)
-          const st = await driveStatusApi({}).catch(() => null);
-          if (st?.linked) server = { linked: true, email: st.email ?? null };
+          // 탭에 남은 토큰으로 이어졌어도, 서버에 이어 둔 열쇠가 있는지 알아 둔다(만료 때 조용히 새로 받게).
+          // 함수가 깨어나는 데 수 초 걸릴 수 있어 읽기를 막지 않고 뒤에서
+          void driveStatusApi({})
+            .then((st) => {
+              if (alive && st?.linked) setDrive((d) => ({ ...d, server: { linked: true, email: st.email ?? null } }));
+            })
+            .catch(() => undefined);
         }
         if (!localDriveUrl && !tokenRef.current) {
           const a = await serverAccess();
@@ -235,7 +266,6 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
             server = { linked: true, email: a.email };
           }
         }
-        const { remote, store } = makeDriveStore(uid);
         let folderUrl: string | null = null;
         if (tokenRef.current && !localDriveUrl) {
           try {
@@ -247,7 +277,10 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
             rememberDriveToken(uid, null);
           }
         }
-        await loadFrom(store);
+        await loadFrom(store).finally(() => {
+          syncingRef.current = null;
+          synced();
+        });
         if (alive) {
           setStorage("drive");
           setDrive((d) => ({ ...d, status: tokenRef.current ? "connected" : "expired", folderUrl, ...(server ? { server } : {}) }));
@@ -261,7 +294,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [uid, deviceStore, makeDriveStore, loadFrom, serverAccess, serverCapable]);
+  }, [uid, deviceStore, makeDriveStore, loadFrom, readState, fallbackManifest, render, serverAccess, serverCapable]);
 
   const setWorkspaceId = useCallback(
     (id: string) => {
@@ -299,7 +332,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
   /** 바꾼 업무를 쓴다. 실패하면 화면엔 바꾼 모습이 남되 "저장 안 됨" 으로 보이고 다시 시도할 수 있다 */
   const saveItem = useCallback(
     async (next: WorkItem): Promise<SaveState> => {
-      const repo = repoRef.current;
+      const repo = await getRepo();
       if (!repo) return "failed";
       putItem(next);
       mark(next.id, "saving");
@@ -311,7 +344,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       }
       return applyOutcome(next.id, r, putItem);
     },
-    [applyOutcome],
+    [getRepo, applyOutcome],
   );
 
   const update = useCallback<WorkApi["update"]>(
@@ -354,13 +387,13 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const saveSource = useCallback(
     async (src: Source) => {
-      const repo = repoRef.current;
+      const repo = await getRepo();
       if (!repo) return "failed" as SaveState;
       putSource(src);
       mark(src.id, "saving");
       return applyOutcome(src.id, await repo.saveSource(src, nowIso()), putSource);
     },
-    [applyOutcome],
+    [getRepo, applyOutcome],
   );
 
   const linkExisting = useCallback<WorkApi["linkExisting"]>(
@@ -394,7 +427,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const saveManifest = useCallback<WorkApi["saveManifest"]>(
     async (fn) => {
-      const repo = repoRef.current;
+      const repo = await getRepo();
       if (!repo) return "failed";
       const next = fn(stateRef.current.manifest);
       setState((s) => ({ ...s, manifest: next }));
@@ -409,7 +442,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       mark("manifest", r.status === "conflict" ? "conflict" : "failed");
       return r.status === "conflict" ? "conflict" : "failed";
     },
-    [],
+    [getRepo, ],
   );
 
   const handoffLabels = useCallback(() => labelsFrom(tRef.current), []);
@@ -436,8 +469,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const importText = useCallback<WorkApi["importText"]>(
     async (itemId, text, opts) => {
+      const repo = await getRepo();
       const item = stateRef.current.items.find((i) => i.id === itemId);
-      const repo = repoRef.current;
       if (!item || !repo) return { kind: "save_failed" };
       // 근거 줄 검사 — 묶음을 만들 때와 같은 발췌(기기 캐시)를 줄로
       const lines = (sourceId: string) => {
@@ -456,7 +489,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const s = await saveItem(r.item);
       return s === "failed" ? { kind: "save_failed" } : r;
     },
-    [saveItem, cachedText],
+    [getRepo, saveItem, cachedText],
   );
 
   const undo = useCallback(

@@ -167,3 +167,18 @@ test("로컬 Drive — 불러오기는 목록 1번 + 파일마다 내려받기 1
   assert.equal(r.status, "conflict");
   assert.match(readFileSync(file, "utf8"), /바깥에서 고침/);
 });
+
+test("빠른 읽기 — 새 저장소가 폴더를 동시에 찾아도 한 번만 만들고, 업무 여러 개를 함께 읽어도 다 읽는다", async () => {
+  let calls = 0;
+  const counted: DriveDeps = { ...deps, fetch: ((url, init) => (calls++, deps.fetch(url, init))) as Fetch };
+  const names2 = { root: "동시 작업실", summaries: "요약2", appData: "데이터2" };
+  const a = new DriveFileStore(counted, names2);
+  const [f1, f2] = await Promise.all([a.ensureFolders(), a.ensureFolders()]);
+  assert.deepEqual(f1, f2);
+  assert.ok(calls <= 6, `폴더 찾기 · 만들기는 한 번씩(${calls})`);
+
+  const repo = new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "");
+  for (let i = 0; i < 12; i++) assert.equal((await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", areaId: "area-general", title: `병렬 ${i}` }, NOW), NOW)).status, "saved");
+  const s = await new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "").load();
+  assert.equal(s.items.filter((i) => i.title.startsWith("병렬 ")).length, 12);
+});

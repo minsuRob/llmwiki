@@ -134,7 +134,8 @@ export interface DriveFolderNames {
 
 export class DriveFileStore implements FileStore {
   readonly kind = "drive" as const;
-  private folders: { root: string; summaries: string; appData: string } | null = null;
+  private folders: Promise<{ root: string; summaries: string; appData: string }> | null = null;
+  private folderIds: { root: string; summaries: string; appData: string } | null = null;
   /** 경로 → 마지막으로 본 id · 버전(list · find · write 가 채운다) */
   private known = new Map<string, { id: string; version: string }>();
 
@@ -160,18 +161,22 @@ export class DriveFileStore implements FileStore {
     return ((await made.json()) as { id: string }).id;
   }
 
-  /** 연결할 때 한 번 — 폴더가 없으면 만든다 */
+  /** 연결할 때 한 번 — 폴더가 없으면 만든다. 동시에 불려도 한 번만 찾는다(같은 폴더를 두 번 만들지 않게) */
   async ensureFolders() {
-    if (this.folders) return this.folders;
-    const root = await this.folder("root", this.names.root);
-    const summaries = await this.folder("summaries", this.names.summaries, root);
-    const appData = await this.folder("appData", this.names.appData, root);
-    this.folders = { root, summaries, appData };
+    this.folders ??= (async () => {
+      const root = await this.folder("root", this.names.root);
+      const [summaries, appData] = await Promise.all([this.folder("summaries", this.names.summaries, root), this.folder("appData", this.names.appData, root)]);
+      this.folderIds = { root, summaries, appData };
+      return this.folderIds;
+    })().catch((e) => {
+      this.folders = null;
+      throw e;
+    });
     return this.folders;
   }
 
   rootFolderUrl(): string | null {
-    return this.folders ? `https://drive.google.com/drive/folders/${this.folders.root}` : null;
+    return this.folderIds ? `https://drive.google.com/drive/folders/${this.folderIds.root}` : null;
   }
 
   private dirOf(path: string) {

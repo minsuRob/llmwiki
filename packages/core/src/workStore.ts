@@ -224,6 +224,23 @@ export interface ConflictCopy {
   resolved: boolean;
 }
 
+/** 한꺼번에 읽을 파일 수 — Drive 가 사용자당 초당 요청을 제한하므로 적당히 */
+const READ_CONCURRENCY = 8;
+
+/** 순서를 지키며 최대 limit 개씩 동시에 */
+export async function mapLimit<T, R>(xs: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(xs.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < xs.length) {
+      const i = next++;
+      out[i] = await fn(xs[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, xs.length) }, worker));
+  return out;
+}
+
 export class WorkRepo {
   /** 경로 → 내가 마지막으로 본 버전 */
   private versions = new Map<string, string>();
@@ -237,28 +254,32 @@ export class WorkRepo {
     this.renderSummary = renderSummary;
   }
 
+  /** 설정 · 업무 · 자료를 함께 읽는다 — Drive 는 요청 하나가 느려 차례로 읽으면 파일 수만큼 기다린다 */
   async load(): Promise<WorkState> {
-    const m = await this.store.read(PATHS.manifest);
+    const [m, items, sources] = await Promise.all([
+      this.store.read(PATHS.manifest),
+      this.readAll("state/items/", (raw) => upgradeItem(raw)),
+      this.readAll("state/sources/", (raw) => upgradeSource(raw)),
+    ]);
     if (m) this.versions.set(PATHS.manifest, m.version);
     const manifest = upgradeManifest(m ? (JSON.parse(m.text) as Record<string, unknown>) : null, this.fallbackManifest);
-    const items = await this.readAll("state/items/", (raw) => upgradeItem(raw));
-    const sources = await this.readAll("state/sources/", (raw) => upgradeSource(raw));
     return { manifest, items, sources };
   }
 
   private async readAll<T>(prefix: string, up: (raw: Record<string, unknown>) => T): Promise<T[]> {
     const paths = await this.store.list(prefix);
+    const files = await mapLimit(paths, READ_CONCURRENCY, (p) => this.store.read(p));
     const out: T[] = [];
-    for (const p of paths) {
-      const f = await this.store.read(p);
-      if (!f) continue;
+    paths.forEach((p, i) => {
+      const f = files[i];
+      if (!f) return;
       this.versions.set(p, f.version);
       try {
         out.push(up(JSON.parse(f.text) as Record<string, unknown>));
       } catch {
         /* 깨진 파일은 건너뛴다(지우지 않는다) */
       }
-    }
+    });
     return out;
   }
 
