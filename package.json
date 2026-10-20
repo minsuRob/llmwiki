@@ -17,7 +17,8 @@
     "desktop:start": "npm --prefix desktop start",
     "desktop:dev": "LLMWIKI_DESKTOP_URL=http://localhost:8081 npm --prefix desktop run dev",
     "desktop:build": "npm --prefix desktop run build",
-    "test:desktop": "npm --prefix desktop test"
+    "test:desktop": "npm --prefix desktop test",
+    "desktop:release": "npm --prefix desktop run release"
   },
   "devDependencies": {
     "firebase": "^13.0.0"

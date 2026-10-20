@@ -11,7 +11,8 @@
     "dev": "electron .",
     "test": "node --test 'test/*.test.mjs' '../tools/handoff/*.test.mjs'",
     "build": "node scripts/build.mjs",
-    "signing:check": "node scripts/signing.mjs --check"
+    "signing:check": "node scripts/signing.mjs --check",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "electron": "44.5.1",

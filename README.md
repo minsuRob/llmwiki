@@ -75,6 +75,7 @@ npm run desktop:start
 - 패키징: `npm run desktop:build` → `desktop/release/llmwiki-<버전>-arm64.dmg` · `.zip`. 서명 · 공증 출처는 `desktop/signing.config.mjs` 한 곳에서 고른다.
   - 기본 프로필 `feeeld`: 회사 Developer ID(FEEEL'D INC., 팀 46LU76SNUA, 만료 2027-02-01)를 MAKi 와 같은 SSM(`/front/staging`)에서 받아 임시 키체인으로 서명하고 공증한다(AWS 권한 필요). 공증 표시(staple)는 MAKi 처럼 붙이지 않는다(`LLMWIKI_STAPLE=true` 면 시도).
   - `LLMWIKI_SIGNING=none` 서명 없이 · `LLMWIKI_NOTARIZE=false` 서명만 · `npm --prefix desktop run signing:check` 출처 · 인증서만 확인.
+  - 배포: `npm run desktop:release` — `desktop/package.json` 의 version 으로 태그 `desktop-v<버전>` 을 찍고 GitHub Releases 에 dmg · zip 을 올린다(기본 초안, `-- --publish` 면 공개). 설치 파일은 git 에 넣지 않는다(파일당 100MB 제한). 버전을 올릴 때는 version 을 바꿔 커밋한 뒤 실행.
   - 개인 계정으로 바꿀 때: `signing.config.mjs` 의 `personal`(환경 변수 출처)에 팀 ID 를 채우고 `DEFAULT` 를 바꾼다.
 - 시험: `npm run test:desktop`(정책 · 입력 검증 · 실행 큐 · 브리지 계약 + 실행 본문).
 

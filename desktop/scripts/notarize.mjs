@@ -2,7 +2,7 @@
 // (붙이지 않아도 Gatekeeper 가 처음 열 때 애플 서버에 묻는다. 붙이려면 LLMWIKI_STAPLE=true — 실패해도 빌드는 계속)
 // 애플 ID · 앱 암호 · 팀 ID 는 signing.mjs 가 이 프로세스 환경 변수로만 넘긴다. 화면 · 로그에 찍지 않는다.
 import { execFile } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const sh = (cmd, args, opts = {}) => new Promise((resolve) => {
@@ -31,6 +31,8 @@ export async function notarizeApp(appPath, { staple = process.env.LLMWIKI_STAPLE
     throw new Error(`[notarize] 공증 실패(${out.status ?? `코드 ${r.code}`}, id ${out.id ?? '?'}) — 'xcrun notarytool log <id>' 로 이유 확인`);
   }
   console.log(`[notarize] 공증 통과 · id ${out.id} · ${secs}초`);
+  // 릴리스 설명에 쓰려고 남긴다(비밀값 없음)
+  writeFileSync(join(appPath, '..', '..', 'notarization.json'), JSON.stringify({ id: out.id, status: out.status, at: new Date().toISOString(), seconds: secs }, null, 1));
   if (staple) {
     const s = await sh('xcrun', ['stapler', 'staple', appPath]);
     console.log(s.code ? '[notarize] 표시 붙이기 실패 — 건너뛴다(공증은 됐다)' : '[notarize] 표시를 붙였다');
