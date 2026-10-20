@@ -14,6 +14,7 @@ export const WORK_SCHEMA_VERSION = 1;
 
 /* ───────────────────────── 모델 ───────────────────────── */
 
+/** 옛 작업실 종류 — 읽을 때 icon · private 로 옮긴다(upgradeManifest) */
 export type WorkspaceKind = "personal" | "company";
 
 export interface Area {
@@ -21,11 +22,17 @@ export interface Area {
   name: string;
 }
 
+/** 주제(개인 · 회사 · 취준 · 독서 …) — 사용자가 더하고 이름을 바꾼다. 업무 · 자료는 주제 하나에 속한다 */
 export interface Workspace {
   id: string;
-  kind: WorkspaceKind;
   name: string;
+  /** WORKSPACE_ICONS 중 하나 */
+  icon: string;
+  /** 판단 기록 등 밖으로 내보낼 때 기본으로 뺀다(옛 회사 작업실) */
+  private: boolean;
   areas: Area[];
+  /** 옛 값 — 남아 있어도 쓰지 않는다 */
+  kind?: WorkspaceKind;
 }
 
 export type WorkStatus = "planned" | "active" | "waiting" | "blocked" | "done" | "archived";
@@ -298,18 +305,41 @@ export function undoChange(item: WorkItem, changeId: string, nowIso: string): { 
 export const PERSONAL_AREA_KEYS = ["jobChange", "personal", "dev", "sideJob"] as const;
 export const COMPANY_AREA_KEYS = ["general"] as const;
 
-/** 처음 열 때 — 회사 · 개인 작업실. 이름은 앱이 번역해서 넘긴다 */
+export const WORKSPACE_ICONS = ["person", "business", "briefcase", "book", "school", "code-slash", "heart", "barbell", "cash", "home", "airplane", "sparkles"] as const;
+
+/** 처음 열 때 — 개인 · 회사 주제. 이름은 앱이 번역해서 넘긴다 */
 export function defaultManifest(names: { personal: string; company: string; areas: Record<string, string> }): WorkManifest {
   const area = (key: string): Area => ({ id: `area-${key}`, name: names.areas[key] ?? key });
   return {
     schemaVersion: WORK_SCHEMA_VERSION,
     workspaces: [
-      { id: "ws-personal", kind: "personal", name: names.personal, areas: PERSONAL_AREA_KEYS.map(area) },
-      { id: "ws-company", kind: "company", name: names.company, areas: COMPANY_AREA_KEYS.map(area) },
+      { id: "ws-personal", name: names.personal, icon: "person", private: false, areas: PERSONAL_AREA_KEYS.map(area) },
+      { id: "ws-company", name: names.company, icon: "business", private: true, areas: COMPANY_AREA_KEYS.map(area) },
     ],
     prefs: { todayOrder: [] },
     migrations: [],
   };
+}
+
+/** 새 주제 — 영역은 하나(일반)로 시작한다 */
+export function addWorkspace(m: WorkManifest, input: { name: string; icon: string; private: boolean }, generalArea: string): { manifest: WorkManifest; workspace: Workspace } {
+  const workspace: Workspace = { id: `ws-${newId()}`, name: input.name.trim(), icon: input.icon, private: input.private, areas: [{ id: "area-general", name: generalArea }] };
+  return { manifest: { ...m, workspaces: [...m.workspaces, workspace] }, workspace };
+}
+
+export function editWorkspace(m: WorkManifest, id: string, patch: Partial<Pick<Workspace, "name" | "icon" | "private">>): WorkManifest {
+  return { ...m, workspaces: m.workspaces.map((w) => (w.id === id ? { ...w, ...patch, ...(patch.name !== undefined ? { name: patch.name.trim() } : {}) } : w)) };
+}
+
+/** 지울 수 있나 — 마지막 하나가 아니고, 업무 · 자료가 남아 있지 않을 때만(데이터를 잃지 않게) */
+export function canRemoveWorkspace(state: WorkState, id: string): "ok" | "last" | "in_use" {
+  if (state.manifest.workspaces.length <= 1) return "last";
+  if (state.items.some((i) => i.workspaceId === id) || state.sources.some((s) => s.workspaceId === id)) return "in_use";
+  return "ok";
+}
+
+export function removeWorkspace(m: WorkManifest, id: string): WorkManifest {
+  return { ...m, workspaces: m.workspaces.filter((w) => w.id !== id) };
 }
 
 export const TEMPLATE_KEYS = ["report", "meetingFollowup", "research", "proposal", "event"] as const;
@@ -788,7 +818,11 @@ export function upgradeManifest(raw: Record<string, unknown> | null, fallback: W
   m.prefs ??= { todayOrder: [] };
   m.prefs.todayOrder ??= [];
   m.migrations ??= [];
-  m.workspaces ??= fallback.workspaces;
+  m.workspaces = (m.workspaces ?? fallback.workspaces).map((w) => ({
+    ...w,
+    icon: w.icon ?? (w.kind === "company" ? "business" : "person"),
+    private: w.private ?? w.kind === "company",
+  }));
   m.schemaVersion = WORK_SCHEMA_VERSION;
   return m;
 }

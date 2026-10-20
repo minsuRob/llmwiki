@@ -70,7 +70,7 @@ test("판단 기록 — 제안 · AI 결정이 한 행씩, 사람의 판단과 �
 test("판단 기록 — 회사 작업실은 기본으로 빼고, 거절한 결정 · 대기도 센다", () => {
   const company = setup("ws-company");
   assert.equal(deriveJudgments(company.state).length, 0);
-  assert.equal(deriveJudgments(company.state, { includeCompany: true }).length, 3);
+  assert.equal(deriveJudgments(company.state, { includePrivate: true }).length, 3);
   const { item, state } = setup();
   const it = rejectDecision(item, item.decisions[0].id, DECIDE);
   const s = judgmentStats(deriveJudgments({ ...state, items: [it] }));

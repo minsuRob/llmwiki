@@ -63,7 +63,7 @@ export function QuickAdd() {
             <Text accessibilityRole="header" style={{ fontSize: 16, fontWeight: "700", color: c.text }}>
               {t("quick.title")}
             </Text>
-            <WorkspaceChips c={c} />
+            <WorkspaceChips c={c} manage={false} />
             <Field c={c} value={text} onChangeText={setText} placeholder={t("quick.placeholder")} accessibilityLabel={t("quick.title")} multiline autoFocus />
             <Muted c={c}>{t("quick.linkTo")}</Muted>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>

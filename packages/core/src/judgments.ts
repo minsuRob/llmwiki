@@ -6,10 +6,10 @@
  * 되돌리기(undo)는 업무를 이전 모습으로 돌리므로, 기록도 '지금 상태' 기준이다(되돌린 판단은 다시 '대기').
  *
  * 쓰임: 실행자별 채택률(Gemma 요약을 사람이 얼마나 받아들였나), 주입 · 근거 경고의 오탐 확인, 나중의 평가 · 학습 자료.
- * 원칙(docs/architecture.md): 회사 작업실은 기본으로 빼고, 학습 · few-shot 동의는 기본 꺼짐(consent false).
+ * 원칙(docs/architecture.md): 비공개 주제(옛 회사 작업실)는 기본으로 빼고, 학습 · few-shot 동의는 기본 꺼짐(consent false).
  * 자료 본문은 넣지 않는다 — 자료 id · 버전(내용 지문)만.
  */
-import type { AiTool, WorkItem, WorkState, WorkspaceKind } from "./work.ts";
+import type { AiTool, WorkItem, WorkState } from "./work.ts";
 
 export type JudgmentTask = "task" | "due_change" | "output_latest" | "cross_link" | "decision";
 export type ReviewAction = "approved" | "rejected" | "pending";
@@ -19,7 +19,9 @@ export interface JudgmentRecord {
   /** AI 가 낸 시각 */
   createdAt: string;
   workItemId: string;
-  workspaceKind: WorkspaceKind;
+  workspaceId: string;
+  /** 비공개 주제의 업무인가 */
+  privateWorkspace: boolean;
   areaId: string;
   task: JudgmentTask;
   runId: string | null;
@@ -40,22 +42,23 @@ export interface JudgmentRecord {
 }
 
 export interface JudgmentOptions {
-  /** 회사 작업실 업무도 넣을까(기본 아니오) */
-  includeCompany?: boolean;
+  /** 비공개 주제 업무도 넣을까(기본 아니오) */
+  includePrivate?: boolean;
 }
 
 export function deriveJudgments(state: WorkState, opts: JudgmentOptions = {}): JudgmentRecord[] {
-  const kindOf = new Map(state.manifest.workspaces.map((w) => [w.id, w.kind]));
+  const privateOf = new Map(state.manifest.workspaces.map((w) => [w.id, w.private]));
   const out: JudgmentRecord[] = [];
   for (const item of state.items) {
-    const kind = kindOf.get(item.workspaceId) ?? "personal";
-    if (kind === "company" && !opts.includeCompany) continue;
+    const priv = privateOf.get(item.workspaceId) ?? false;
+    if (priv && !opts.includePrivate) continue;
     const runOf = (id?: string | null) => (id ? item.runs.find((r) => r.id === id) : undefined);
     const base = (runId: string | null | undefined) => {
       const run = runOf(runId);
       return {
         workItemId: item.id,
-        workspaceKind: kind,
+        workspaceId: item.workspaceId,
+        privateWorkspace: priv,
         areaId: item.areaId,
         runId: run?.id ?? runId ?? null,
         executor: run?.tool ?? null,
@@ -141,5 +144,5 @@ export function toJsonl(rows: JudgmentRecord[]): string {
 
 /** 업무 하나만 볼 때 */
 export function judgmentsOf(item: WorkItem, state: WorkState): JudgmentRecord[] {
-  return deriveJudgments({ ...state, items: [item] }, { includeCompany: true });
+  return deriveJudgments({ ...state, items: [item] }, { includePrivate: true });
 }

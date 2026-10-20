@@ -31,7 +31,7 @@ export function JudgmentsCard({ c }: { c: Palette }) {
   const { state } = useWork();
   const [company, setCompany] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const rows = useMemo(() => deriveJudgments(state, { includeCompany: company }), [state, company]);
+  const rows = useMemo(() => deriveJudgments(state, { includePrivate: company }), [state, company]);
   const stats = useMemo(() => judgmentStats(rows), [rows]);
   const order = ["gemma", "claude", "codex", "other", "unknown"].filter((k) => stats.byExecutor[k]);
 
@@ -51,7 +51,7 @@ export function JudgmentsCard({ c }: { c: Palette }) {
       )}
       <Pressable onPress={() => setCompany(!company)} accessibilityRole="checkbox" accessibilityState={{ checked: company }} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
         <Text style={{ fontSize: 18, color: company ? c.danger : c.muted }}>{company ? "☑" : "☐"}</Text>
-        <Text style={{ flex: 1, fontSize: 13, color: c.text }}>{t("judgments.includeCompany")}</Text>
+        <Text style={{ flex: 1, fontSize: 13, color: c.text }}>{t("judgments.includePrivate")}</Text>
       </Pressable>
       <View style={{ flexDirection: "row" }}>
         <Btn

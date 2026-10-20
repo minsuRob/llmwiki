@@ -1,14 +1,15 @@
 /**
- * 작업실 화면 조각 — 작업실 고르기 · 접는 칸 · 입력칸 · 저장/동기화/AI 정리 상태 · 바뀐 것 카드.
+ * 작업실 화면 조각 — 주제 고르기(＋ 새 주제 · 길게 눌러 고치기) · 접는 칸 · 입력칸 · 저장/동기화/AI 정리 상태 · 바뀐 것 카드.
  */
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import { Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
 
-import { pendingReview, staleSources, type ChangeEntry, type Msg, type WorkItem } from "../../../../packages/core/src/work.ts";
+import { pendingReview, staleSources, type ChangeEntry, type Msg, type WorkItem, type Workspace } from "../../../../packages/core/src/work.ts";
 import type { Palette } from "../../components/theme";
 import { Btn } from "../../components/ui";
 import { useT, type T } from "../../i18n";
+import { TopicSheet, topicIcon } from "./TopicSheet";
 import { useWork, type SaveState } from "./WorkContext";
 
 /** 저장된 시각(ISO, UTC) → 이 기기 시간대의 "YYYY-MM-DD HH:mm" */
@@ -28,9 +29,12 @@ export function msgText(t: T, m: Msg): string {
   return t(m.key, p);
 }
 
-export function WorkspaceChips({ c }: { c: Palette }) {
+/** manage: ＋ 칩과 길게 눌러 고치기를 보인다(다른 시트 안에서는 끈다) */
+export function WorkspaceChips({ c, manage = true }: { c: Palette; manage?: boolean }) {
   const { state, workspaceId, setWorkspaceId } = useWork();
   const t = useT();
+  const [editing, setEditing] = useState<Workspace | "new" | null>(null);
+  const chip = { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 };
   return (
     <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }} accessibilityRole="tablist" accessibilityLabel={t("ws.switch")}>
       {state.manifest.workspaces.map((w) => {
@@ -39,15 +43,29 @@ export function WorkspaceChips({ c }: { c: Palette }) {
           <Pressable
             key={w.id}
             onPress={() => setWorkspaceId(w.id)}
+            onLongPress={manage ? () => setEditing(w) : undefined}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
-            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: on ? c.accent : c.soft }}
+            accessibilityHint={manage ? t("topic.longPressHint") : undefined}
+            style={{ ...chip, backgroundColor: on ? c.accent : c.soft }}
           >
-            <Ionicons name={w.kind === "company" ? "business-outline" : "person-outline"} size={14} color={on ? c.accentText : c.text} />
+            <Ionicons name={topicIcon(w.icon)} size={14} color={on ? c.accentText : c.text} />
             <Text style={{ fontSize: 13, fontWeight: "600", color: on ? c.accentText : c.text }}>{w.name}</Text>
+            {manage && on ? (
+              <Pressable onPress={() => setEditing(w)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t("topic.edit")}>
+                <Ionicons name="ellipsis-horizontal" size={14} color={c.accentText} />
+              </Pressable>
+            ) : null}
           </Pressable>
         );
       })}
+      {manage ? (
+        <Pressable onPress={() => setEditing("new")} accessibilityRole="button" accessibilityLabel={t("topic.new")} style={{ ...chip, borderWidth: 1, borderStyle: "dashed", borderColor: c.border }}>
+          <Ionicons name="add" size={14} color={c.muted} />
+          <Text style={{ fontSize: 13, color: c.muted }}>{t("topic.add")}</Text>
+        </Pressable>
+      ) : null}
+      {manage ? <TopicSheet c={c} editing={editing} onClose={() => setEditing(null)} /> : null}
     </View>
   );
 }

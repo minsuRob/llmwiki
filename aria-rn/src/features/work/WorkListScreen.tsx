@@ -60,7 +60,7 @@ function NewWork({ c, onDone }: { c: Palette; onDone: () => void }) {
     <Card c={c}>
       <H c={c}>{t("work.newIn", { workspace: ws.name })}</H>
       <Field c={c} value={title} onChangeText={setTitle} placeholder={t("work.titlePlaceholder")} accessibilityLabel={t("work.title")} onSubmitEditing={() => void submit()} />
-      <Choice c={c} label={t("work.area")} value={areaId} onChange={setAreaId} options={ws.areas.map((a) => ({ key: a.id, label: a.name }))} />
+      {ws.areas.length > 1 ? <Choice c={c} label={t("work.area")} value={areaId} onChange={setAreaId} options={ws.areas.map((a) => ({ key: a.id, label: a.name }))} /> : null}
       <Choice c={c} label={t("work.template")} value={tpl} onChange={setTpl} options={[{ key: "none" as const, label: t("template.none") }, ...TEMPLATE_KEYS.map((k) => ({ key: k, label: t(`template.${k}.name`) }))]} />
       {tpl !== "none" ? <Muted c={c}>{t(`template.${tpl}.goal`)}</Muted> : null}
       <Choice c={c} label={t("work.importance")} value={importance} onChange={setImportance} options={(["high", "normal", "low"] as const).map((k) => ({ key: k, label: t(`importance.${k}`) }))} />
@@ -125,7 +125,7 @@ export default function WorkListScreen() {
         if (!list.length) return null;
         return (
           <View key={a.id} style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: "700", color: c.muted }}>{a.name}</Text>
+            {(ws?.areas.length ?? 0) > 1 ? <Text style={{ fontSize: 13, fontWeight: "700", color: c.muted }}>{a.name}</Text> : null}
             {list.map((i) => (
               <Row key={i.id} c={c} item={i} />
             ))}

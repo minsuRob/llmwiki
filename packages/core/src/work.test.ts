@@ -9,6 +9,11 @@ import type { Scrap } from "./types.ts";
 import {
   acceptProposal,
   addAction,
+  addWorkspace,
+  canRemoveWorkspace,
+  editWorkspace,
+  removeWorkspace,
+  upgradeManifest,
   applyRemoteMeta,
   confirmDecision,
   createWorkItem,
@@ -487,4 +492,22 @@ test("Drive + 기기 사본 — 연결이 끊기면 사본에서 읽고, 쓰기�
   assert.equal(w.status, "failed");
   online = true;
   assert.equal((await repo.saveItem(st.items[0], LATER)).status, "saved");
+});
+
+test("주제 — 옛 개인 · 회사 작업실을 아이콘 · 비공개로 옮기고, 더하고 · 고치고 · 빈 것만 지운다", () => {
+  const old = { schemaVersion: 1, workspaces: [{ id: "ws-personal", kind: "personal", name: "개인", areas: [] }, { id: "ws-company", kind: "company", name: "회사", areas: [] }] };
+  const m = upgradeManifest(old, defaultManifest({ personal: "", company: "", areas: {} }));
+  assert.deepEqual(m.workspaces.map((w) => [w.icon, w.private]), [["person", false], ["business", true]]);
+
+  const { manifest: added, workspace } = addWorkspace(m, { name: " 독서 ", icon: "book", private: false }, "일반");
+  assert.equal(workspace.name, "독서");
+  assert.deepEqual(workspace.areas, [{ id: "area-general", name: "일반" }]);
+  assert.equal(added.workspaces.length, 3);
+  assert.equal(editWorkspace(added, workspace.id, { name: "책", private: true }).workspaces[2].private, true);
+
+  const state: WorkState = { manifest: added, items: [createWorkItem({ workspaceId: workspace.id, areaId: "area-general", title: "책 1" }, NOW)], sources: [] };
+  assert.equal(canRemoveWorkspace(state, workspace.id), "in_use", "업무가 남은 주제는 지우지 않는다");
+  assert.equal(canRemoveWorkspace({ ...state, items: [] }, workspace.id), "ok");
+  assert.equal(removeWorkspace(added, workspace.id).workspaces.length, 2);
+  assert.equal(canRemoveWorkspace({ manifest: { ...m, workspaces: [m.workspaces[0]] }, items: [], sources: [] }, "ws-personal"), "last");
 });
