@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# 네이티브 폴더 — expo prebuild / run:* 이 만든다(CNG)
+/android
+/ios
