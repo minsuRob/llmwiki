@@ -45,9 +45,33 @@ export async function pickTextFile(): Promise<{ name: string; text: string } | n
   return { name: a.name, text };
 }
 
-/** 확인 — RN web 의 Alert 는 단추를 그리지 않아 웹은 브라우저 확인 창을 쓴다 */
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  ok: string;
+  cancel: string;
+  resolve: (ok: boolean) => void;
+}
+
+let confirmHost: ((r: ConfirmRequest) => void) | null = null;
+
+/** ConfirmHost(앱 안 모달)가 붙고 떨어질 때 부른다 */
+export function setConfirmHost(h: ((r: ConfirmRequest) => void) | null): void {
+  confirmHost = h;
+}
+
+/**
+ * 확인 — 웹은 앱 안 모달(ConfirmHost)로 묻는다. 호스트가 없을 때만 브라우저 확인 창.
+ * (RN web 의 Alert 는 단추를 그리지 않고, 내장 브라우저는 window.confirm 을 막거나 저절로 취소한다)
+ */
 export function confirmAsk(title: string, message: string, ok: string, cancel: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve((globalThis as unknown as { confirm: (m: string) => boolean }).confirm(`${title}\n\n${message}`));
+  if (Platform.OS === "web") {
+    if (confirmHost) {
+      const host = confirmHost;
+      return new Promise((resolve) => host({ title, message, ok, cancel, resolve }));
+    }
+    return Promise.resolve((globalThis as unknown as { confirm: (m: string) => boolean }).confirm(`${title}\n\n${message}`));
+  }
   return new Promise((resolve) =>
     Alert.alert(title, message, [
       { text: cancel, style: "cancel", onPress: () => resolve(false) },

@@ -378,6 +378,7 @@ export default {
       unreachable: "로컬 Drive 서버에 닿지 못했어요(tools/local-drive 를 켜 주세요).",
       pick: "{count}개 고르기",
     },
+    banner: "Drive 권한이 끝나 지금은 저장되지 않아요(읽기만). 다시 연결하면 바로 이어서 저장돼요.",
     folder: { root: "llmwiki 작업실", summaries: "업무 요약", appData: "앱 데이터(직접 고치지 마세요)" },
     status: {
       unavailable: "이 기기에서는 아직 Drive 연결을 지원하지 않아요(웹에서 연결해 주세요).",

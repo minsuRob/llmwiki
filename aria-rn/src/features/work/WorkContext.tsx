@@ -40,7 +40,7 @@ import { dictOf, useI18n, type T } from "../../i18n";
 import { useData } from "../../firebase/data";
 import { driveConfig, localDriveToken, localDriveUrl } from "./drive/config";
 import { requestLocalPick } from "./drive/LocalDrivePicker";
-import { DRIVE_PLATFORM_SUPPORTED, DriveAuthError, pickDriveFiles, requestDriveToken, revokeDriveToken, type DriveToken } from "./drive/googleDrive";
+import { DRIVE_PLATFORM_SUPPORTED, DriveAuthError, pickDriveFiles, recallDriveToken, rememberDriveToken, requestDriveToken, revokeDriveToken, type DriveToken } from "./drive/googleDrive";
 import { renderSummaryMarkdown } from "./summaryMarkdown";
 
 export type SaveState = "saving" | "saved" | "failed" | "conflict";
@@ -198,13 +198,26 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const ws = await AsyncStorage.getItem(prefKey(uid, "workspace")).catch(() => null);
       if (ws) setWorkspaceIdState(ws);
       if (mode === "drive") {
-        // 로컬 Drive(개발용)는 동의 화면이 없어 바로 다시 붙는다. 실제 Drive 는 토큰을 저장하지 않으므로 다시 연결해야 한다
+        // 로컬 Drive(개발용)는 동의 화면이 없어 바로 다시 붙는다.
+        // 실제 Drive 는 이 탭에 기억한 토큰(sessionStorage · 만료 전)이 있으면 그대로 쓴다 — 새로고침해도 다시 동의하지 않게
         if (localDriveUrl) tokenRef.current = { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 };
-        const { store } = makeDriveStore(uid);
+        else tokenRef.current = recallDriveToken(uid);
+        const { remote, store } = makeDriveStore(uid);
+        let folderUrl: string | null = null;
+        if (tokenRef.current && !localDriveUrl) {
+          try {
+            await remote.ensureFolders();
+            folderUrl = remote.rootFolderUrl();
+          } catch {
+            // 기억한 토큰이 취소 · 만료됐다 — 버리고 기기 사본으로 읽는다
+            tokenRef.current = null;
+            rememberDriveToken(uid, null);
+          }
+        }
         await loadFrom(store);
         if (alive) {
           setStorage("drive");
-          setDrive((d) => ({ ...d, status: localDriveUrl ? "connected" : "expired" }));
+          setDrive((d) => ({ ...d, status: tokenRef.current ? "connected" : "expired", folderUrl }));
         }
       } else {
         await loadFrom(deviceStore(uid));
@@ -438,7 +451,9 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     setDrive((d) => ({ ...d, status: "connecting", error: null }));
     try {
       // 로컬 Drive(개발용)는 OAuth 없이 고정 개발 토큰 — 실제 Google 동의가 아니다
-      tokenRef.current = localDriveUrl ? { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 } : await requestDriveToken({ interactive: true, hint: user?.email ?? null });
+      // 처음 연결은 동의 화면을 보이고, 이미 Drive 를 쓰던 중 다시 받을 때는 동의 화면 없이(이미 허락한 범위)
+      tokenRef.current = localDriveUrl ? { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 } : await requestDriveToken({ interactive: storage !== "drive", hint: user?.email ?? null });
+      if (!localDriveUrl) rememberDriveToken(uid, tokenRef.current);
       const { remote, store } = makeDriveStore(uid);
       await remote.ensureFolders();
       // 기기에만 있던 작업실을 Drive 로 복사(기기 쪽은 남긴다). Drive 에 이미 있는 파일은 건드리지 않는다
@@ -457,10 +472,23 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     }
   }, [uid, user, makeDriveStore, storage, deviceStore, loadFrom, saveItem]);
 
+  // 토큰이 끝나는 순간 '만료' 로 바꾼다 — 화면 위 알림이 한 번 눌러 다시 받게 한다(저장이 조용히 실패하지 않게)
+  useEffect(() => {
+    if (!uid || storage !== "drive" || drive.status !== "connected" || drive.local || !tokenRef.current) return;
+    const left = tokenRef.current.expiresAt - Date.now();
+    const timer = setTimeout(() => {
+      tokenRef.current = null;
+      rememberDriveToken(uid, null);
+      setDrive((d) => (d.status === "connected" ? { ...d, status: "expired" } : d));
+    }, Math.max(0, left));
+    return () => clearTimeout(timer);
+  }, [uid, storage, drive.status, drive.local]);
+
   const disconnectDrive = useCallback(async () => {
     if (!uid) return;
     if (tokenRef.current) revokeDriveToken(tokenRef.current.token);
     tokenRef.current = null;
+    rememberDriveToken(uid, null);
     await AsyncStorage.setItem(prefKey(uid, "storage"), "device");
     // Drive 의 파일은 지우지 않는다. 기기 저장소로 돌아간다(Drive 에서 바꾼 것은 기기에 없을 수 있다 — 안내한다)
     await loadFrom(deviceStore(uid));

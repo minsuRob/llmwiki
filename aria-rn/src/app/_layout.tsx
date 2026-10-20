@@ -7,6 +7,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { usePalette } from "../components/theme";
 import LoginScreen, { AuthLoading } from "../features/auth/LoginScreen";
 import { LocalDrivePickerHost } from "../features/work/drive/LocalDrivePicker";
+import { ConfirmHost } from "../features/work/ConfirmHost";
+import { DriveBanner } from "../features/work/DriveBanner";
 import { QuickAdd } from "../features/work/QuickAdd";
 import { WorkProvider } from "../features/work/WorkContext";
 import { DataProvider, useData } from "../firebase/data";
@@ -111,6 +113,7 @@ function AppTabs() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <ErrorBanner />
+      <DriveBanner />
       <Tabs
         screenOptions={{
           headerStyle: { backgroundColor: c.surface },
@@ -133,6 +136,7 @@ function AppTabs() {
       </Tabs>
       <QuickAdd />
       <LocalDrivePickerHost />
+      <ConfirmHost />
     </View>
   );
 }

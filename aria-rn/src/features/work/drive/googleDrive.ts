@@ -33,3 +33,9 @@ export function revokeDriveToken(_token: string): void {}
 export async function pickDriveFiles(_token: string): Promise<PickedFile[] | null> {
   throw new DriveAuthError("unsupported");
 }
+
+export function rememberDriveToken(_uid: string, _t: DriveToken | null): void {}
+
+export function recallDriveToken(_uid: string): DriveToken | null {
+  return null;
+}

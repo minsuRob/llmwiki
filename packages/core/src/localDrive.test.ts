@@ -136,3 +136,34 @@ test("로컬 Drive — 권한이 끊기면(401) 저장 실패로 알린다", asy
   assert.equal(r.status, "failed");
   assert.equal(r.status === "failed" && r.code, "auth_expired");
 });
+
+test("로컬 Drive — 불러오기는 목록 1번 + 파일마다 내려받기 1번(찾기 없음), 바깥 변경은 그래도 충돌로 잡는다", async () => {
+  // 업무 5개를 더 쓰고, 다른 인스턴스(다시 연 앱)로 불러온다. 폴더는 이름이 아니라 역할로 찾으므로 앞 시험의 업무도 함께 보인다
+  const names2 = names;
+  const writer = new WorkRepo(new DriveFileStore(deps, names2), manifest());
+  await writer.load();
+  const ids: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const it = createWorkItem({ workspaceId: "ws-company", areaId: "area-general", title: `업무 ${i}` }, NOW);
+    ids.push(it.id);
+    assert.equal((await writer.saveItem(it, NOW)).status, "saved");
+  }
+
+  const calls: string[] = [];
+  const counting: DriveDeps = { ...deps, fetch: ((url: string, init?: Parameters<Fetch>[1]) => (calls.push(`${init?.method ?? "GET"} ${url}`), deps.fetch(url, init))) as Fetch };
+  const reader = new WorkRepo(new DriveFileStore(counting, names2), manifest());
+  const loaded = await reader.load();
+  assert.ok(ids.every((id) => loaded.items.some((x) => x.id === id)));
+  const finds = calls.filter((c) => c.startsWith("GET") && c.includes("llmwikiPath"));
+  const media = calls.filter((c) => c.includes("alt=media"));
+  assert.equal(finds.length, 1, `찾기는 manifest 하나뿐이어야 한다(없는 파일): ${finds.length}`);
+  assert.equal(media.length, loaded.items.length + loaded.sources.length, "업무 · 자료 파일마다 내려받기 1번");
+
+  // 불러온 뒤 바깥(디스크)에서 고쳐도, 쓰기 직전에 새로 확인하므로 덮어쓰지 않는다
+  const one = loaded.items.find((x) => x.id === ids[0])!;
+  const file = join(server.root, names.root, names.appData, `${ids[0]}.json`);
+  editOnDisk(file, readFileSync(file, "utf8").replace("업무 0", "바깥에서 고침"));
+  const r = await reader.saveItem({ ...one, title: "앱에서 고침" }, NOW);
+  assert.equal(r.status, "conflict");
+  assert.match(readFileSync(file, "utf8"), /바깥에서 고침/);
+});

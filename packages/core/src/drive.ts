@@ -10,6 +10,9 @@
  *   업무 요약 폴더 — summaries/*.md (사람이 읽는다)
  *   앱 데이터 폴더 — state/* · raw/* · conflicts/* (앱이 관리한다)
  * 파일은 appProperties(llmwikiPath · llmwikiDir)로 찾는다 — 이름이 바뀌어도 깨지지 않는다.
+ *
+ * 요청 수: list 가 받은 id · 버전을 기억해 두고 read 는 그것으로 바로 내려받는다(불러오기 = 목록 1 + 파일 수).
+ * write 는 언제나 직전에 Drive 에서 버전을 새로 확인한다 — 기억한 버전을 믿고 덮어쓰지 않는다.
  */
 import { ConflictError, StoreError, type FileStore } from "./workStore.ts";
 import type { IngestStatus, SourceFormat } from "./work.ts";
@@ -132,7 +135,8 @@ export interface DriveFolderNames {
 export class DriveFileStore implements FileStore {
   readonly kind = "drive" as const;
   private folders: { root: string; summaries: string; appData: string } | null = null;
-  private ids = new Map<string, string>();
+  /** 경로 → 마지막으로 본 id · 버전(list · find · write 가 채운다) */
+  private known = new Map<string, { id: string; version: string }>();
 
   private deps: DriveDeps;
   private names: DriveFolderNames;
@@ -180,8 +184,9 @@ export class DriveFileStore implements FileStore {
     const res = await call(this.deps, `${api(this.deps)}?q=${q(query)}&fields=${q("files(id,version)")}`);
     if (!res.ok) throw new StoreError("unknown", `HTTP ${res.status}`);
     const f = ((await res.json()) as { files?: { id: string; version: string }[] }).files?.[0];
-    if (f) this.ids.set(path, f.id);
-    return f ?? null;
+    if (f) this.known.set(path, { id: f.id, version: String(f.version) });
+    else this.known.delete(path);
+    return f ? { id: f.id, version: String(f.version) } : null;
   }
 
   async list(prefix: string): Promise<string[]> {
@@ -190,14 +195,14 @@ export class DriveFileStore implements FileStore {
     let pageToken = "";
     do {
       const query = `trashed=false and appProperties has { key='llmwikiDir' and value='${esc(prefix)}' }`;
-      const res = await call(this.deps, `${api(this.deps)}?q=${q(query)}&fields=${q("nextPageToken,files(id,appProperties)")}&pageSize=200${pageToken ? `&pageToken=${q(pageToken)}` : ""}`);
+      const res = await call(this.deps, `${api(this.deps)}?q=${q(query)}&fields=${q("nextPageToken,files(id,version,appProperties)")}&pageSize=200${pageToken ? `&pageToken=${q(pageToken)}` : ""}`);
       if (!res.ok) throw new StoreError("unknown", `HTTP ${res.status}`);
-      const body = (await res.json()) as { nextPageToken?: string; files?: { id: string; appProperties?: Record<string, string> }[] };
+      const body = (await res.json()) as { nextPageToken?: string; files?: { id: string; version?: string; appProperties?: Record<string, string> }[] };
       for (const f of body.files ?? []) {
         const p = f.appProperties?.llmwikiPath;
         if (p) {
           out.push(p);
-          this.ids.set(p, f.id);
+          if (f.version != null) this.known.set(p, { id: f.id, version: String(f.version) });
         }
       }
       pageToken = body.nextPageToken ?? "";
@@ -206,12 +211,22 @@ export class DriveFileStore implements FileStore {
   }
 
   async read(path: string) {
-    const f = await this.find(path);
+    // 목록에서 본 파일은 찾기 없이 바로 — 그사이 지워졌으면(404) 한 번만 다시 찾는다
+    const cached = this.known.get(path);
+    const f = cached ?? (await this.find(path));
     if (!f) return null;
-    const res = await call(this.deps, `${api(this.deps)}/${q(f.id)}?alt=media`);
+    let res = await call(this.deps, `${api(this.deps)}/${q(f.id)}?alt=media`);
+    if (res.status === 404 && cached) {
+      const again = await this.find(path);
+      if (!again) return null;
+      res = await call(this.deps, `${api(this.deps)}/${q(again.id)}?alt=media`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new StoreError("unknown", `HTTP ${res.status}`);
+      return { text: await res.text(), version: again.version };
+    }
     if (res.status === 404) return null;
     if (!res.ok) throw new StoreError("unknown", `HTTP ${res.status}`);
-    return { text: await res.text(), version: String(f.version) };
+    return { text: await res.text(), version: f.version };
   }
 
   async write(path: string, text: string, expected: string | null) {
@@ -235,7 +250,7 @@ export class DriveFileStore implements FileStore {
     }
     if (!res.ok) throw new StoreError("unknown", `HTTP ${res.status}`);
     const out = (await res.json()) as { id: string; version: string };
-    this.ids.set(path, out.id);
+    this.known.set(path, { id: out.id, version: String(out.version) });
     return { version: String(out.version) };
   }
 
@@ -244,6 +259,6 @@ export class DriveFileStore implements FileStore {
     if (!f) return;
     // 영구 삭제가 아니라 휴지통으로
     await call(this.deps, `${api(this.deps)}/${q(f.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
-    this.ids.delete(path);
+    this.known.delete(path);
   }
 }

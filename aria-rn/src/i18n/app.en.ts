@@ -378,6 +378,7 @@ export default {
       unreachable: "Couldn't reach the local Drive server (start tools/local-drive).",
       pick: "Pick {count}",
     },
+    banner: "Drive access has expired, so changes are not being saved (read-only). Reconnect to continue saving.",
     folder: { root: "llmwiki workroom", summaries: "Work summaries", appData: "App data (do not edit)" },
     status: {
       unavailable: "Drive isn't supported on this device yet (connect on the web).",

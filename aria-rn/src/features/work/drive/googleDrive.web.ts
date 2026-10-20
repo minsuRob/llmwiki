@@ -1,7 +1,9 @@
 /**
  * 웹 — Google Identity Services(토큰) + Google Picker(파일 고르기). 웹에서만 되는 경우라 DOM 스크립트를 쓴다.
  * - 범위는 drive.file 하나 — 사용자가 고른 파일과 이 앱이 만든 파일만 보인다.
- * - 토큰은 기억에만 둔다(저장 · 로그 금지). 만료되면 다시 받는다.
+ * - 토큰은 이 탭의 sessionStorage 에만, 만료 시각과 함께 둔다(탭을 닫으면 사라진다 · localStorage · 로그 · 파일 금지).
+ *   새로고침해도 다시 동의하지 않게. 만료되면 동의 화면 없이(prompt "") 한 번 눌러 다시 받는다.
+ *   브라우저는 사용자가 누르지 않은 팝업을 막으므로, 앱을 열 때 저절로 다시 받지는 못한다.
  * - Firebase(Google) 로그인과 따로 묻는다 — 로그인했다고 Drive 에 들어가지 않는다.
  */
 import { DRIVE_SCOPE } from "../../../../../packages/core/src/drive.ts";
@@ -112,4 +114,39 @@ export async function pickDriveFiles(token: string): Promise<PickedFile[] | null
       .build();
     picker.setVisible(true);
   });
+}
+
+const tokenKey = (uid: string) => `llmwiki:drive-token:${uid}`;
+const session = (): Storage | null => {
+  try {
+    return (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/** 이 탭에 토큰을 기억한다(null 이면 지운다) */
+export function rememberDriveToken(uid: string, t: DriveToken | null): void {
+  try {
+    if (t) session()?.setItem(tokenKey(uid), JSON.stringify(t));
+    else session()?.removeItem(tokenKey(uid));
+  } catch {
+    /* 저장소를 못 쓰면 기억만 못 할 뿐 */
+  }
+}
+
+/** 이 탭에 기억한 토큰 — 1분 안에 끝나면 없는 것으로 본다 */
+export function recallDriveToken(uid: string): DriveToken | null {
+  try {
+    const raw = session()?.getItem(tokenKey(uid));
+    if (!raw) return null;
+    const t = JSON.parse(raw) as DriveToken;
+    if (typeof t.token !== "string" || !(t.expiresAt > Date.now() + 60_000)) {
+      session()?.removeItem(tokenKey(uid));
+      return null;
+    }
+    return t;
+  } catch {
+    return null;
+  }
 }
