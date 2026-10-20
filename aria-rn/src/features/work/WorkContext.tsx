@@ -37,10 +37,11 @@ import { importResult, prepareRun, type HandoffLabels, type ImportResult } from 
 import { planRevert, planScrapMigration } from "../../../../packages/core/src/workMigrate.ts";
 import { copyStore, KvFileStore, MirroredStore, WorkRepo, type ConflictCopy, type FileStore, type KV, type SaveOutcome } from "../../../../packages/core/src/workStore.ts";
 import { dictOf, useI18n, type T } from "../../i18n";
+import { driveLink as driveLinkApi, driveStatus as driveStatusApi, driveToken as driveTokenApi, driveUnlink as driveUnlinkApi, errorText } from "../../firebase/api";
 import { useData } from "../../firebase/data";
 import { driveConfig, localDriveToken, localDriveUrl } from "./drive/config";
 import { requestLocalPick } from "./drive/LocalDrivePicker";
-import { DRIVE_PLATFORM_SUPPORTED, DriveAuthError, pickDriveFiles, recallDriveToken, rememberDriveToken, requestDriveToken, revokeDriveToken, type DriveToken } from "./drive/googleDrive";
+import { DRIVE_PLATFORM_SUPPORTED, DriveAuthError, pickDriveFiles, recallDriveToken, rememberDriveToken, requestDriveCode, requestDriveToken, revokeDriveToken, type DriveToken } from "./drive/googleDrive";
 import { renderSummaryMarkdown } from "./summaryMarkdown";
 
 export type SaveState = "saving" | "saved" | "failed" | "conflict";
@@ -72,7 +73,8 @@ interface WorkApi {
   ready: boolean;
   state: WorkState;
   storage: "device" | "drive";
-  drive: { status: DriveStatus; folderUrl: string | null; error: string | null; local: boolean };
+  /** server: 서버(Functions)에 Drive 열쇠를 이어 두었나 — 이어 두면 새 탭 · 만료 때 팝업 없이 이어 쓴다 */
+  drive: { status: DriveStatus; folderUrl: string | null; error: string | null; local: boolean; server?: { linked: boolean; email: string | null } };
   saves: Record<string, { state: SaveState; at: string; code?: string }>;
   conflicts: ConflictCopy[];
   workspaceId: string;
@@ -116,6 +118,22 @@ function labelsFrom(t: T): HandoffLabels {
 
 export function WorkProvider({ children }: { children: React.ReactNode }) {
   const { user, state: legacy } = useData();
+  const userRef = useRef(user);
+  useLayoutEffect(() => {
+    userRef.current = user;
+  }, [user]);
+  /** 서버 보관을 쓸 수 있나 — Google 로그인 사용자 · 실제 Drive 일 때만(익명 · 개발용 로컬 Drive 는 브라우저 토큰만) */
+  const serverCapable = useCallback(() => !localDriveUrl && !!driveConfig && !!userRef.current && !userRef.current.isAnonymous, []);
+  /** 서버가 보관한 열쇠로 access token — 팝업 없이. 이어 두지 않았거나 거둬졌으면 null */
+  const serverAccess = useCallback(async (): Promise<(DriveToken & { email: string | null }) | null> => {
+    if (!serverCapable()) return null;
+    try {
+      const r = await driveTokenApi({});
+      return { token: r.accessToken, expiresAt: r.expiresAt, email: r.email };
+    } catch {
+      return null;
+    }
+  }, [serverCapable]);
   const { t, lang } = useI18n();
   const uid = user?.uid ?? null;
   /** 다 읽은 사용자 — 지금 사용자와 같아야 준비된 것 */
@@ -200,8 +218,23 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       if (mode === "drive") {
         // 로컬 Drive(개발용)는 동의 화면이 없어 바로 다시 붙는다.
         // 실제 Drive 는 이 탭에 기억한 토큰(sessionStorage · 만료 전)이 있으면 그대로 쓴다 — 새로고침해도 다시 동의하지 않게
+        // 그것도 없으면 서버에 이어 둔 열쇠로 새 토큰을 받는다(팝업 없음 — 새 탭에서도 바로 이어진다)
+        let server: { linked: boolean; email: string | null } | undefined;
         if (localDriveUrl) tokenRef.current = { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 };
         else tokenRef.current = recallDriveToken(uid);
+        if (!localDriveUrl && tokenRef.current && serverCapable()) {
+          // 탭에 남은 토큰으로 이어졌어도, 서버에 이어 둔 열쇠가 있는지 알아 둔다(만료 때 조용히 새로 받게)
+          const st = await driveStatusApi({}).catch(() => null);
+          if (st?.linked) server = { linked: true, email: st.email ?? null };
+        }
+        if (!localDriveUrl && !tokenRef.current) {
+          const a = await serverAccess();
+          if (a) {
+            tokenRef.current = { token: a.token, expiresAt: a.expiresAt };
+            rememberDriveToken(uid, tokenRef.current);
+            server = { linked: true, email: a.email };
+          }
+        }
         const { remote, store } = makeDriveStore(uid);
         let folderUrl: string | null = null;
         if (tokenRef.current && !localDriveUrl) {
@@ -217,7 +250,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
         await loadFrom(store);
         if (alive) {
           setStorage("drive");
-          setDrive((d) => ({ ...d, status: tokenRef.current ? "connected" : "expired", folderUrl }));
+          setDrive((d) => ({ ...d, status: tokenRef.current ? "connected" : "expired", folderUrl, ...(server ? { server } : {}) }));
         }
       } else {
         await loadFrom(deviceStore(uid));
@@ -228,7 +261,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [uid, deviceStore, makeDriveStore, loadFrom]);
+  }, [uid, deviceStore, makeDriveStore, loadFrom, serverAccess, serverCapable]);
 
   const setWorkspaceId = useCallback(
     (id: string) => {
@@ -452,7 +485,15 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     try {
       // 로컬 Drive(개발용)는 OAuth 없이 고정 개발 토큰 — 실제 Google 동의가 아니다
       // 처음 연결은 동의 화면을 보이고, 이미 Drive 를 쓰던 중 다시 받을 때는 동의 화면 없이(이미 허락한 범위)
-      tokenRef.current = localDriveUrl ? { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 } : await requestDriveToken({ interactive: storage !== "drive", hint: user?.email ?? null });
+      // Google 로그인 사용자는 코드 방식으로 받아 서버가 열쇠를 암호화해 이어 둔다(이후 팝업 없이 이어 쓰기)
+      let server: { linked: boolean; email: string | null } | undefined;
+      if (localDriveUrl) tokenRef.current = { token: localDriveToken, expiresAt: Date.now() + 12 * 3600_000 };
+      else if (serverCapable()) {
+        const code = await requestDriveCode({ hint: user?.email ?? null });
+        const r = await driveLinkApi({ code });
+        tokenRef.current = { token: r.accessToken, expiresAt: r.expiresAt };
+        server = { linked: true, email: r.email };
+      } else tokenRef.current = await requestDriveToken({ interactive: storage !== "drive", hint: user?.email ?? null });
       if (!localDriveUrl) rememberDriveToken(uid, tokenRef.current);
       const { remote, store } = makeDriveStore(uid);
       await remote.ensureFolders();
@@ -461,31 +502,48 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       // 끊긴 동안 저장하지 못한 업무 — 다시 읽은 뒤 다시 저장한다(바깥에서 바뀌었으면 충돌 사본으로, 조용히 버리지 않는다)
       await loadFrom(store);
       const unsaved = await readPending(uid);
-      setDrive({ status: "connected", folderUrl: localDriveUrl ? null : remote.rootFolderUrl(), error: null, local: !!localDriveUrl });
+      setDrive({ status: "connected", folderUrl: localDriveUrl ? null : remote.rootFolderUrl(), error: null, local: !!localDriveUrl, ...(server ? { server } : {}) });
       for (const i of unsaved) await saveItem(i);
       await AsyncStorage.setItem(prefKey(uid, "storage"), "drive");
       setStorage("drive");
-      setDrive({ status: "connected", folderUrl: localDriveUrl ? null : remote.rootFolderUrl(), error: null, local: !!localDriveUrl });
+      setDrive({ status: "connected", folderUrl: localDriveUrl ? null : remote.rootFolderUrl(), error: null, local: !!localDriveUrl, ...(server ? { server } : {}) });
     } catch (e) {
-      const code = e instanceof DriveAuthError ? e.code : ((e as { code?: string })?.code ?? "failed");
+      const reason = (e as { details?: { reason?: string } })?.details?.reason;
+      const code = e instanceof DriveAuthError ? e.code : (reason ?? (e as { code?: string })?.code ?? errorText(e) ?? "failed");
       setDrive((d) => ({ ...d, status: code === "cancelled" ? (storage === "drive" ? "expired" : "disconnected") : "error", error: code }));
     }
-  }, [uid, user, makeDriveStore, storage, deviceStore, loadFrom, saveItem]);
+  }, [uid, user, makeDriveStore, storage, deviceStore, loadFrom, saveItem, serverCapable]);
 
   // 토큰이 끝나는 순간 '만료' 로 바꾼다 — 화면 위 알림이 한 번 눌러 다시 받게 한다(저장이 조용히 실패하지 않게)
   useEffect(() => {
     if (!uid || storage !== "drive" || drive.status !== "connected" || drive.local || !tokenRef.current) return;
     const left = tokenRef.current.expiresAt - Date.now();
-    const timer = setTimeout(() => {
-      tokenRef.current = null;
-      rememberDriveToken(uid, null);
-      setDrive((d) => (d.status === "connected" ? { ...d, status: "expired" } : d));
-    }, Math.max(0, left));
+    // 서버에 열쇠를 이어 두었으면 끝나기 2분 전에 조용히 새로 받는다(팝업 없음). 안 되면 '만료' 로
+    const linked = !!drive.server?.linked;
+    const timer = setTimeout(
+      async () => {
+        const a = linked ? await serverAccess() : null;
+        if (a) {
+          tokenRef.current = { token: a.token, expiresAt: a.expiresAt };
+          rememberDriveToken(uid, tokenRef.current);
+          setDrive((d) => ({ ...d }));
+          return;
+        }
+        tokenRef.current = null;
+        rememberDriveToken(uid, null);
+        setDrive((d) => (d.status === "connected" ? { ...d, status: "expired", ...(linked ? { server: { linked: false, email: null } } : {}) } : d));
+      },
+      Math.max(0, left - (linked ? 120_000 : 0)),
+    );
     return () => clearTimeout(timer);
-  }, [uid, storage, drive.status, drive.local]);
+    // drive 객체가 바뀔 때(새 토큰을 받은 뒤 포함) 타이머를 다시 건다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, storage, drive]);
 
   const disconnectDrive = useCallback(async () => {
     if (!uid) return;
+    // 서버에 이어 둔 열쇠가 있으면 Google 에서 거두고 보관본을 지운다
+    if (serverCapable()) await driveUnlinkApi({}).catch(() => undefined);
     if (tokenRef.current) revokeDriveToken(tokenRef.current.token);
     tokenRef.current = null;
     rememberDriveToken(uid, null);
@@ -494,7 +552,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     await loadFrom(deviceStore(uid));
     setStorage("device");
     setDrive({ status: driveConfig || localDriveUrl ? "disconnected" : "not_configured", folderUrl: null, error: null, local: !!localDriveUrl });
-  }, [uid, deviceStore, loadFrom]);
+  }, [uid, deviceStore, loadFrom, serverCapable]);
 
   const ingest = useCallback(
     async (src: Source): Promise<Source> => {

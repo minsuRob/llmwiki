@@ -36,6 +36,18 @@ export const taskAction = callable<TaskAction, { id?: string; ok?: boolean }>("t
 /** 시냅스 — functions/src/features/synapse.ts */
 export const rebuildSynapse = callable<Record<string, never>, { nodes: number; edges: number; via: "claude" | "rules" }>("rebuildSynapse");
 
+/** Drive 열쇠 — functions/src/features/drive.ts. 서버가 refresh token 을 암호화해 두고 access token 만 내준다 */
+export interface DriveAccess {
+  accessToken: string;
+  expiresAt: number;
+  email: string | null;
+}
+export const driveLink = callable<{ code: string }, DriveAccess>("driveLink");
+export const driveToken = callable<Record<string, never>, DriveAccess>("driveToken");
+export const driveUnlink = callable<Record<string, never>, { ok: boolean; revoked: boolean }>("driveUnlink");
+export const driveStatus = callable<Record<string, never>, { linked: boolean; email?: string | null; linkedAt?: string; lastUsedAt?: string | null }>("driveStatus");
+export const driveListWork = callable<Record<string, never>, { items: { id: string; title: string; status: string; workspaceId: string; updatedAt: string }[] }>("driveListWork");
+
 /** 서버 오류 → 사용자에게 보일 한 줄 */
 export function errorText(e: unknown, t: T = (k, p) => translate("ko", k, p)): string {
   const msg = e instanceof Error ? e.message : String(e);

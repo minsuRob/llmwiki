@@ -74,6 +74,31 @@ export async function requestDriveToken(opts: { interactive: boolean; hint?: str
   });
 }
 
+/**
+ * 서버 보관용 — GIS 코드 방식(popup). 받은 코드는 서버(driveLink)가 refresh token 으로 바꿔 암호화해 둔다.
+ * 범위: drive.file + 계정 확인용 openid · email. 사용자가 누를 때만 부른다(팝업).
+ */
+export async function requestDriveCode(opts: { hint?: string | null }): Promise<string> {
+  if (!driveConfig) throw new DriveAuthError("not_configured");
+  await loadScript("https://accounts.google.com/gsi/client");
+  const google = w().google;
+  return new Promise<string>((resolve, reject) => {
+    const client = google.accounts.oauth2.initCodeClient({
+      client_id: driveConfig!.clientId,
+      scope: `openid email ${DRIVE_SCOPE}`,
+      ux_mode: "popup",
+      ...(opts.hint ? { login_hint: opts.hint } : {}),
+      callback: (r: { code?: string; error?: string; scope?: string }) => {
+        if (!r.code) return reject(new DriveAuthError(r.error === "access_denied" ? "cancelled" : "failed", r.error));
+        if (r.scope && !r.scope.split(" ").includes(DRIVE_SCOPE)) return reject(new DriveAuthError("cancelled", "scope"));
+        resolve(r.code);
+      },
+      error_callback: (e: { type?: string }) => reject(new DriveAuthError(e?.type === "popup_closed" ? "cancelled" : "failed", e?.type)),
+    });
+    client.requestCode();
+  });
+}
+
 export function revokeDriveToken(token: string): void {
   try {
     w().google?.accounts?.oauth2?.revoke(token, () => undefined);

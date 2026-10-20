@@ -7,7 +7,7 @@ import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { SUPPORTED_TEXT_FORMATS } from "../../../../packages/core/src/drive.ts";
 import { usePalette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
-import { rebuildSynapse, taskAction } from "../../firebase/api";
+import { driveListWork, rebuildSynapse, taskAction } from "../../firebase/api";
 import { useData } from "../../firebase/data";
 import { GOOGLE_SUPPORTED, describeUser, signInWithGoogle } from "../../firebase/google";
 import { useI18n, type Lang } from "../../i18n";
@@ -92,6 +92,29 @@ export default function SettingsScreen() {
             />
           ) : null}
         </View>
+        {d.server?.linked ? (
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 13, color: c.ok }}>{t("drive.server.linked", { email: d.server.email ?? "-" })}</Text>
+            <Text style={body}>{t("drive.server.explain")}</Text>
+            <View style={{ flexDirection: "row" }}>
+              <Btn
+                c={c}
+                small
+                label={t("drive.server.check")}
+                busy={busy === "serverRead"}
+                onPress={() =>
+                  void act(
+                    "serverRead",
+                    async () => t("drive.server.checked", { count: (await driveListWork({})).items.length }),
+                    setWorkNote,
+                  )
+                }
+              />
+            </View>
+          </View>
+        ) : work.storage === "drive" && !d.local ? (
+          <Text style={body}>{t("drive.server.notLinked")}</Text>
+        ) : null}
         <Text style={body}>{t("drive.scopeNote")}</Text>
         <Text style={body}>{t("drive.formats", { list: SUPPORTED_TEXT_FORMATS.join(", ") })}</Text>
         {workNote ? <Text style={{ fontSize: 13, color: c.ok }}>{workNote}</Text> : null}

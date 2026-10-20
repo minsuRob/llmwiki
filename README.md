@@ -1,5 +1,7 @@
 # llmwiki
 
+구조와 원칙(세 역할 · 데이터 위치 · Drive 열쇠 보관 규칙): [docs/architecture.md](docs/architecture.md)
+
 Aria(맥 · iOS 할일 비서)의 구조를 옮겨 다시 만든 할일 비서. 분석은 [docs/aria-analysis.md](docs/aria-analysis.md).
 
 로컬 모델(Gemma · Laya)·업무 위임 검증과 현재 상태는 [docs/local-models](docs/local-models/README.md).

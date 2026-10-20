@@ -28,6 +28,10 @@ export async function requestDriveToken(_opts: { interactive: boolean; hint?: st
   throw new DriveAuthError("unsupported");
 }
 
+export async function requestDriveCode(_opts: { hint?: string | null }): Promise<string> {
+  throw new DriveAuthError("unsupported");
+}
+
 export function revokeDriveToken(_token: string): void {}
 
 export async function pickDriveFiles(_token: string): Promise<PickedFile[] | null> {

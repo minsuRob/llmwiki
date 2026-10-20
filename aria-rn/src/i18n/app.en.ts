@@ -379,6 +379,13 @@ export default {
       pick: "Pick {count}",
     },
     banner: "Drive access has expired, so changes are not being saved (read-only). Reconnect to continue saving.",
+    server: {
+      linked: "A Drive key is linked on the server · {email}",
+      explain: "The key is encrypted and kept only on the server; the app only receives 1-hour tokens, so new tabs and expiry no longer ask again. 'Disconnect Drive' revokes the key at Google and deletes the server copy.",
+      notLinked: "No key is linked on the server — you will need to reconnect when this tab closes (Google sign-in users get linked when they reconnect).",
+      check: "Check server read",
+      checked: "The server read {count} work item(s) from Drive (titles and status only, nothing stored).",
+    },
     folder: { root: "llmwiki workroom", summaries: "Work summaries", appData: "App data (do not edit)" },
     status: {
       unavailable: "Drive isn't supported on this device yet (connect on the web).",

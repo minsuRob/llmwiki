@@ -379,6 +379,13 @@ export default {
       pick: "{count}개 고르기",
     },
     banner: "Drive 권한이 끝나 지금은 저장되지 않아요(읽기만). 다시 연결하면 바로 이어서 저장돼요.",
+    server: {
+      linked: "서버에 Drive 열쇠가 이어져 있어요 · {email}",
+      explain: "열쇠는 암호화해 서버에만 두고, 앱에는 1시간짜리 토큰만 내려줘요. 그래서 새 탭 · 만료 때도 다시 묻지 않아요. 'Drive 연결 해제' 를 누르면 Google 에서 열쇠를 거두고 서버 보관본도 지워요.",
+      notLinked: "서버에 열쇠를 이어 두지 않았어요 — 이 탭이 닫히면 다시 연결해야 해요(Google 로그인 사용자는 다시 연결하면 이어져요).",
+      check: "서버에서 읽기 확인",
+      checked: "서버가 Drive 에서 업무 {count}개를 읽었어요(제목 · 상태만, 저장하지 않음).",
+    },
     folder: { root: "llmwiki 작업실", summaries: "업무 요약", appData: "앱 데이터(직접 고치지 마세요)" },
     status: {
       unavailable: "이 기기에서는 아직 Drive 연결을 지원하지 않아요(웹에서 연결해 주세요).",

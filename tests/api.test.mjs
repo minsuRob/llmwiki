@@ -212,6 +212,13 @@ test("취준 공고 — 넣기 · 지난 공고 빼기 · 다시 넣어도 그�
   await assert.rejects(setDoc(doc(db, "users", uid, "jobs", "hack"), { title: "직접 쓰기" }), /permission/i);
 });
 
+test("Drive 열쇠 — 익명은 서버 보관을 못 쓰고, 보관 자리(driveLinks)는 앱이 읽지 못한다", async () => {
+  assert.deepEqual(await call("driveStatus", {}), { linked: false });
+  await assert.rejects(call("driveToken", {}), /Google 로 로그인|permission-denied/);
+  await assert.rejects(call("driveLink", { code: "x" }), /Google 로 로그인|permission-denied/);
+  await assert.rejects(getDocs(collection(db, "driveLinks")), /permission/i);
+});
+
 test("보안 규칙 — 앱은 자기 데이터를 읽기만, 남의 데이터는 못 읽는다", async () => {
   await assert.rejects(setDoc(doc(db, "users", uid, "tasks", "hack"), { title: "직접 쓰기" }), /permission/i);
   const mine = uid;
