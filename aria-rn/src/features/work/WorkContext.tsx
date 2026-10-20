@@ -227,7 +227,16 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     if (!uid) return;
     let alive = true;
     (async () => {
-      const mode = (await AsyncStorage.getItem(prefKey(uid, "storage")).catch(() => null)) === "drive" ? "drive" : "device";
+      const saved = await AsyncStorage.getItem(prefKey(uid, "storage")).catch(() => null);
+      let mode: "drive" | "device" = saved === "drive" ? "drive" : "device";
+      // 이 기기에서 처음 연다(고른 적 없음 · 기기 저장소도 비었음) — 다른 기기에서 Drive 를 이어 두었으면 그대로 Drive 에서 읽는다
+      if (saved == null && serverCapable() && !(await deviceStore(uid).list("state/items/").catch(() => [])).length) {
+        const st = await driveStatusApi({}).catch(() => null);
+        if (st?.linked) {
+          mode = "drive";
+          await AsyncStorage.setItem(prefKey(uid, "storage"), "drive").catch(() => undefined);
+        }
+      }
       const cache = await AsyncStorage.getItem(prefKey(uid, "textcache")).catch(() => null);
       cacheRef.current = cache ? (JSON.parse(cache) as typeof cacheRef.current) : {};
       const ws = await AsyncStorage.getItem(prefKey(uid, "workspace")).catch(() => null);
