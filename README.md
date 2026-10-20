@@ -73,7 +73,7 @@ npm run desktop:start
 
 - 개발: 에뮬레이터 + `npm --prefix aria-rn run web:emulator` 를 띄운 뒤 `npm run desktop:dev`(로컬 Expo 웹에 붙는다). 가짜 실행자로 흐름만 볼 때는 `LLMWIKI_DESKTOP_FAKE_EXECUTORS=1`(개발 빌드에서만).
 - 패키징: `npm run desktop:build` → `desktop/release/llmwiki-<버전>-arm64.dmg` · `.zip`. 서명 · 공증 출처는 `desktop/signing.config.mjs` 한 곳에서 고른다.
-  - 기본 프로필 `feeeld`: 회사 Developer ID(FEEEL'D INC., 팀 46LU76SNUA, 만료 2027-02-01)를 MAKi 와 같은 SSM(`/front/staging`)에서 받아 임시 키체인으로 서명하고 공증한다(AWS 권한 필요).
+  - 기본 프로필 `feeeld`: 회사 Developer ID(FEEEL'D INC., 팀 46LU76SNUA, 만료 2027-02-01)를 MAKi 와 같은 SSM(`/front/staging`)에서 받아 임시 키체인으로 서명하고 공증한다(AWS 권한 필요). 공증 표시(staple)는 MAKi 처럼 붙이지 않는다(`LLMWIKI_STAPLE=true` 면 시도).
   - `LLMWIKI_SIGNING=none` 서명 없이 · `LLMWIKI_NOTARIZE=false` 서명만 · `npm --prefix desktop run signing:check` 출처 · 인증서만 확인.
   - 개인 계정으로 바꿀 때: `signing.config.mjs` 의 `personal`(환경 변수 출처)에 팀 ID 를 채우고 `DEFAULT` 를 바꾼다.
 - 시험: `npm run test:desktop`(정책 · 입력 검증 · 실행 큐 · 브리지 계약 + 실행 본문).

@@ -203,7 +203,8 @@ function finish(profile, identityName, canNotarize, s, cleanupKeychain, keychain
     identity,
     teamId: teamOf(identityName),
     notarize: canNotarize,
-    builderMac: { identity, hardenedRuntime: true, notarize: canNotarize, entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist', gatekeeperAssess: false },
+    // electron-builder 자체 공증은 표시(staple)까지 묶여 실패하면 빌드가 멈춘다 — afterSign 훅(notarize.mjs)이 공증만 한다
+    builderMac: { identity, hardenedRuntime: true, notarize: false, entitlements: 'build/entitlements.mac.plist', entitlementsInherit: 'build/entitlements.mac.plist', gatekeeperAssess: false },
     cleanup: () => {
       for (const [k, v] of Object.entries(prev)) {
         if (v === undefined) delete process.env[k];

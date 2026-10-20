@@ -7,6 +7,7 @@ import { build as builder } from 'electron-builder';
 import { cp, mkdir, rm } from 'node:fs/promises';
 
 import { builderConfig } from '../electron-builder.config.mjs';
+import afterSign from './notarize.mjs';
 import { setupSigning } from './signing.mjs';
 
 await rm('dist', { recursive: true, force: true });
@@ -29,7 +30,7 @@ console.log('dist/ 준비 완료');
 
 const signing = setupSigning();
 try {
-  await builder({ config: builderConfig(signing.builderMac) });
+  await builder({ config: { ...builderConfig(signing.builderMac), ...(signing.notarize ? { afterSign } : {}) } });
 } finally {
   signing.cleanup();
 }
