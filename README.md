@@ -2,6 +2,8 @@
 
 Aria(맥 · iOS 할일 비서)의 구조를 옮겨 다시 만든 할일 비서. 분석은 [docs/aria-analysis.md](docs/aria-analysis.md).
 
+로컬 모델(Gemma · Laya)·업무 위임 검증과 현재 상태는 [docs/local-models](docs/local-models/README.md).
+
 말하면 할일 · 일정 · 기록으로 정리하고, 결과를 대화 아래 카드로 보여 준다. 기록이 쌓이면 개념이 이어져 시냅스가 된다.
 
 | 폴더 | 하는 일 |
