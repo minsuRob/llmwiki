@@ -1,0 +1,7 @@
+:root { --bg: #f7f7f5; --fg: #1d1d1b; --muted: #6b6b66; --btn: #1d1d1b; --btn-fg: #fff; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ededea; --muted: #a2a29c; --btn: #ededea; --btn-fg: #161615; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+main { max-width: 520px; margin: 18vh auto 0; padding: 0 24px; }
+h1 { font-size: 20px; margin: 0 0 12px; }
+.small { color: var(--muted); font-size: 13px; }
+button { background: var(--btn); color: var(--btn-fg); border: 0; border-radius: 8px; padding: 10px 18px; font-size: 15px; cursor: pointer; }

@@ -27,6 +27,7 @@ import {
 import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
+import { DesktopRunLines } from "./DesktopRunLines";
 import { HandoffPanel } from "./HandoffPanel";
 import { ImportPanel } from "./ImportPanel";
 import { confirmAsk } from "./io";
@@ -280,6 +281,7 @@ export default function WorkDetailScreen() {
         <Btn c={c} primary label={t("detail.continueWithAi")} onPress={() => setPanel(panel === "handoff" ? null : "handoff")} />
         <Btn c={c} label={t("detail.importResult")} onPress={() => setPanel(panel === "import" ? null : "import")} />
       </View>
+      {panel !== "handoff" ? <DesktopRunLines c={c} itemId={item.id} /> : null}
       {panel === "handoff" ? <HandoffPanel c={c} item={item} onClose={() => setPanel(null)} /> : null}
       {panel === "import" ? <ImportPanel c={c} item={item} onClose={() => setPanel(null)} /> : null}
       {latestChange && openedAt - new Date(latestChange.at).getTime() < 10 * 60 * 1000 ? <ChangeCard c={c} item={item} change={latestChange} /> : null}

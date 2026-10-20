@@ -87,7 +87,7 @@ interface WorkApi {
   linkExisting: (itemId: string, sourceId: string, confirmCross?: boolean) => Promise<"linked" | "already" | "needs_confirm">;
   unlink: (itemId: string, sourceId: string) => Promise<void>;
   saveManifest: (fn: (m: WorkManifest) => WorkManifest) => Promise<SaveState>;
-  prepare: (itemId: string, input: { tool: AiTool; scope: string; doneCriteria: string; includeCross?: boolean }) => Promise<{ markdown: string; excluded: number; dropped: number } | null>;
+  prepare: (itemId: string, input: { tool: AiTool; scope: string; doneCriteria: string; includeCross?: boolean }) => Promise<{ markdown: string; runId: string; excluded: number; dropped: number } | null>;
   importText: (itemId: string, text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<ImportResult | { kind: "save_failed" }>;
   undo: (itemId: string, changeId: string) => Promise<void>;
   rawText: (hash: string) => Promise<string | null>;
@@ -429,7 +429,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const r = prepareRun(item, stateRef.current.sources, stateRef.current.manifest.workspaces, { ...input, statusLabel: tRef.current(`work.status.${item.status}`) }, labelsFrom(tRef.current), nowIso(), cachedText);
       // 작업 기록이 저장되지 않아도 묶음은 복사할 수 있다(저장 상태는 따로 보인다)
       await saveItem(r.item);
-      return { markdown: r.markdown, excluded: r.excluded.length, dropped: r.dropped.length };
+      return { markdown: r.markdown, runId: r.run.id, excluded: r.excluded.length, dropped: r.dropped.length };
     },
     [saveItem, cachedText],
   );

@@ -12,7 +12,12 @@
     "test:cloud": "bash tests/cloud-smoke.sh",
     "deploy": "firebase deploy --only hosting,functions,firestore --project llmwiki-minsu",
     "deploy:web": "firebase deploy --only hosting --project llmwiki-minsu",
-    "local-drive": "node tools/local-drive/server.mjs --dir .local-drive --port 8790 --seed"
+    "local-drive": "node tools/local-drive/server.mjs --dir .local-drive --port 8790 --seed",
+    "desktop:install": "npm --prefix desktop install",
+    "desktop:start": "npm --prefix desktop start",
+    "desktop:dev": "LLMWIKI_DESKTOP_URL=http://localhost:8081 npm --prefix desktop run dev",
+    "desktop:build": "npm --prefix desktop run build",
+    "test:desktop": "npm --prefix desktop test"
   },
   "devDependencies": {
     "firebase": "^13.0.0"

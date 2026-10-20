@@ -36,7 +36,7 @@ Claude · Codex 를 그대로 쓰면서, 일하기 **전**의 맥락 준비와 �
 
 ### AI 실행자 — Claude · Codex · Gemma
 
-같은 맥락 묶음을 받아 같은 `llmwiki-result` 형식으로 돌려준다. 앱은 실행자를 직접 돌리지 않는다(웹은 로컬 CLI · SSH 를 못 띄운다). 묶음을 파일로 내보낸 뒤 이 컴퓨터에서:
+같은 맥락 묶음을 받아 같은 `llmwiki-result` 형식으로 돌려준다. 웹은 로컬 CLI · SSH 를 못 띄우므로, 묶음을 파일로 내보낸 뒤 이 컴퓨터에서 돌리거나 **데스크톱 셸**(아래)에서 '바로 실행'한다:
 
 ```bash
 node tools/handoff/run.mjs claude "<업무>-ai.md"
@@ -53,6 +53,27 @@ node tools/handoff/run.mjs claude "<업무>-ai.md"
 - 묶음의 자료에는 줄 번호(`S1:12`)가 붙고, AI 는 `refs` 로 근거를 댄다.
 - Claude Code 에 `oci-jobs` MCP 를 등록했다면 `oci_handoff_submit` · `oci_handoff_output` 으로도 Gemma 를 돌린다(`tools/local-model-eval/jobd/oci-jobs-mcp.mjs`).
 - Gemma 가 기다리다 끊기면: `node tools/handoff/run.mjs gemma --fetch <작업 id>`
+- 실행 본문은 `tools/handoff/lib.mjs` — 터미널(`run.mjs`)과 데스크톱 셸이 같은 코드를 쓴다. 시험: `node --test 'tools/handoff/*.test.mjs'`
+
+### 데스크톱 셸(Electron) — 바로 실행
+
+`desktop/` 은 배포된 웹(`https://llmwiki-minsu.web.app`)을 그대로 띄우고 실행만 더하는 얇은 셸이다. 화면은 웹 배포(`npm run deploy:web`)로 바뀌고 셸은 다시 설치하지 않아도 된다. 원칙: `docs/architecture.md` "데스크톱 셸".
+
+- 업무 상세 → AI 로 이어하기 → 맥락 묶기 → **바로 실행** → 보내기 확인 창(매번) → 끝나면 결과가 자동으로 들어와 검토 카드에 제안으로 쌓인다.
+- 셸에서 Claude 는 웹 조사만(로컬 파일 읽기 없음, 빈 임시 폴더), Codex 는 읽기 전용, Gemma 는 오라클 서버 큐. CLI 경로는 로그인 셸에서 찾고 `~/Library/Application Support/llmwiki/config.json` 의 `claudePath` · `codexPath` 로 덮어쓸 수 있다.
+- 앱이 받기 전 결과는 `~/Library/Application Support/llmwiki/runs/` 에 잠시 두고(받으면 바로 · 늦어도 30일 뒤 삭제), 로그(`logs/shell.log`)에는 원문 · 토큰을 남기지 않는다.
+
+```bash
+npm run desktop:install
+```
+
+```bash
+npm run desktop:start
+```
+
+- 개발: 에뮬레이터 + `npm --prefix aria-rn run web:emulator` 를 띄운 뒤 `npm run desktop:dev`(로컬 Expo 웹에 붙는다). 가짜 실행자로 흐름만 볼 때는 `LLMWIKI_DESKTOP_FAKE_EXECUTORS=1`(개발 빌드에서만).
+- 패키징: `npm run desktop:build` → `desktop/release/llmwiki-<버전>-arm64.dmg` · `.zip`(서명 · 공증 없음 — 처음 열 때 우클릭 → 열기).
+- 시험: `npm run test:desktop`(정책 · 입력 검증 · 실행 큐 · 브리지 계약 + 실행 본문).
 
 ### 데이터가 놓이는 곳
 

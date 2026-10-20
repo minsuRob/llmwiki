@@ -10,6 +10,7 @@ import { LocalDrivePickerHost } from "../features/work/drive/LocalDrivePicker";
 import { ConfirmHost } from "../features/work/ConfirmHost";
 import { DriveBanner } from "../features/work/DriveBanner";
 import { QuickAdd } from "../features/work/QuickAdd";
+import { DesktopRunsProvider } from "../features/work/DesktopRuns";
 import { WorkProvider } from "../features/work/WorkContext";
 import { DataProvider, useData } from "../firebase/data";
 import { I18nProvider, useT } from "../i18n";
@@ -102,7 +103,9 @@ function AuthGate() {
   if (!user) return <LoginScreen />;
   return (
     <WorkProvider>
-      <AppTabs />
+      <DesktopRunsProvider>
+        <AppTabs />
+      </DesktopRunsProvider>
     </WorkProvider>
   );
 }

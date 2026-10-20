@@ -1,0 +1,20 @@
+{
+  "name": "llmwiki-desktop",
+  "productName": "llmwiki",
+  "version": "0.1.0",
+  "private": true,
+  "description": "llmwiki 데스크톱 셸 — 배포된 웹을 띄우고 Claude · Codex · Gemma 실행만 더한다",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "test": "node --test 'test/*.test.mjs' '../tools/handoff/*.test.mjs'",
+    "build": "node scripts/build.mjs && electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2"
+  }
+}

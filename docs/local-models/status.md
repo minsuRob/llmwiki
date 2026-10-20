@@ -12,11 +12,12 @@
 - **실행자 연결(1단계, 안 A)**: 앱이 실행자별 묶음(Claude · Codex 2만 자, Gemma 5천 자)을 만들고, `tools/handoff/run.mjs` 가 돌린다. Gemma 는 서버 `jobd` 의 `handoff_gemma`. 결과는 앱 '작업 결과 가져오기'로 → 같은 검사(확정 필드 · 없는 근거 · 근거 없는 마감 · 다른 요청 · 주입 의심) → 제안.
 - **Gemma 실서버 1건**: 그룹바이 진행현황(122줄, 묶음 6,384자) → 461초, `llmwiki-result` 파싱 성공, 할 일 3 · 결정 1 · 결과물 1, 근거 줄 모두 유효, 확정 시도 0. 결과물 링크에 "N/A" 를 넣음(링크로 보지 않게 고침).
 - `handoff.ts`(validateResult · buildBundle)는 `workHandoff.ts` 로 합쳤다.
+- **데스크톱 셸(Electron, `desktop/`)**: 배포된 웹을 띄우고 '바로 실행' → 확인 창 → `tools/handoff/lib.mjs` → 결과 자동 가져오기. 가짜 실행자로 Claude · Codex · Gemma 셋 모두 끝까지(제안으로만 들어옴, 확정 0), 허용 밖 탐색 차단 · 브리지 격리 · 오프라인 안내 확인. 시험 19개. 서명 없는 .dmg/.zip 빌드.
 
 ## 안 됨 / 미검증
 
 - 실제 Claude · Codex 위임 실행(외부 전송 허가 전). Codex 는 개발 맥에 미설치.
-- Electron 셸. 웹은 로컬 CLI · stdio MCP 를 못 띄워서 필요.
+- 데스크톱 셸 안 Google 로그인 · Drive 동의(계정 주인이 직접 시험), 셸로 실제 Gemma 1건 · 실제 Claude 1건(외부 전송 허가 전).
 - 정답 대부분이 잠정 → 수치는 경향으로만 읽는다([review.md](review.md)).
 
 ## 위치
