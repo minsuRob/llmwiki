@@ -7,3 +7,6 @@ functions/lib/
 .firebase/
 functions/.env
 .local-drive/
+
+# 참고용 예제(받아서 보기만 함)
+vendor/

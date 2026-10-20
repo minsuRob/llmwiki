@@ -18,6 +18,7 @@ export default {
     today: "Today",
     work: "Work",
     archive: "Archive",
+    editor: "Editor",
     chat: "Chat",
     workDetail: "Work",
     allTasks: "All tasks",
@@ -28,6 +29,7 @@ export default {
     settings: "Settings",
     more: "More",
   },
+  editor: { placeholder: "Enter some rich text…", empty: "Nothing written yet.", count: "{words} words · {chars} chars" },
   ws: { personal: "Personal", company: "Company", switch: "Choose topic" },
   topic: {
     add: "Topic",

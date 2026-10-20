@@ -1,0 +1,134 @@
+/* Lexical 편집기 — 웹에서는 앱 페이지에 그대로 붙으므로 모든 규칙을 .lex-root 아래로 가둔다.
+   색은 앱 팔레트를 --lex-* 변수로 받는다(DOM 컴포넌트 props) */
+.lex-root {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--lex-text);
+  background: var(--lex-bg);
+  -webkit-font-smoothing: antialiased;
+}
+/* 네이티브 웹뷰 안 — html · body 에 높이가 없으니 화면 높이를 직접 채우고, body 기본 여백(8px)을 없앤다.
+   :has 로 걸어 웹(편집기가 앱 페이지에 붙는 경우)의 body 는 건드리지 않는다 */
+.lex-root.lex-dom {
+  height: 100vh;
+}
+body:has(> #root .lex-dom) {
+  margin: 0;
+}
+.lex-root *,
+.lex-root *::before,
+.lex-root *::after {
+  box-sizing: border-box;
+}
+.lex-container {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--lex-border);
+  border-radius: 12px;
+  background: var(--lex-card);
+  overflow: hidden;
+  line-height: 22px;
+  text-align: left;
+}
+.lex-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 1px;
+  min-width: 0;
+  max-width: 100%;
+  scrollbar-width: none;
+  padding: 6px;
+  border-bottom: 1px solid var(--lex-border);
+  background: var(--lex-surface);
+}
+.lex-toolbar-item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--lex-text);
+  cursor: pointer;
+}
+.lex-toolbar-item:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .lex-toolbar-item:hover:not(:disabled) {
+    background: var(--lex-soft);
+  }
+}
+.lex-toolbar-item.active {
+  background: var(--lex-soft);
+  color: var(--lex-accent);
+}
+.lex-divider {
+  flex: none;
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--lex-border);
+}
+.lex-inner {
+  position: relative;
+  flex: 1;
+  overflow-y: auto;
+}
+.lex-input {
+  min-height: 100%;
+  padding: 14px 12px 32px;
+  font-size: 16px;
+  outline: 0;
+  caret-color: var(--lex-accent);
+  tab-size: 1;
+}
+.lex-placeholder {
+  position: absolute;
+  top: 14px;
+  left: 12px;
+  font-size: 16px;
+  color: var(--lex-muted);
+  pointer-events: none;
+  user-select: none;
+}
+.lex-paragraph {
+  margin: 0 0 8px;
+}
+.lex-paragraph:last-child {
+  margin-bottom: 0;
+}
+.lex-text-bold {
+  font-weight: 700;
+}
+.lex-text-italic {
+  font-style: italic;
+}
+.lex-text-underline {
+  text-decoration: underline;
+}
+.lex-text-strikethrough {
+  text-decoration: line-through;
+}
+.lex-text-underlineStrikethrough {
+  text-decoration: underline line-through;
+}
+.lex-text-code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--lex-soft);
+  font-family: Menlo, Consolas, monospace;
+  font-size: 94%;
+}

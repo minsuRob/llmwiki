@@ -5,6 +5,10 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.17",
     "@expo/vector-icons": "^15.0.2",
+    "@lexical/extension": "^0.52.0",
+    "@lexical/history": "^0.52.0",
+    "@lexical/react": "^0.52.0",
+    "@lexical/rich-text": "^0.52.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.29",
     "expo-clipboard": "~57.0.2",
@@ -14,6 +18,7 @@
     "expo-router": "~57.0.27",
     "expo-status-bar": "~57.0.1",
     "firebase": "^13.0.0",
+    "lexical": "^0.52.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
