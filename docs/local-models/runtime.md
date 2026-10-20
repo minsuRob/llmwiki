@@ -10,7 +10,7 @@ Oracle A1 서버 — llama-server(Gemma) + Laya, 작업 큐 jobd.py(순차)
 결과는 '제안'으로만 저장 → 사람이 검토 카드에서 확정
 ```
 
-## 실행자 어댑터 (`tools/local-model-eval/prototype/executors.mjs`)
+## 실행자 어댑터 (`tools/handoff/executors.mjs` — 제품 실행 도구 `tools/handoff/run.mjs` 가 쓴다)
 
 모양: `command({bundlePath, workdir, mode, mcpConfig, model}) → {cmd, args, stdinFile}` · `readOutput(stdout) → {text, meta}`.
 
@@ -18,6 +18,7 @@ Oracle A1 서버 — llama-server(Gemma) + Laya, 작업 큐 jobd.py(순차)
 |---|---|---|
 | Claude | `claude -p --output-format json` · 조사 모드 허용 `WebSearch,WebFetch,Read,Grep,Glob` · 차단 `Bash,Edit,Write,NotebookEdit` · 묶음은 표준입력 · `--mcp-config` | 명령·가짜 실행자 시험만 |
 | Codex | `codex exec --json --sandbox read-only --skip-git-repo-check -` | 공식 문서 기준, 미실행 |
+| Gemma | `tools/handoff/oracle.mjs` → 서버 `jobd.py submit handoff_gemma --input` → `jobd/gemma_handoff.py` | 2026-10-20 실서버 연결 |
 | Grok · Muse | 같은 모양 자리(`status: planned`) | 미연결 |
 
 runner: run 1건 = 위임 1건. `queued → running → review_pending | needs_attention`. **업무 상태는 runner 가 바꾸지 않는다.**

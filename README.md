@@ -30,7 +30,27 @@ Claude · Codex 를 그대로 쓰면서, 일하기 **전**의 맥락 준비와 �
 | 오늘 — 추천 3개(마감 · 중요도 · 선행 작업, 이유 표시, 위/아래로 순서 바꾸기) · 이어서 할 업무 · 마감 · 판단 필요 · 최근 AI 결과 | 오늘 탭 |
 | 보관함 — 원본 자료 · 메모 · AI 결과 · 결과물 · 검색(작업실 안에서만) | 보관함 탭 |
 
-공용 로직은 `packages/core/src/work.ts`(모델 · 상태 전환 · 추천 · 검색) · `workHandoff.ts`(내보내기 · 가져오기) · `workStore.ts`(파일 저장소 · 충돌) · `drive.ts`(Drive REST) · `workMigrate.ts`(기록 이행).
+공용 로직은 `packages/core/src/work.ts`(모델 · 상태 전환 · 추천 · 검색) · `workHandoff.ts`(내보내기 · 가져오기 · 결과 검사) · `executors.ts`(실행자별 자료 예산) · `workStore.ts`(파일 저장소 · 충돌) · `drive.ts`(Drive REST) · `workMigrate.ts`(기록 이행).
+
+### AI 실행자 — Claude · Codex · Gemma
+
+같은 맥락 묶음을 받아 같은 `llmwiki-result` 형식으로 돌려준다. 앱은 실행자를 직접 돌리지 않는다(웹은 로컬 CLI · SSH 를 못 띄운다). 묶음을 파일로 내보낸 뒤 이 컴퓨터에서:
+
+```bash
+node tools/handoff/run.mjs claude "<업무>-ai.md"
+```
+
+| 실행자 | 어디서 | 자료 예산 | 맞는 일 |
+|---|---|---|---|
+| Claude | 이 컴퓨터 `claude -p`(조사 모드: 읽기 · 웹만, 파일 수정 · 셸 금지) | 2만 자 | 조사 · 작성 · 분석 |
+| Codex | 이 컴퓨터 `codex exec`(읽기 전용 샌드박스) | 2만 자 | 코드 · 분석 |
+| Gemma | 오라클 서버 작업 큐(`jobd` 의 `handoff_gemma`, SSH 별칭 `oci-a1`) | 5천 자(문맥 8K) | 자료 요약 초안 · 지시문 섞임 검사 |
+
+- 답은 `<묶음>-result.md` 로 남고, 앱의 **작업 결과 가져오기**로 넣는다. 어느 실행자든 같은 검사를 거쳐 **제안으로만** 들어간다.
+- 가져올 때 코드가 표시하는 것(결과는 버리지 않는다): 확정 · 완료 필드(`status` · `confirmed` …) · 묶음에 없는 자료 · 줄 근거 · 근거 줄에 없는 마감 · 다른 요청의 결과 · 지시문으로 보이는 말(자모를 풀어 쓴 글 · 폭 없는 글자 포함).
+- 묶음의 자료에는 줄 번호(`S1:12`)가 붙고, AI 는 `refs` 로 근거를 댄다.
+- Claude Code 에 `oci-jobs` MCP 를 등록했다면 `oci_handoff_submit` · `oci_handoff_output` 으로도 Gemma 를 돌린다(`tools/local-model-eval/jobd/oci-jobs-mcp.mjs`).
+- Gemma 가 기다리다 끊기면: `node tools/handoff/run.mjs gemma --fetch <작업 id>`
 
 ### 데이터가 놓이는 곳
 

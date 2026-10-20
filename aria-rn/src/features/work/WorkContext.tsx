@@ -85,7 +85,7 @@ interface WorkApi {
   linkExisting: (itemId: string, sourceId: string, confirmCross?: boolean) => Promise<"linked" | "already" | "needs_confirm">;
   unlink: (itemId: string, sourceId: string) => Promise<void>;
   saveManifest: (fn: (m: WorkManifest) => WorkManifest) => Promise<SaveState>;
-  prepare: (itemId: string, input: { tool: AiTool; scope: string; doneCriteria: string; includeCross?: boolean }) => Promise<{ markdown: string; excluded: number } | null>;
+  prepare: (itemId: string, input: { tool: AiTool; scope: string; doneCriteria: string; includeCross?: boolean }) => Promise<{ markdown: string; excluded: number; dropped: number } | null>;
   importText: (itemId: string, text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<ImportResult | { kind: "save_failed" }>;
   undo: (itemId: string, changeId: string) => Promise<void>;
   rawText: (hash: string) => Promise<string | null>;
@@ -108,7 +108,7 @@ interface WorkApi {
 const Ctx = createContext<WorkApi | null>(null);
 
 function labelsFrom(t: T): HandoffLabels {
-  const keys = ["title", "meta", "goal", "doneCriteria", "status", "summaryNone", "summaryStale", "decisions", "decisionsNone", "sources", "sourcesNone", "sourceAccess", "sourceNoExcerpt", "excludedCross", "scope", "taskDone", "openQuestions", "openNone", "nextActions", "returnFormat", "returnGuide"] as const;
+  const keys = ["title", "meta", "goal", "doneCriteria", "status", "summaryNone", "summaryStale", "decisions", "decisionsNone", "sources", "sourcesNone", "sourceAccess", "sourceNoExcerpt", "excludedCross", "scope", "taskDone", "openQuestions", "openNone", "nextActions", "returnFormat", "returnGuide", "rules", "rulesTitle", "droppedBudget"] as const;
   // 자리표시({title} 등)는 core 가 채운다 — 여기서는 비워 두지 않도록 그대로 돌려준다
   const keep = Object.fromEntries(["title", "workspace", "version", "run", "at", "titles", "count"].map((k) => [k, `{${k}}`]));
   return Object.fromEntries(keys.map((k) => [k, t(`handoff.pack.${k}`, keep)])) as unknown as HandoffLabels;
@@ -383,7 +383,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const r = prepareRun(item, stateRef.current.sources, stateRef.current.manifest.workspaces, { ...input, statusLabel: tRef.current(`work.status.${item.status}`) }, labelsFrom(tRef.current), nowIso(), cachedText);
       // 작업 기록이 저장되지 않아도 묶음은 복사할 수 있다(저장 상태는 따로 보인다)
       await saveItem(r.item);
-      return { markdown: r.markdown, excluded: r.excluded.length };
+      return { markdown: r.markdown, excluded: r.excluded.length, dropped: r.dropped.length };
     },
     [saveItem, cachedText],
   );
@@ -393,7 +393,13 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const item = stateRef.current.items.find((i) => i.id === itemId);
       const repo = repoRef.current;
       if (!item || !repo) return { kind: "save_failed" };
-      const r = importResult(item, text, nowIso(), opts);
+      // 근거 줄 검사 — 묶음을 만들 때와 같은 발췌(기기 캐시)를 줄로
+      const lines = (sourceId: string) => {
+        const src = stateRef.current.sources.find((x) => x.id === sourceId);
+        const body = src ? cachedText(src) : null;
+        return body ? body.replace(/\r\n?/g, "\n").split("\n") : null;
+      };
+      const r = importResult(item, text, nowIso(), { ...opts, lines });
       if (r.kind === "duplicate") return r;
       // 원문부터 — 원문이 저장되지 않으면 아무것도 반영하지 않는다(유실 방지)
       const raw = await repo.saveRaw(r.rawHash, text);
@@ -404,7 +410,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const s = await saveItem(r.item);
       return s === "failed" ? { kind: "save_failed" } : r;
     },
-    [saveItem],
+    [saveItem, cachedText],
   );
 
   const undo = useCallback(

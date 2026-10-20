@@ -2,7 +2,8 @@
 """서버 작업 큐 — 오래 걸리는 실험을 하나씩(10~15분 단위) 돌린다. 표준 라이브러리만.
 
   jobd.py kinds                  실행할 수 있는 작업 종류(정해진 것만, 임의 명령 없음)
-  jobd.py submit <kind>          큐에 넣기 → {"id": ...}
+  jobd.py submit <kind> [--input <jobs/in 안 파일>]   큐에 넣기 → {"id": ...}
+  jobd.py output <id>            입력을 받는 작업(handoff_gemma)의 결과 글
   jobd.py status [id]            대기·실행·완료 목록 또는 한 건
   jobd.py result <id>            완료 기록 + 로그 끝부분
   jobd.py cancel <id>            대기 중이면 빼고, 실행 중이면 멈춘다
@@ -25,7 +26,7 @@ from pathlib import Path
 HOME = Path.home()
 LWE = HOME / "lwe"
 Q = LWE / "jobs"
-for d in ("queue", "running", "done", "logs"):
+for d in ("queue", "running", "done", "logs", "in", "out"):
     (Q / d).mkdir(parents=True, exist_ok=True)
 PY_VENV = str(HOME / "venv/bin/python")
 GEMMA = [str(HOME / "llama.cpp/build/bin/llama-server"), "-m", str(HOME / "models/gemma4/gemma-4-E4B_q4_0-it.gguf"),
@@ -47,6 +48,8 @@ KINDS = {
     "gemma_struct_review":  ("on",  15,  G("struct_a", "struct_b", "review")),
     "gemma_translate_q":    ("on",   3,  G("translate_q")),
     "laya_judg_snippet_gq": ("off",  3,  [L("judg_T")]),
+    # 업무 위임 — 앱이 만든 맥락 묶음(.md)을 Gemma 가 읽고 llmwiki-result 로 답한다. {input}·{output} 은 작업마다 채운다
+    "handoff_gemma":        ("on",   6,  [["python3", "jobd/gemma_handoff.py", "{input}", "{output}"]]),
     "perf_gemma_coexist":   ("on",  14,  [["python3", "src/perf.py", "gemma_len", "results/raw", "t2", "2"],
                                           [PY_VENV, "src/perf.py", "coexist", "results/raw"]]),
 }
@@ -137,6 +140,8 @@ def worker():
         lf = open(logf, "a")
         log = lambda m: (lf.write(f"[{time.strftime('%H:%M:%S')}] {m}\n"), lf.flush())
         need, est, cmds = KINDS[job["kind"]]
+        if job.get("input"):
+            cmds = [[a.replace("{input}", job["input"]).replace("{output}", job["output"]) for a in c] for c in cmds]
         job.update(status="running", started=now(), est_min=est)
         rp.write_text(json.dumps(job, ensure_ascii=False))
         ensure_gemma(need, log)
@@ -182,6 +187,14 @@ def main():
             sys.exit(2)
         jid = time.strftime("%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
         job = {"id": jid, "kind": kind, "created": now(), "status": "queued", "est_min": KINDS[kind][1]}
+        needs_input = any("{input}" in a for c in KINDS[kind][2] for a in c)
+        if needs_input:
+            # 입력은 jobs/in 안의 파일만(경로 밖으로 나가지 않게)
+            src = Path(sys.argv[sys.argv.index("--input") + 1]).expanduser() if "--input" in sys.argv else None
+            if not src or not src.resolve().is_relative_to((Q / "in").resolve()) or not src.is_file():
+                jdump({"error": "--input 은 ~/lwe/jobs/in 안의 파일이어야 한다"})
+                sys.exit(2)
+            job.update(input=str(src.resolve()), output=str((Q / "out" / f"{jid}.md").resolve()))
         (Q / "queue" / f"{jid}.json").write_text(json.dumps(job, ensure_ascii=False))
         ahead = len(list((Q / "queue").glob("*.json"))) - 1 + len(list((Q / "running").glob("*.json")))
         jdump({**job, "jobs_ahead": ahead})
@@ -198,6 +211,16 @@ def main():
         logf = Q / "logs" / f"{sys.argv[2]}.log"
         tail = logf.read_text().splitlines()[-25:] if logf.exists() else []
         jdump({"job": read(p) if p else None, "log_tail": [l for l in tail if "Command being timed" not in l][-15:]})
+    elif cmd == "output":
+        d, p = find(sys.argv[2])
+        job = read(p) if p else None
+        out = Path(job["output"]) if job and job.get("output") else None
+        if not job:
+            jdump({"error": "없음"})
+        elif job.get("status") != "done" or not out or not out.exists():
+            jdump({"error": "아직 결과가 없다", "status": job.get("status")})
+        else:
+            sys.stdout.write(out.read_text())
     elif cmd == "cancel":
         d, p = find(sys.argv[2])
         if d == "queue":

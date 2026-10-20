@@ -31,7 +31,6 @@ function useJobs(uid: string | null) {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!uid) return;
-    setJobs(null);
     return onSnapshot(
       collection(db, "users", uid, "jobs"),
       (snap) => setJobs(snap.docs.map((d) => ({ ...(d.data() as Job), id: d.id }))),

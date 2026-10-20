@@ -57,10 +57,23 @@ export interface Decision {
   /** 이 결정이 바꾸려는(바꾼) 이전 결정 */
   supersedes?: string | null;
   supersededBy?: string | null;
+  /** AI 가 댄 근거("S1:12") */
+  refs?: string[];
 }
 
-export type AiTool = "claude" | "codex" | "other";
+export type AiTool = "claude" | "codex" | "gemma" | "other";
 export type RunStatus = "prepared" | "imported" | "parse_failed";
+
+/**
+ * 가져올 때 코드가 찾은 문제(workHandoff.importResult) — 화면이 경고로 보인다. 결과를 버리지는 않는다.
+ * - forbidden_fields: status · confirmed 같은 확정 · 완료 필드가 있었다(무시했다)
+ * - bad_refs: 묶음에 없는 자료 · 줄을 근거로 댔다
+ * - run_mismatch: 결과의 run 이 고른 요청과 다르다
+ * - injection_suspect: 결과 원문에 지시문으로 보이는 말이 있다
+ */
+export type RunFlag = "forbidden_fields" | "bad_refs" | "run_mismatch" | "injection_suspect";
+/** 제안 하나에 붙는 경고 — due_unsupported: 근거 줄에 없는 마감 · no_evidence: 근거 참조 없음 */
+export type ProposalFlag = "due_unsupported" | "no_evidence";
 
 export interface AiRun {
   id: string;
@@ -79,6 +92,11 @@ export interface AiRun {
   unverified: string[];
   /** 가져온 원문의 해시 — 같은 결과를 다시 가져오는지 본다. 원문은 저장소 raw/{hash}.txt */
   rawHash?: string;
+  /** 넘긴 자료 순서(S1, S2 … 의 근거 참조를 풀 때 쓴다) — inputSourceIds 와 같은 순서 */
+  refKeys?: string[];
+  /** 자료 발췌를 몇 줄까지 넘겼나(S1 → 줄 수) — 없는 줄 참조를 잡는다 */
+  refLines?: Record<string, number>;
+  flags?: RunFlag[];
   startedAt: string;
   finishedAt?: string | null;
 }
@@ -115,6 +133,9 @@ export interface Proposal {
   sourceId?: string;
   /** 판단 근거로 보여 줄 말(AI 가 쓴 문장 그대로) */
   note?: string;
+  /** AI 가 댄 근거("S1:12") */
+  refs?: string[];
+  flags?: ProposalFlag[];
 }
 
 /** 번역 키 + 값 — 앱이 문구로 바꾼다 */

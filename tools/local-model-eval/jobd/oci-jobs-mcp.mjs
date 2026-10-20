@@ -4,9 +4,11 @@
 // 실제 실행은 서버의 jobd.py 가 정해진 작업 종류만 돌린다(임의 명령 없음). 접속은 ~/.ssh/config 의 호스트 별칭을 쓴다.
 import { execFile } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { outputOf, submitGemma } from '../../handoff/oracle.mjs';
 
 const HOST = process.env.OCI_JOBS_HOST ?? 'oci-a1';
 const LOCAL_RESULTS = process.env.OCI_JOBS_RESULTS ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'results', 'raw');
@@ -29,6 +31,10 @@ const TOOLS = [
   { name: 'oci_job_cancel', description: '대기 중인 작업을 빼거나 실행 중인 작업을 멈춘다.',
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
   { name: 'oci_fetch_results', description: '서버의 원시 결과(results/raw)를 로컬로 가져온다.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'oci_handoff_submit', description: 'llmwiki 앱에서 내보낸 맥락 묶음(.md, 이 컴퓨터 경로)을 서버에 올려 Gemma 위임 작업(handoff_gemma)으로 넣는다. 끝나면 oci_handoff_output 으로 답을 받는다. 답은 사람이 앱의 결과 가져오기로 넣는다.',
+    inputSchema: { type: 'object', properties: { bundle_path: { type: 'string', description: '맥락 묶음 .md 의 절대 경로' } }, required: ['bundle_path'] } },
+  { name: 'oci_handoff_output', description: '끝난 Gemma 위임 작업의 답(llmwiki-result 블록 포함). 아직이면 그렇다고 알린다.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
 ];
 
 async function call(name, a = {}) {
@@ -48,6 +54,15 @@ async function call(name, a = {}) {
       await mkdir(LOCAL_RESULTS, { recursive: true });
       return run('rsync', ['-a', '--exclude', '*.log', `${HOST}:lwe/results/raw/`, `${LOCAL_RESULTS}/`], 600_000)
         .then((r) => ({ ...r, stdout: r.ok ? `가져옴 → ${LOCAL_RESULTS}` : r.stdout }));
+    case 'oci_handoff_submit': {
+      const p = a.bundle_path ?? '';
+      const st = await stat(p).catch(() => null);
+      if (!/\.md$/i.test(p) || !st?.isFile() || st.size > 200_000) return { ok: false, stdout: '', stderr: 'bundle_path 는 200KB 이하 .md 파일이어야 한다' };
+      return submitGemma(p).then((r) => ({ ok: true, stdout: JSON.stringify(r) }), (e) => ({ ok: false, stdout: '', stderr: String(e.message ?? e) }));
+    }
+    case 'oci_handoff_output':
+      if (!ID.test(a.id ?? '')) return { ok: false, stdout: '', stderr: 'id 형식 오류' };
+      return outputOf(a.id).then((t) => ({ ok: true, stdout: t ?? '아직 끝나지 않았다 — oci_job_status 로 확인' }), (e) => ({ ok: false, stdout: '', stderr: String(e.message ?? e) }));
     default: return { ok: false, stdout: '', stderr: `모르는 도구: ${name}` };
   }
 }
