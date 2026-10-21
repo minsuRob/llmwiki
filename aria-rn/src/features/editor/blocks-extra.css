@@ -1,0 +1,85 @@
+/* 토글 · 콜아웃 블록 — 모든 규칙을 .lex-root 아래로 가둔다. 색은 --lex-* 변수 */
+
+/* ── 토글 — 제목 왼쪽 ▸(누르면 열고 닫기), 내용은 한 칸 들여 ── */
+.lex-root .lex-toggle {
+  margin: 1px 0;
+}
+.lex-root .lex-toggle-title {
+  position: relative;
+  padding: 3px 2px 3px 26px;
+}
+/* ▸ — ::before 는 빈 블록 안내(data-lex-placeholder)가 쓰니 ::after 로 왼쪽에 띄운다.
+   누르는 자리 너비(26px)는 ToggleExtension 의 CARET_ZONE 과 같다 */
+.lex-root .lex-toggle-title::after {
+  content: "▸";
+  position: absolute;
+  top: 3px;
+  left: 1px;
+  width: 22px;
+  height: 1.5em;
+  border-radius: 4px;
+  color: var(--lex-muted);
+  font-size: 1em;
+  line-height: 1.5em;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 120ms ease;
+}
+.lex-root .lex-toggle[data-open="true"] > .lex-toggle-title::after {
+  transform: rotate(90deg);
+}
+@media (hover: hover) {
+  .lex-root .lex-toggle-title:hover::after {
+    background: var(--lex-soft);
+  }
+}
+.lex-root .lex-toggle-content {
+  padding-left: 26px;
+}
+.lex-root .lex-toggle[data-open="false"] > .lex-toggle-content {
+  display: none;
+}
+/* 빈 토글 — 내용이 빈 문단 하나뿐이고 커서 안내가 없을 때 */
+.lex-root .lex-toggle[data-open="true"] > .lex-toggle-content > p:only-child:not([data-lex-placeholder]):is(:empty, :has(> br:only-child)) {
+  position: relative;
+}
+.lex-root .lex-toggle[data-open="true"] > .lex-toggle-content > p:only-child:not([data-lex-placeholder]):is(:empty, :has(> br:only-child))::before {
+  content: "빈 토글. 눌러서 블록을 넣어 보세요";
+  position: absolute;
+  color: var(--lex-muted);
+  opacity: 0.7;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── 콜아웃 — 회색 둥근 상자 + 왼쪽 이모지(누르면 다음 이모지).
+   누르는 자리(44×44px)는 CalloutExtension 의 EMOJI_ZONE 과 같다 ── */
+.lex-root .lex-callout {
+  position: relative;
+  margin: 4px 0;
+  padding: 12px 14px 12px 44px;
+  border-radius: 6px;
+  background: var(--lex-soft);
+}
+.lex-root .lex-callout::before {
+  content: attr(data-emoji);
+  position: absolute;
+  top: 15px;
+  left: 12px;
+  width: 24px;
+  font-size: 1.15em;
+  line-height: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.lex-root .lex-callout > :first-child {
+  margin-top: 0;
+}
+.lex-root .lex-callout > :last-child {
+  margin-bottom: 0;
+}
