@@ -160,7 +160,7 @@ function $normalizeContent(content: ToggleContentNode): void {
   if (content.isEmpty()) content.append($createParagraphNode());
 }
 
-/** Enter — 제목 맨 앞이면 토글 위에 빈 문단. 내용의 빈 마지막 줄은 Notion 처럼 그대로 새 줄(밖으로는 Shift+Tab) */
+/** Enter — 빈 제목이면 토글을 풀고, 제목 맨 앞이면 토글 위에 빈 문단. 내용의 빈 마지막 줄은 Notion 처럼 그대로 새 줄(밖으로는 Shift+Tab) */
 function $onInsertParagraph(): boolean {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
@@ -168,7 +168,13 @@ function $onInsertParagraph(): boolean {
   const title = $findMatchingParent(anchor, $isToggleTitleNode);
   if ($isToggleTitleNode(title)) {
     const container = title.getParent();
-    if (!$isToggleContainerNode(container) || title.isEmpty() || !$isPointAtStart(selection.anchor, title)) return false;
+    if (!$isToggleContainerNode(container)) return false;
+    // 빈 제목에서 Enter: 토글을 풀어 빈 텍스트로(Notion 과 같다)
+    if (title.isEmpty()) {
+      $unwrapToggle(container)?.selectStart();
+      return true;
+    }
+    if (!$isPointAtStart(selection.anchor, title)) return false;
     container.insertBefore($createParagraphNode());
     return true;
   }

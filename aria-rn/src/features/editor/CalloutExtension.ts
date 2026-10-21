@@ -173,14 +173,19 @@ export function $insertCallout(emoji: string = DEFAULT_EMOJI): boolean {
   return true;
 }
 
-/** Enter — 콜아웃의 마지막 빈 문단이면(블록이 둘 이상일 때) 상자 밖으로 */
+/** Enter — 콜아웃의 마지막 빈 문단이면 상자 밖으로(Notion 과 같다). 줄이 하나뿐이면 빈 상자를 두고 아래에 새 문단 */
 function $onInsertParagraph(): boolean {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
   const anchor = selection.anchor.getNode();
   const callout = anchor.getParent();
   if (!$isParagraphNode(anchor) || !anchor.isEmpty() || anchor.getNextSibling() || !$isCalloutNode(callout)) return false;
-  if (callout.getChildrenSize() < 2) return false;
+  if (callout.getChildrenSize() < 2) {
+    const next = $createParagraphNode();
+    callout.insertAfter(next);
+    next.select();
+    return true;
+  }
   callout.insertAfter(anchor);
   anchor.select();
   return true;

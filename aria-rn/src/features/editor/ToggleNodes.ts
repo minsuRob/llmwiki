@@ -23,6 +23,8 @@ import {
   type Spread,
 } from "lexical";
 
+import { $indentBlockBy } from "./nesting";
+
 /*
  * 토글 블록 — Notion 처럼 제목 한 줄 + 접고 펴는 내용.
  * 구조는 늘 container > [title, content]. 어긋나면 ToggleExtension 의 변환이 바로잡는다
@@ -288,14 +290,16 @@ export function $isToggleContentNode(node: LexicalNode | null | undefined): node
   return node instanceof ToggleContentNode;
 }
 
-/** 토글을 푼다 — 제목은 문단으로, 내용 블록은 그 아래로. 커서는 제목이던 문단 맨 앞 */
+/** 토글을 푼다 — 제목은 같은 깊이의 문단으로, 내용 블록은 한 단계 더 들여 그 아래로(자식으로 보이게). 커서는 제목이던 문단 맨 앞 */
 export function $unwrapToggle(container: ToggleContainerNode): ParagraphNode | null {
+  const depth = container.getIndent();
   let anchor: LexicalNode = container;
   let titleParagraph: ParagraphNode | null = null;
   for (const child of container.getChildren()) {
     if ($isToggleTitleNode(child)) {
       titleParagraph = $createParagraphNode();
       titleParagraph.append(...child.getChildren());
+      if (depth > 0) titleParagraph.setIndent(depth);
       anchor.insertAfter(titleParagraph);
       anchor = titleParagraph;
     } else if ($isToggleContentNode(child)) {
@@ -304,7 +308,7 @@ export function $unwrapToggle(container: ToggleContainerNode): ParagraphNode | n
       if ($isParagraphNode(only) && only.isEmpty()) continue;
       for (const block of child.getChildren()) {
         anchor.insertAfter(block);
-        anchor = block;
+        anchor = $indentBlockBy(block, depth + 1);
       }
     } else {
       anchor.insertAfter(child);
