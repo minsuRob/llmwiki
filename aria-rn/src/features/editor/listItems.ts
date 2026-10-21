@@ -16,10 +16,10 @@ import { $nestList } from "./nesting";
 import { $insertToggle, $isToggleContainerNode } from "./ToggleExtension";
 
 /**
- * 할 일이 아니게 된 항목의 체크 값 — Lexical 은 할 일이 아닌 목록에서 체크 값을 지우니 따로 담아 둔다.
- * 다시 할 일로 바꾸면 되살린다
+ * 할 일이 아니게 된 항목 · 블록의 체크 값 — Lexical 은 할 일이 아닌 목록에서 체크 값을 지우니 따로 담아 둔다.
+ * 다시 할 일로 바꾸면 되살린다(텍스트로 바꿨다 돌아와도 — Notion 과 같다)
  */
-const wasChecked = createState("lexWasChecked", { parse: (v) => v === true });
+export const wasChecked = createState("lexWasChecked", { parse: (v) => v === true });
 
 /** 커서가 든 목록 항목(중첩 목록을 담기만 하는 빈 항목은 건너뛴다) */
 export function $selectedListItem(): ListItemNode | null {
@@ -133,6 +133,8 @@ export function $listItemToBlock(item: ListItemNode, block: ElementNode, takeChi
   }
   const top = levels[levels.length - 1].list;
   const wasEmpty = item.getChildrenSize() === 0;
+  const checked = levels[0].list.getListType() === "check" ? item.getChecked() === true : $getState(item, wasChecked);
+  if (checked) $setState(block, wasChecked, true);
   // 먼저 블록 · 뒤 조각을 제자리에 넣고 나서 항목을 지운다 — 항목이 마지막이면 Lexical 이 빈 목록까지 지워
   // 그 뒤에는 목록 옆에 넣을 수 없다(전에는 여기서 오류가 났다)
   top.insertAfter(block);

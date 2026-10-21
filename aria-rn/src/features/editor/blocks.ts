@@ -3,11 +3,11 @@ import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/extension";
 import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, type ListType } from "@lexical/list";
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
-import { $createParagraphNode, $getSelection, $isRangeSelection, type ElementNode, type LexicalEditor } from "lexical";
+import { $createParagraphNode, $getSelection, $getState, $isRangeSelection, type ElementNode, type LexicalEditor } from "lexical";
 
 import { INSERT_CALLOUT_COMMAND } from "./CalloutExtension";
 import { OPEN_IMAGE_PICKER_COMMAND } from "./ImageExtension";
-import { $listItemToBlock, $listItemToToggle, $selectedListItem, $setListItemType } from "./listItems";
+import { $listItemToBlock, $listItemToToggle, $selectedListItem, $setListItemType, wasChecked } from "./listItems";
 import { INSERT_TOGGLE_COMMAND } from "./ToggleExtension";
 
 /** 블록 종류 — 슬래시 메뉴 · 블록 전환 단축키가 같은 목록을 쓴다 */
@@ -94,7 +94,20 @@ export function applyBlock(editor: LexicalEditor, kind: BlockKind) {
   // 단축키 처리기처럼 이미 편집 중에 불리면 editor.update 가 뒤로 밀린다 — 목록 안인지는 먼저 읽어 정한다
   const inList = editor.getEditorState().read(() => $selectedListItem() !== null);
   if (!inList && listType) {
+    // 할 일이었다가 텍스트가 된 블록이면 체크 값을 되살린다
+    const restore =
+      listType === "check" &&
+      editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        const block = $isRangeSelection(selection) ? selection.anchor.getNode().getTopLevelElement() : null;
+        return block !== null && $getState(block, wasChecked);
+      });
     editor.dispatchCommand(listType === "bullet" ? INSERT_UNORDERED_LIST_COMMAND : listType === "number" ? INSERT_ORDERED_LIST_COMMAND : INSERT_CHECK_LIST_COMMAND, undefined);
+    if (restore) {
+      editor.update(() => {
+        $selectedListItem()?.setChecked(true);
+      });
+    }
     return;
   }
   editor.update(() => {

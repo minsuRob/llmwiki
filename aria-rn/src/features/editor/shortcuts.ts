@@ -11,6 +11,7 @@ import {
   $createParagraphNode,
   $findMatchingParent,
   $isParagraphNode,
+  $isRootNode,
   COMMAND_PRIORITY_NORMAL,
   FORMAT_TEXT_COMMAND,
   INDENT_CONTENT_COMMAND,
@@ -270,8 +271,9 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
           return true;
         }
         const block = selection.anchor.getNode().getTopLevelElement();
-        // 목록 · 토글 · 콜아웃 · 코드는 각자 처리가 있다 — 맨 위의 문단 · 제목 · 인용만
-        if (!($isParagraphNode(block) || $isHeadingNode(block) || $isQuoteNode(block)) || !$isRootOrShadowRoot(block.getParent())) return false;
+        // 목록 · 토글 · 콜아웃 · 코드는 각자 처리가 있다 — 문서 맨 위의 문단 · 제목 · 인용만.
+        // 콜아웃 · 토글 내용은 그림자 루트라 그 안 문단도 "맨 위"로 보이니 진짜 루트인지 본다
+        if (!($isParagraphNode(block) || $isHeadingNode(block) || $isQuoteNode(block)) || !$isRootNode(block.getParent())) return false;
         const indent = $isParagraphNode(block) ? block.getIndent() : 0;
         selection.insertParagraph();
         const next = $getSelection();
