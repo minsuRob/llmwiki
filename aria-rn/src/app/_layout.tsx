@@ -17,11 +17,12 @@ import { I18nProvider, useT } from "../i18n";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-/** 아래 탭 — 오늘 · 업무 · 보관함 · 대화. 나머지(할일 · 일정 · 기록 · 그래프 · 설정)는 위 오른쪽 메뉴에서 */
+/** 아래 탭 — 오늘 · 업무 · 보관함 · 편집기 · 대화. 나머지(할일 · 일정 · 기록 · 그래프 · 설정)는 위 오른쪽 메뉴에서 */
 const TABS: { name: string; title: string; icon: IconName }[] = [
   { name: "index", title: "nav.today", icon: "sunny-outline" },
   { name: "work/index", title: "nav.work", icon: "briefcase-outline" },
   { name: "archive", title: "nav.archive", icon: "archive-outline" },
+  { name: "editor", title: "nav.editor", icon: "create-outline" },
   { name: "chat", title: "nav.chat", icon: "chatbubble-ellipses-outline" },
 ];
 const HIDDEN: { name: string; title: string }[] = [

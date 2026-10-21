@@ -23,7 +23,8 @@ export function QuickAdd() {
   const [target, setTarget] = useState<string | null>(null);
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  if (!ready) return null;
+  // 편집기에서는 글 위를 가리니 숨긴다
+  if (!ready || path === "/editor") return null;
   const here = /^\/work\/([^/]+)$/.exec(path)?.[1] ?? null;
   const items = state.items.filter((i) => i.workspaceId === workspaceId && i.status !== "archived" && i.status !== "done");
 
