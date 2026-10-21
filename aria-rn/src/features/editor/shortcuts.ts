@@ -18,6 +18,7 @@ import {
   FORMAT_TEXT_COMMAND,
   INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  INSERT_TAB_COMMAND,
   IS_APPLE,
   KEY_ARROW_DOWN_COMMAND,
   KEY_BACKSPACE_COMMAND,
@@ -31,8 +32,8 @@ import {
 
 import { applyBlock, type BlockKind } from "./blocks";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
-import { $blockDepth, $outdentBlockOnce } from "./nesting";
-import { $isToggleContainerNode, $isToggleContentNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
+import { $outlineBackspaceBlock, $outlineEmptyItemEnter, $outlineExitToggle, $outlineItemToBlock, $outlineShift } from "./outline";
+import { $isToggleContainerNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
 function isMod(e: KeyboardEvent): boolean {
@@ -75,38 +76,6 @@ function $deepCopy<T extends LexicalNode>(node: T): T {
   return copy;
 }
 
-/**
- * 토글 안팎 Tab(Notion 과 같다)
- * - Tab: 토글 바로 아래 블록 → 토글 안 마지막 줄로(닫혀 있으면 연다)
- * - Shift+Tab: 토글 안 블록(들여쓰기 없음) → 토글 바로 아래로. 그 뒤 줄들은 한 단계 들여 써서 따라 나온다
- */
-function $toggleTab(anchor: LexicalNode, outdent: boolean): boolean {
-  const block = $findMatchingParent(anchor, (n) => $isElementNode(n) && !n.isInline() && ($isRootOrShadowRoot(n.getParent()) || $isToggleContentNode(n.getParent())));
-  if (!$isElementNode(block) || block.getIndent() > 0 || $isListNode(block)) return false;
-  const parent = block.getParent();
-  if (outdent) {
-    if (!$isToggleContentNode(parent)) return false;
-    const container = parent.getParent();
-    if (!$isToggleContainerNode(container)) return false;
-    const following = block.getNextSiblings();
-    container.insertAfter(block);
-    let last: LexicalNode = block;
-    for (const node of following) {
-      last.insertAfter(node);
-      if ($isElementNode(node)) node.setIndent(node.getIndent() + 1);
-      last = node;
-    }
-    return true;
-  }
-  const prev = block.getPreviousSibling();
-  if (!$isToggleContainerNode(prev)) return false;
-  const content = prev.getContent();
-  if (!content) return false;
-  prev.setOpen(true);
-  content.append(block);
-  return true;
-}
-
 /** 같은 깊이의 바로 위 · 아래 형제와 자리를 바꾼다 */
 function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
   const sibling = dir < 0 ? block.getPreviousSibling() : block.getNextSibling();
@@ -124,9 +93,10 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
  * - Cmd+Shift+↑/↓: 블록 위 · 아래로 옮기기
  * - Cmd+Shift+X: 취소선(Cmd+Shift+S 와 같다)
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
- * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자) · 토글 안팎으로 옮긴다
+ * - Tab / Shift+Tab: 블록과 자식을 함께 들이고 내어 쓴다 — 종류는 그대로(코드 안은 탭 문자) · 앞 형제가 토글이면 그 안으로, 토글 안 맨 위면 밖으로
  * - Enter 로 만든 새 문단: 서식 없이 시작, 들여쓰기 깊이는 이어 간다
  * - 목록 항목 맨 앞 Backspace: 같은 깊이의 텍스트로. 텍스트 맨 앞 Backspace: 마지막 자식이면 내어 쓰고, 아니면 위와 합치며 자식은 한 단계 올린다(Notion)
+ * - 빈 목록 항목 Enter: 마지막 자식이면 종류 그대로 내어 쓰고, 아니면 텍스트로 · 글 있는 항목 맨 앞 Enter: 위에 같은 종류 · 같은 체크의 빈 항목
  * - 맨 끝 코드 블록의 끝에서 ↓: 아래에 새 문단을 만들어 빠져나간다
  */
 export function registerBlockShortcuts(editor: LexicalEditor): () => void {
@@ -213,7 +183,10 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
         if (item) {
           if (!(anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true)) return false;
           e.preventDefault();
-          $listItemToBlock(item, $createParagraphNode());
+          // 같은 깊이 텍스트로 — 자식은 그대로 이 텍스트의 자식(Notion)
+          const paragraph = $createParagraphNode();
+          if ($outlineItemToBlock(item, paragraph)) paragraph.selectStart();
+          else $listItemToBlock(item, $createParagraphNode());
           return true;
         }
         const block = anchor.getTopLevelElement();
@@ -241,23 +214,11 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
           else title.select(offset, offset);
           return true;
         }
-        // 문단 · 제목 맨 앞(Notion): 부모의 마지막 자식이면 한 단계 내어 쓰고(Lexical 기본), 아니면 위 블록과 합친다.
-        // 합칠 때 이 블록의 자식(바로 뒤 더 깊은 블록들)은 한 단계 올라온다
-        if (!($isParagraphNode(block) || $isHeadingNode(block)) || !$isRootNode(block.getParent()) || !prev) return false;
-        const depth = block.getIndent();
-        const children: LexicalNode[] = [];
-        let next = block.getNextSibling();
-        while (next && $blockDepth(next) > depth) {
-          children.push(next);
-          next = next.getNextSibling();
-        }
-        const lastChild = next === null || $blockDepth(next) < depth;
-        if (depth > 0 && lastChild) return false;
-        if (depth === 0 && children.length === 0) return false;
+        // 문단 · 제목 맨 앞(Notion): 깊이가 있고 부모의 마지막 자식이면 한 단계 내어 쓰고, 아니면 바로 위 줄과 합친다.
+        // 합칠 때 이 블록의 자식은 한 단계 올라온다
+        if (!($isParagraphNode(block) || $isHeadingNode(block))) return false;
+        if (!$outlineBackspaceBlock(block)) return false;
         e.preventDefault();
-        if (depth > 0) block.setIndent(0);
-        selection.deleteCharacter(true);
-        children.forEach($outdentBlockOnce);
         return true;
       },
       COMMAND_PRIORITY_NORMAL,
@@ -285,13 +246,35 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       KEY_TAB_COMMAND,
       (e) => {
         const selection = $getSelection();
-        if (!$isRangeSelection(selection) || $findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return false;
-        if ($toggleTab(selection.anchor.getNode(), e.shiftKey)) {
+        if (!$isRangeSelection(selection)) return false;
+        // 코드 안은 탭 문자
+        if ($findMatchingParent(selection.anchor.getNode(), $isCodeNode)) {
           e.preventDefault();
-          return true;
+          return e.shiftKey ? false : editor.dispatchCommand(INSERT_TAB_COMMAND, undefined);
         }
         e.preventDefault();
         return editor.dispatchCommand(e.shiftKey ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND, undefined);
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    // 들여쓰기 · 내어쓰기(Tab · 도구 막대) — 블록 종류는 그대로 깊이만(Notion). Lexical 목록 처리에 맡기면 다른 종류 목록에 섞여 종류가 바뀐다
+    editor.registerCommand(
+      INDENT_CONTENT_COMMAND,
+      () => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || $findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return false;
+        return $outlineShift(selection.anchor.getNode(), false, selection.focus.getNode());
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    editor.registerCommand(
+      OUTDENT_CONTENT_COMMAND,
+      () => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || $findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return false;
+        // 토글 안 맨 위 깊이면 토글 밖으로(뒤 블록들은 자식으로 따라 나온다)
+        if (selection.isCollapsed() && $outlineExitToggle(selection.anchor.getNode())) return true;
+        return $outlineShift(selection.anchor.getNode(), true, selection.focus.getNode());
       },
       COMMAND_PRIORITY_NORMAL,
     ),
@@ -305,9 +288,14 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
         const item = $selectedListItem();
         if (item) {
           const anchor = selection.anchor.getNode();
+          // 빈 항목: 마지막 자식이면 종류 그대로 내어 쓰고, 아니면 같은 깊이 텍스트로(Notion)
+          if (item.getTextContentSize() === 0 && item.getChildrenSize() === 0) return $outlineEmptyItemEnter(item);
           const atStart = selection.anchor.offset === 0 && (anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true);
-          if (!atStart || item.getTextContentSize() === 0) return false;
+          if (!atStart) return false;
+          // 위에 넣는 빈 항목은 체크 상태도 같게(Notion)
           const blank = $createListItemNode();
+          const list = item.getParent();
+          if ($isListNode(list) && list.getListType() === "check") blank.setChecked(item.getChecked() === true);
           item.insertBefore(blank);
           return true;
         }

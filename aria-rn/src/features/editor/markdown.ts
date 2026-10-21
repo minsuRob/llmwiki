@@ -222,6 +222,9 @@ function $convertListItemPrefix(node: TextNode): boolean {
   const match = /^(?:(\[( |x|X)?\])|([-*+])|(\d{1,9})\.) $/.exec(before);
   if (!match) return false;
   const type: ListType = match[1] ? "check" : match[3] ? "bullet" : "number";
+  // 할 일 맨 앞 "- " 은 글자 그대로 둔다(Notion 실측 — "1. " · "# " 은 바뀌지만 글머리 기호는 안 바뀐다)
+  const list = item.getParent();
+  if (type === "bullet" && $isListNode(list) && list.getListType() === "check") return false;
   node.spliceText(0, before.length, "", true);
   $setListItemType(item, type, (match[2] ?? "").toLowerCase() === "x");
   return true;

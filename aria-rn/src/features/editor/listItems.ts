@@ -1,25 +1,11 @@
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListItemNode, type ListNode, type ListType } from "@lexical/list";
-import {
-  $createParagraphNode,
-  $findMatchingParent,
-  $getSelection,
-  $getState,
-  $isParagraphNode,
-  $isRangeSelection,
-  $setState,
-  createState,
-  type ElementNode,
-  type LexicalNode,
-} from "lexical";
+import { $findMatchingParent, $getSelection, $getState, $isRangeSelection, $setState, type ElementNode, type LexicalNode } from "lexical";
 
+import { wasChecked } from "./blockState";
 import { $nestList } from "./nesting";
-import { $insertToggle, $isToggleContainerNode } from "./ToggleExtension";
+import { $outlineToToggle } from "./outline";
 
-/**
- * 할 일이 아니게 된 항목 · 블록의 체크 값 — Lexical 은 할 일이 아닌 목록에서 체크 값을 지우니 따로 담아 둔다.
- * 다시 할 일로 바꾸면 되살린다(텍스트로 바꿨다 돌아와도 — Notion 과 같다)
- */
-export const wasChecked = createState("lexWasChecked", { parse: (v) => v === true });
+export { wasChecked };
 
 /** 커서가 든 목록 항목(중첩 목록을 담기만 하는 빈 항목은 건너뛴다) */
 export function $selectedListItem(): ListItemNode | null {
@@ -156,25 +142,9 @@ export function $listItemToBlock(item: ListItemNode, block: ElementNode, takeChi
   return takeChildren ? children : null;
 }
 
-/**
- * 목록 항목을 토글로 — 항목 글은 토글 제목, 자식 목록은 토글 안으로(Notion 과 같다). 토글은 원래 깊이만큼 들여 쓴다
- */
+/** 목록 항목을 토글로 — 항목 글은 토글 제목, 자식은 (종류가 섞여도) 모두 토글 안으로, 깊이 그대로(Notion) */
 export function $listItemToToggle(item: ListItemNode): void {
-  const depth = item.getIndent();
-  const paragraph = $createParagraphNode();
-  const children = $listItemToBlock(item, paragraph, true);
-  paragraph.selectEnd();
-  $insertToggle();
-  const selection = $getSelection();
-  const container = $isRangeSelection(selection) ? $findMatchingParent(selection.anchor.getNode(), $isToggleContainerNode) : null;
-  if (!$isToggleContainerNode(container)) return;
-  if (depth > 0) container.setIndent(depth);
-  const content = container.getContent();
-  if (children && content) {
-    const only = content.getChildrenSize() === 1 ? content.getFirstChild() : null;
-    content.append(children);
-    if ($isParagraphNode(only) && only.isEmpty()) only.remove();
-  }
+  $outlineToToggle(item);
 }
 
 /** 바로 앞 · 뒤에 같은 종류 목록이 있으면 하나로 합친다(번호가 1 부터 다시 시작하지 않게) — 중첩이면 담는 항목째로 본다 */
