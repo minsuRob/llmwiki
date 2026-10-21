@@ -37,6 +37,8 @@ export interface OutlineEntry {
   /** 목록 첫 항목이었으면 그 목록의 시작 번호 · "a." 표시 */
   start?: number;
   letters?: boolean;
+  /** 번호 항목의 번호 — 다시 지을 때 계산(문단 자식 등으로 목록이 나뉘어도 형제 번호가 이어지게) */
+  ordinal?: number;
 }
 
 /** 블록 깊이 한계 — 0 ~ 4(5단계) */
@@ -104,7 +106,7 @@ function buildSiblings(run: OutlineEntry[], from: number, depth: number, items: 
     const type = e.listType as ListType;
     let cur = lists.at(-1);
     if (!cur || cur.getListType() !== type) {
-      cur = $createListNode(type, type === "number" && e.start ? e.start : 1);
+      cur = $createListNode(type, type === "number" ? (e.ordinal ?? e.start ?? 1) : 1);
       if (e.letters) $setState(cur, listLetters, true);
       lists.push(cur);
     }
@@ -123,6 +125,16 @@ export function $writeOutline(scope: ElementNode, entries: OutlineEntry[]): void
   const selection = $getSelection();
   const saved = $isRangeSelection(selection) ? [selection.anchor, selection.focus].map((p) => ({ key: p.key, offset: p.offset, type: p.type })) : null;
 
+  // 번호: 같은 부모 아래 이어진 번호 형제끼리 1, 2, 3 … (다른 종류 형제가 끼면 다시 1 — Notion)
+  const counters: (number | undefined)[] = [];
+  for (const e of entries) {
+    counters.length = e.depth + 1;
+    if (e.listType === "number") {
+      const prev = counters[e.depth];
+      e.ordinal = prev !== undefined ? prev + 1 : (e.start ?? 1);
+      counters[e.depth] = e.ordinal;
+    } else counters[e.depth] = undefined;
+  }
   const seq: LexicalNode[] = [];
   const items: ListItemNode[] = [];
   let i = 0;
@@ -215,8 +227,9 @@ function canHaveChildren(node: LexicalNode): boolean {
 }
 
 /**
- * Tab / Shift+Tab(Notion) — 블록과 그 자식이 함께 한 단계 들어가고 나온다. 종류(할 일 · 글머리 …)는 그대로.
- * 들여쓰기는 바로 앞 형제가 있을 때만(그 형제의 마지막 자식으로). 내어쓰면 뒤 형제들은 이 블록의 자식이 된다.
+ * Tab / Shift+Tab(Notion) — 블록을 한 단계 들이고 내어 쓴다. 종류(할 일 · 글머리 …)는 그대로.
+ * 들여쓰기는 바로 앞 형제가 있을 때만(그 형제의 마지막 자식으로) — 블록만 들어가고 자식은 제 깊이에 남는다.
+ * 내어쓰기는 자식과 함께 나오고, 뒤 형제들은 이 블록의 자식이 된다.
  * 처리했으면 true(블록이 맨 위라 더 못 내어 써도 true — 다른 처리로 넘기지 않는다)
  */
 export function $outlineShift(node: LexicalNode, outdent: boolean, until?: LexicalNode): boolean {
@@ -235,11 +248,13 @@ export function $outlineShift(node: LexicalNode, outdent: boolean, until?: Lexic
   // Tab 은 첫 블록 앞 형제의 자식 깊이, Shift+Tab 은 첫 블록보다 한 단계 위
   const tops: number[] = [];
   for (let k = from; k <= last; k += 1) if (tops.length === 0 || entries[k].depth <= entries[tops[tops.length - 1]].depth) tops.push(k);
-  const moveTo = (target: number) => {
+  // Shift+Tab 은 자식도 함께 나오고, Tab 은 블록만 들어간다 — 자식은 제 깊이에 남아 새 부모 아래 뒤 형제가 된다(Notion 실측)
+  const moveTo = (target: number, withChildren: boolean) => {
     const next = entries.map((e) => ({ ...e }));
     tops.forEach((k) => {
       const delta = target - entries[k].depth;
-      for (let j = k; j < subtreeEnd(entries, k); j += 1) next[j].depth = Math.max(0, entries[j].depth + delta);
+      const stop = withChildren ? subtreeEnd(entries, k) : k + 1;
+      for (let j = k; j < stop; j += 1) next[j].depth = Math.max(0, entries[j].depth + delta);
     });
     if (next.some((e) => e.depth > MAX_DEPTH)) return true;
     $writeOutline(scope, next);
@@ -247,14 +262,14 @@ export function $outlineShift(node: LexicalNode, outdent: boolean, until?: Lexic
   };
   if (outdent) {
     if (d === 0) return entries.slice(from, to).some((e) => e.depth > 0) ? shiftRange(scope, entries, from, to, -1) : true;
-    return moveTo(d - 1);
+    return moveTo(d - 1, true);
   }
   const prev = previousSibling(entries, from);
   if (prev < 0 || !canHaveChildren(entries[prev].node)) return true;
   // 바로 앞 형제가 토글이면 토글 안 마지막으로 들어간다(닫혀 있으면 연다)
   const prevNode = entries[prev].node;
   if ($isToggleContainerNode(prevNode)) return $moveIntoToggle(scope, entries, from, to, prevNode);
-  return moveTo(d + 1);
+  return moveTo(d + 1, false);
 }
 
 /** 내용이 빈 문단 하나뿐인 범위(새 토글) — 그 빈 문단은 버리고 채운다 */
@@ -497,5 +512,29 @@ export function $outlineDuplicate(node: LexicalNode): boolean {
   $writeOutline(scope, entries);
   const first = copies[0].node;
   if ($isElementNode(first)) first.selectEnd();
+  return true;
+}
+
+/**
+ * 글 블록 끝에서 Delete(Notion) — 화면에서 바로 다음 줄을 이 블록 끝에 붙인다. 붙은 줄의 자식은 한 단계 올라온다
+ */
+export function $outlineDeleteForward(block: ElementNode): boolean {
+  const at = $outlineAt(block);
+  if (!at) return false;
+  const { scope, entries, index } = at;
+  const next = entries[index + 1];
+  if (!next) return false;
+  const node = next.node;
+  if (!$isElementNode(node) || node.isInline()) return false;
+  if (!$isListItemNode(node) && !["paragraph", "heading", "quote"].includes(node.getType())) return false;
+  const end = subtreeEnd(entries, index + 1);
+  for (let k = index + 2; k < end; k += 1) entries[k].depth = Math.max(0, entries[k].depth - 1);
+  const joint = block.getLastDescendant();
+  const size = block.getChildrenSize();
+  block.append(...node.getChildren().filter((c) => !$isListNode(c)));
+  entries.splice(index + 1, 1);
+  $writeOutline(scope, entries);
+  if ($isTextNode(joint) && joint.isAttached()) joint.select(joint.getTextContentSize(), joint.getTextContentSize());
+  else block.select(size, size);
   return true;
 }

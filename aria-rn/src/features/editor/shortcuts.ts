@@ -22,6 +22,7 @@ import {
   IS_APPLE,
   KEY_ARROW_DOWN_COMMAND,
   KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
@@ -32,7 +33,8 @@ import {
 
 import { applyBlock, type BlockKind } from "./blocks";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
-import { $outlineBackspaceBlock, $outlineDuplicate, $outlineEmptyItemEnter, $outlineExitToggle, $outlineItemToBlock, $outlineMove, $outlineShift } from "./outline";
+import { $isPointAtEnd } from "./nestedBlocks";
+import { $outlineBackspaceBlock, $outlineBlockOf, $outlineDeleteForward, $outlineDuplicate, $outlineEmptyItemEnter, $outlineExitToggle, $outlineItemToBlock, $outlineMove, $outlineShift } from "./outline";
 import { $isToggleContainerNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
@@ -228,6 +230,21 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
         // 합칠 때 이 블록의 자식은 한 단계 올라온다
         if (!($isParagraphNode(block) || $isHeadingNode(block))) return false;
         if (!$outlineBackspaceBlock(block)) return false;
+        e.preventDefault();
+        return true;
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    // 글 블록 끝 Delete: 다음 줄을 붙이고 그 줄의 자식은 한 단계 올린다(Notion)
+    editor.registerCommand(
+      KEY_DELETE_COMMAND,
+      (e) => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+        const block = $outlineBlockOf(selection.anchor.getNode());
+        if (!$isElementNode(block) || !($isListItemNode(block) || $isParagraphNode(block) || $isHeadingNode(block) || $isQuoteNode(block))) return false;
+        if (!$isPointAtEnd(selection.anchor, block)) return false;
+        if (!$outlineDeleteForward(block)) return false;
         e.preventDefault();
         return true;
       },
