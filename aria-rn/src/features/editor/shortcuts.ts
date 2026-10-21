@@ -1,5 +1,5 @@
 import { $isCodeNode } from "@lexical/code-core";
-import { $isListItemNode, $isListNode, type ListItemNode } from "@lexical/list";
+import { $createListItemNode, $isListItemNode, $isListNode, type ListItemNode } from "@lexical/list";
 import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { mergeRegister } from "@lexical/utils";
 import {
@@ -193,14 +193,40 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       (e) => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.offset !== 0) return false;
-        const item = $selectedListItem();
-        if (!item) return false;
         const anchor = selection.anchor.getNode();
-        const atStart = anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true;
-        if (!atStart) return false;
-        e.preventDefault();
-        $listItemToBlock(item, $createParagraphNode());
-        return true;
+        const item = $selectedListItem();
+        if (item) {
+          if (!(anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true)) return false;
+          e.preventDefault();
+          $listItemToBlock(item, $createParagraphNode());
+          return true;
+        }
+        const block = anchor.getTopLevelElement();
+        if (!$isElementNode(block) || !(anchor.is(block) || block.getFirstDescendant()?.is(anchor) === true)) return false;
+        // 인용 맨 앞: 위와 합치지 않고 먼저 텍스트로(Notion 과 같다)
+        if ($isQuoteNode(block)) {
+          e.preventDefault();
+          const paragraph = $createParagraphNode();
+          paragraph.append(...block.getChildren());
+          block.replace(paragraph);
+          paragraph.selectStart();
+          return true;
+        }
+        // 닫힌 토글 바로 아래: 숨은 내용으로 들어가지 않게 토글 제목 끝으로
+        const prev = block.getPreviousSibling();
+        if ($isToggleContainerNode(prev) && !prev.getOpen()) {
+          const title = prev.getTitle();
+          if (!title) return false;
+          e.preventDefault();
+          const empty = block.getTextContentSize() === 0;
+          const offset = title.getTextContentSize();
+          if (!empty) title.append(...block.getChildren());
+          block.remove();
+          if (empty) title.selectEnd();
+          else title.select(offset, offset);
+          return true;
+        }
+        return false;
       },
       COMMAND_PRIORITY_NORMAL,
     ),
@@ -224,6 +250,16 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       () => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+        // 글이 있는 목록 항목 맨 앞 Enter: 위에 빈 항목을 넣는다(체크는 이 항목에 그대로 — 새 항목으로 옮겨 가지 않게)
+        const item = $selectedListItem();
+        if (item) {
+          const anchor = selection.anchor.getNode();
+          const atStart = selection.anchor.offset === 0 && (anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true);
+          if (!atStart || item.getTextContentSize() === 0) return false;
+          const blank = $createListItemNode();
+          item.insertBefore(blank);
+          return true;
+        }
         const block = selection.anchor.getNode().getTopLevelElement();
         // 목록 · 토글 · 콜아웃 · 코드는 각자 처리가 있다 — 맨 위의 문단 · 제목 · 인용만
         if (!($isParagraphNode(block) || $isHeadingNode(block) || $isQuoteNode(block)) || !$isRootOrShadowRoot(block.getParent())) return false;

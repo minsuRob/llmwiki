@@ -105,17 +105,19 @@ export function $listItemToBlock(item: ListItemNode, block: ElementNode): void {
   }
   const top = levels[levels.length - 1].list;
   const wasEmpty = item.getChildrenSize() === 0;
-  block.append(...item.getChildren());
-  item.remove();
+  // 먼저 블록 · 뒤 조각을 제자리에 넣고 나서 항목을 지운다 — 항목이 마지막이면 Lexical 이 빈 목록까지 지워
+  // 그 뒤에는 목록 옆에 넣을 수 없다(전에는 여기서 오류가 났다)
   top.insertAfter(block);
   if (tail) block.insertAfter(tail);
-  // 비어 버린 목록 · 중첩 담는 항목을 안쪽부터 치운다
-  for (const { list } of levels) {
-    if (list.getChildrenSize() > 0) break;
-    const holder = list.getParent();
-    if ($isListItemNode(holder) && holder.getChildrenSize() === 1) holder.remove();
-    else list.remove();
-  }
+  const holders = levels.map(({ list }) => list.getParent());
+  block.append(...item.getChildren());
+  item.remove();
+  // 비어 버린 목록 · 중첩 담는 항목을 안쪽부터 치운다(Lexical 이 목록만 지우고 빈 담는 항목을 남길 수 있다)
+  levels.forEach(({ list }, i) => {
+    if (list.isAttached() && list.getChildrenSize() === 0) list.remove();
+    const holder = holders[i];
+    if ($isListItemNode(holder) && holder.isAttached() && holder.getChildrenSize() === 0) holder.remove();
+  });
   if (depth > 0) block.setIndent(depth);
   if (wasEmpty) block.selectStart();
 }
