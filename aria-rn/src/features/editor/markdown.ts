@@ -1,6 +1,6 @@
 import { $createCodeNode, $isCodeNode } from "@lexical/code-core";
 import { $createHorizontalRuleNode, $isHorizontalRuleNode, HorizontalRuleNode } from "@lexical/extension";
-import { $isListItemNode, type ListType } from "@lexical/list";
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode, ListNode, type ListType } from "@lexical/list";
 import {
   $generateNodesFromMarkdownString,
   BOLD_ITALIC_STAR,
@@ -23,8 +23,10 @@ import {
 import {
   $createParagraphNode,
   $getSelection,
+  $getState,
   $isParagraphNode,
   $isRangeSelection,
+  $setState,
   COMMAND_PRIORITY_NORMAL,
   PASTE_COMMAND,
   TextNode,
@@ -33,6 +35,7 @@ import {
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, type HeadingTagType } from "@lexical/rich-text";
 
 import { $listItemToBlock, $listItemToToggle, $setListItemType } from "./listItems";
+import { listLetters } from "./listStyle";
 import { TOGGLE_TRANSFORMER } from "./ToggleExtension";
 
 /** 제목은 4단계까지 — "#" ~ "####" + 띄어쓰기(Notion 과 같다. "#####" 는 그대로 둔다) */
@@ -83,6 +86,35 @@ const DIVIDER: ElementTransformer = {
   },
 };
 
+/**
+ * 번호 목록(입력할 때) — "1. " 은 바로 위 번호 목록에 이어 붙고, "5. " 처럼 다른 수는 그 수부터 새 목록,
+ * "a. " 는 a. b. c. 로 세는 새 목록(Notion 과 같다). 가져오기(붙여넣기)는 Lexical 기본 규칙에 맡긴다
+ */
+const NUMBERED_TYPED: ElementTransformer = {
+  type: "element",
+  dependencies: [ListNode, ListItemNode],
+  export: () => null,
+  regExp: /^(\d{1,9}|a)\.\s/,
+  replace: (parentNode, children, match, isImport) => {
+    if (isImport || $isHeadingNode(parentNode)) return false;
+    const letters = match[1] === "a";
+    const start = letters ? 1 : Number(match[1]);
+    const item = $createListItemNode();
+    item.append(...children);
+    const prev = parentNode.getPreviousSibling();
+    if (!letters && start === 1 && $isListNode(prev) && prev.getListType() === "number" && !$getState(prev, listLetters)) {
+      prev.append(item);
+      parentNode.remove();
+    } else {
+      const list = $createListNode("number", start);
+      if (letters) $setState(list, listLetters, true);
+      list.append(item);
+      parentNode.replace(list);
+    }
+    item.select(0, 0);
+  },
+};
+
 /** 취소선 — 물결 하나(~글~)도 받는다. "~~" 가 먼저 와야 한다 */
 const STRIKE_SINGLE: TextFormatTransformer = { type: "text-format", format: ["strikethrough"], tag: "~" };
 
@@ -93,6 +125,7 @@ export const MARKDOWN_TRANSFORMERS: Transformer[] = [
   QUOTE_DQ,
   CHECK_LIST,
   UNORDERED_LIST,
+  NUMBERED_TYPED,
   ORDERED_LIST,
   CODE,
   DIVIDER,
