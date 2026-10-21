@@ -18,7 +18,7 @@ import FloatingToolbarPlugin from "./FloatingToolbarPlugin";
 import { registerListStyles } from "./listStyle";
 import { MARKDOWN_TRANSFORMERS, registerInstantBlocks, registerMarkdownPaste } from "./markdown";
 import PlaceholderPlugin from "./PlaceholderPlugin";
-import { registerBlockShortcuts } from "./shortcuts";
+import { registerBlockShortcuts, registerImeEnter } from "./shortcuts";
 import SlashMenuPlugin from "./SlashMenuPlugin";
 import ToolbarPlugin from "./ToolbarPlugin";
 
@@ -74,7 +74,7 @@ function MarkdownPlugin() {
 /** Cmd+Opt+숫자 블록 바꾸기 · Cmd+Enter 체크 · Cmd+D 복제 · Cmd+Shift+↑↓ 옮기기 */
 function BlockShortcutsPlugin() {
   const [editor] = useLexicalComposerContext();
-  useEffect(() => registerBlockShortcuts(editor), [editor]);
+  useEffect(() => mergeRegister(registerBlockShortcuts(editor), registerImeEnter(editor)), [editor]);
   return null;
 }
 

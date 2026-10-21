@@ -54,7 +54,7 @@ export const INSERT_TOGGLE_COMMAND: LexicalCommand<void> = createCommand("INSERT
 export const TOGGLE_OPEN_COMMAND: LexicalCommand<void> = createCommand("TOGGLE_OPEN_COMMAND");
 
 /** ▸ 를 누를 수 있는 너비(px) — blocks-extra.css 의 제목 왼쪽 여백과 맞춘다 */
-const CARET_ZONE = 26;
+const CARET_ZONE = 28;
 
 /** 글(인라인)만 담는 가장 가까운 블록 */
 function $leafBlockOf(node: LexicalNode): ElementNode | null {

@@ -6,17 +6,17 @@
 }
 .lex-root .lex-toggle-title {
   position: relative;
-  padding: 3px 2px 3px 26px;
+  padding: 3px 2px 3px 32px;
 }
 /* ▸ — ::before 는 빈 블록 안내(data-lex-placeholder)가 쓰니 ::after 로 왼쪽에 띄운다.
-   누르는 자리 너비(26px)는 ToggleExtension 의 CARET_ZONE 과 같다 */
+   누르는 자리 너비(28px)는 ToggleExtension 의 CARET_ZONE 과 같다. 목록 기호와 같은 24px 칸 · 글자는 +30px(Notion) */
 /* 글꼴 문자(▸)는 글꼴마다 작게 그려져 Notion 처럼 또렷한 삼각형(SVG 마스크, 색은 --lex-text)으로 그린다 */
 .lex-root .lex-toggle-title::after {
   content: "";
   position: absolute;
   top: 3px;
-  left: 1px;
-  width: 22px;
+  left: 2px;
+  width: 24px;
   height: 1.5em;
   border-radius: 4px;
   background-color: var(--lex-text);
@@ -37,7 +37,7 @@
   }
 }
 .lex-root .lex-toggle-content {
-  padding-left: 26px;
+  padding-left: 30px;
 }
 .lex-root .lex-toggle[data-open="false"] > .lex-toggle-content {
   display: none;

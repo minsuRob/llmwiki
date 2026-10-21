@@ -107,7 +107,7 @@ body:has(> #root .lex-dom) {
 }
 /* ── 블록 — Notion 처럼 블록 사이는 좁게, 제목 위는 넓게 ── */
 .lex-input {
-  --lexical-indent-base-value: 24px;
+  --lexical-indent-base-value: 32px;
   line-height: 1.5;
 }
 .lex-paragraph,
@@ -187,76 +187,80 @@ body:has(> #root .lex-dom) {
   text-underline-offset: 2px;
 }
 
-/* ── 목록 — 깊이마다 기호 · 번호 모양이 돈다(• ◦ ▪ / 1. a. i.) ── */
+/* ── 목록 — Notion 과 같은 칸: 종류(글머리 · 번호 · 할 일)와 상관없이 깊이마다 32px,
+   기호 · 번호 · 체크 상자는 글자 앞 24px 칸 가운데, 글자는 칸 시작에서 30px(문단 글자 기준).
+   기호 · 번호 글자는 listStyle.ts 가 항목마다 data-lex-marker 로 단다(같은 종류 깊이로 • ◦ ▪ / 1. a. i.) ── */
 .lex-ul,
 .lex-ol,
 .lex-checklist {
   margin: 0;
-  padding-left: 1.6em;
-}
-.lex-ul-1 {
-  list-style-type: disc;
-}
-.lex-ul-2 {
-  list-style-type: circle;
-}
-.lex-ul-3 {
-  list-style-type: square;
-}
-.lex-ol-1 {
-  list-style-type: decimal;
-}
-.lex-ol-2 {
-  list-style-type: lower-alpha;
-}
-.lex-ol-3 {
-  list-style-type: lower-roman;
-}
-.lex-li::marker {
-  color: var(--lex-text);
-}
-.lex-li-nested {
-  list-style-type: none;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-.lex-li-nested::marker {
-  content: none;
-}
-/* 할 일 — 체크 상자는 ::before 로 그리고 누르면 Lexical 이 토글한다 */
-.lex-checklist {
   padding-left: 0;
   list-style: none;
 }
+.lex-li {
+  position: relative;
+  padding-left: 32px;
+  list-style: none;
+}
+.lex-li::marker {
+  content: none;
+}
+.lex-li[data-lex-marker]::before {
+  content: attr(data-lex-marker);
+  position: absolute;
+  left: 2px;
+  top: 3px;
+  width: 24px;
+  height: 1.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lex-text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* 글머리 기호는 Notion 처럼 글자보다 크게, Arial 로 */
+.lex-ul > .lex-li[data-lex-marker]::before {
+  font-family: Arial, sans-serif;
+  font-size: 1.5em;
+  height: 1em;
+  line-height: 1;
+}
+/* 중첩 목록을 담기만 하는 항목 — 기호 없이 한 칸(32px) 들여 자식 목록을 부모 글자 아래로 */
+.lex-li-nested {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+/* 할 일 — 체크 상자는 ::before 로 그리고 누르면 Lexical 이 토글한다 */
 .lex-li-checked,
 .lex-li-unchecked {
-  position: relative;
-  padding-left: 28px;
-  list-style: none;
   outline: none;
 }
+/* Lexical 은 항목 왼쪽부터 ::before 너비만큼을 누를 자리로 본다 — 24px 칸 전체로 잡고 투명 테두리 안쪽에 16px 상자를 그린다 */
 .lex-li-checked::before,
 .lex-li-unchecked::before {
   content: "";
   position: absolute;
   left: 2px;
-  top: 6px;
-  width: 16px;
-  height: 16px;
+  top: 3px;
+  width: 24px;
+  height: 24px;
   box-sizing: border-box;
-  border: 1.5px solid var(--lex-muted);
-  border-radius: 3px;
+  border: 4px solid transparent;
+  border-radius: 7px;
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1.5px var(--lex-muted);
   cursor: pointer;
 }
 .lex-li-checked::before {
-  border-color: var(--lex-accent);
-  background: var(--lex-accent);
+  background-color: var(--lex-accent);
+  box-shadow: inset 0 0 0 1.5px var(--lex-accent);
 }
 .lex-li-checked::after {
   content: "";
   position: absolute;
-  left: 8px;
-  top: 8px;
+  left: 12px;
+  top: 9px;
   width: 4px;
   height: 9px;
   border: solid var(--lex-card);
@@ -270,17 +274,8 @@ body:has(> #root .lex-dom) {
 }
 .lex-li-checked.lex-li-nested,
 .lex-li-unchecked.lex-li-nested {
-  padding-left: 0;
+  color: inherit;
   text-decoration: none;
-}
-/* 중첩 목록은 깊이마다 들어간다 — 할 일 목록 안이면 부모 글자(체크 상자 오른쪽) 아래로 맞춘다 */
-.lex-li-nested > .lex-checklist {
-  padding-left: 1.6em;
-}
-.lex-checklist > .lex-li-nested > .lex-ul,
-.lex-checklist > .lex-li-nested > .lex-ol,
-.lex-checklist > .lex-li-nested > .lex-checklist {
-  padding-left: 28px;
 }
 .lex-li-checked.lex-li-nested::before,
 .lex-li-unchecked.lex-li-nested::before,
@@ -305,10 +300,7 @@ body:has(> #root .lex-dom) {
 }
 .lex-input li:not(.lex-li-checked)[data-lex-placeholder]::after {
   top: 3px;
-  left: 2px;
-}
-.lex-input li.lex-li-unchecked[data-lex-placeholder]::after {
-  left: 28px;
+  left: 32px;
 }
 
 /* ── 슬래시 메뉴 ── */

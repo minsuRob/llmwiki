@@ -12,7 +12,9 @@ import {
   $findMatchingParent,
   $isParagraphNode,
   $isRootNode,
+  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_NORMAL,
+  INSERT_LINE_BREAK_COMMAND,
   FORMAT_TEXT_COMMAND,
   INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
@@ -345,5 +347,48 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       },
       COMMAND_PRIORITY_NORMAL,
     ),
+  );
+}
+
+/**
+ * 한글 조합 중 누른 Enter — 마지막 글자를 조합하던 중이면 브라우저 · 입력기에 따라 Enter 가 조합을 끝내는 데만 쓰이고
+ * 줄바꿈이 안 될 때가 있다. 조합 중 Enter 뒤 조합이 끝났는데 곧 줄바꿈이 안 오면 직접 Enter 를 한 번 보낸다(Notion 과 같다)
+ */
+export function registerImeEnter(editor: LexicalEditor): () => void {
+  let pending = false;
+  let broke = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey && (e.isComposing || e.keyCode === 229)) {
+      pending = true;
+      broke = false;
+    }
+  };
+  const onCompositionEnd = () => {
+    if (!pending) return;
+    pending = false;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (!broke) editor.dispatchCommand(KEY_ENTER_COMMAND, null);
+    }, 60);
+  };
+  const mark = () => {
+    broke = true;
+    return false;
+  };
+  return mergeRegister(
+    editor.registerCommand(INSERT_PARAGRAPH_COMMAND, mark, COMMAND_PRIORITY_CRITICAL),
+    editor.registerCommand(INSERT_LINE_BREAK_COMMAND, mark, COMMAND_PRIORITY_CRITICAL),
+    editor.registerCommand(KEY_ENTER_COMMAND, mark, COMMAND_PRIORITY_CRITICAL),
+    editor.registerRootListener((root, prev) => {
+      prev?.removeEventListener("keydown", onKeyDown, true);
+      prev?.removeEventListener("compositionend", onCompositionEnd, true);
+      root?.addEventListener("keydown", onKeyDown, true);
+      root?.addEventListener("compositionend", onCompositionEnd, true);
+    }),
+    () => {
+      if (timer) clearTimeout(timer);
+    },
   );
 }
