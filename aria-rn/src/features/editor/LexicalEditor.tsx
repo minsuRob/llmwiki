@@ -2,21 +2,25 @@
 import "./editor.css";
 
 import type { DomWebViewProps } from "@expo/dom-webview";
-import { AutoFocusExtension } from "@lexical/extension";
-import { HistoryExtension } from "@lexical/history";
+import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalExtensionComposer } from "@lexical/react/LexicalExtensionComposer";
-import { RichTextExtension } from "@lexical/rich-text";
+import { mergeRegister } from "@lexical/utils";
 import { IS_DOM } from "expo/dom";
-import { $getRoot, defineExtension } from "lexical";
+import { $getRoot } from "lexical";
 import { useEffect, useRef, type CSSProperties } from "react";
 
 import type { Palette } from "../../components/theme";
-import { editorTheme } from "./theme";
+import { editorExtension } from "./extension";
+import FloatingToolbarPlugin from "./FloatingToolbarPlugin";
+import { MARKDOWN_TRANSFORMERS, registerInstantBlocks } from "./markdown";
+import PlaceholderPlugin from "./PlaceholderPlugin";
+import { registerBlockShortcuts } from "./shortcuts";
+import SlashMenuPlugin from "./SlashMenuPlugin";
 import ToolbarPlugin from "./ToolbarPlugin";
 
-/** 웹뷰에 넘기는 값 — expo/dom 의 DOMProps 는 react-native-webview 타입이 없으면 아무 키나 받으니 직접 좁힌다 */
+/** 웹뷰에 넘기는 값 — expo/dom 의 DOMProps 는 아무 키나 받으니 쓰는 것만 직접 좁힌다 */
 export type EditorDomProps = Pick<DomWebViewProps, "style" | "containerStyle" | "scrollEnabled">;
 
 export interface EditorChange {
@@ -25,17 +29,6 @@ export interface EditorChange {
   json: string;
 }
 
-/** 모듈 범위에 두어야 다시 그릴 때마다 편집기가 새로 만들어지지 않는다 */
-const editorExtension = defineExtension({
-  name: "llmwiki/editor",
-  namespace: "llmwiki-editor",
-  theme: editorTheme,
-  dependencies: [RichTextExtension, HistoryExtension, AutoFocusExtension],
-  onError(error: Error) {
-    throw error;
-  },
-});
-
 /** 내용이 바뀔 때만(선택 이동 · 기록 합치기 제외) 평문과 상태를 한 번에 보낸다 */
 function ChangePlugin({ onChange }: { onChange: (change: EditorChange) => Promise<void> }) {
   const [editor] = useLexicalComposerContext();
@@ -43,14 +36,37 @@ function ChangePlugin({ onChange }: { onChange: (change: EditorChange) => Promis
   useEffect(() => {
     latest.current = onChange;
   }, [onChange]);
-  useEffect(
-    () =>
-      editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves, prevEditorState, tags }) => {
-        if ((dirtyElements.size === 0 && dirtyLeaves.size === 0) || tags.has("history-merge") || prevEditorState.isEmpty()) return;
-        void latest.current({ text: editorState.read(() => $getRoot().getTextContent()), json: JSON.stringify(editorState.toJSON()) });
-      }),
-    [editor],
-  );
+  useEffect(() => {
+    // 글자마다 보내지 않고 잠깐 멈췄을 때 한 번 — 이미지(data URL)가 들면 상태 JSON 이 커진다
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unregister = editor.registerUpdateListener(({ dirtyElements, dirtyLeaves, prevEditorState, tags }) => {
+      if ((dirtyElements.size === 0 && dirtyLeaves.size === 0) || tags.has("history-merge") || prevEditorState.isEmpty()) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        const state = editor.getEditorState();
+        void latest.current({ text: state.read(() => $getRoot().getTextContent()), json: JSON.stringify(state.toJSON()) });
+      }, 250);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unregister();
+    };
+  }, [editor]);
+  return null;
+}
+
+/** "# " · "- " · "[] " · "**굵게**" 같은 마크다운 단축 입력 + "```" · "---" 바로 바꾸기 */
+function MarkdownPlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => mergeRegister(registerMarkdownShortcuts(editor, MARKDOWN_TRANSFORMERS), registerInstantBlocks(editor)), [editor]);
+  return null;
+}
+
+/** Cmd+Opt+숫자 블록 바꾸기 · Cmd+Enter 체크 · Cmd+D 복제 · Cmd+Shift+↑↓ 옮기기 */
+function BlockShortcutsPlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => registerBlockShortcuts(editor), [editor]);
   return null;
 }
 
@@ -60,10 +76,13 @@ function ChangePlugin({ onChange }: { onChange: (change: EditorChange) => Promis
  */
 export default function LexicalEditor({
   palette,
+  dark,
   placeholder,
   onChange,
 }: {
   palette: Palette;
+  /** 다크 모드 — 글자 · 배경 색 팔레트를 어두운 값으로(.lex-dark) */
+  dark: boolean;
   placeholder: string;
   onChange: (change: EditorChange) => Promise<void>;
   dom?: EditorDomProps;
@@ -79,7 +98,7 @@ export default function LexicalEditor({
     "--lex-border": palette.border,
   } as CSSProperties;
   return (
-    <div className={IS_DOM ? "lex-root lex-dom" : "lex-root"} style={vars}>
+    <div className={"lex-root" + (IS_DOM ? " lex-dom" : "") + (dark ? " lex-dark" : "")} style={vars}>
       <LexicalExtensionComposer extension={editorExtension} contentEditable={null}>
         <div className="lex-container">
           <ToolbarPlugin />
@@ -87,6 +106,11 @@ export default function LexicalEditor({
             <ContentEditable className="lex-input" aria-placeholder={placeholder} placeholder={<div className="lex-placeholder">{placeholder}</div>} />
           </div>
         </div>
+        <MarkdownPlugin />
+        <PlaceholderPlugin />
+        <BlockShortcutsPlugin />
+        <SlashMenuPlugin />
+        <FloatingToolbarPlugin />
         <ChangePlugin onChange={onChange} />
       </LexicalExtensionComposer>
     </div>
