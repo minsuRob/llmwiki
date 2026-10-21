@@ -12,6 +12,7 @@ import {
   $getNodeByKey,
   $getSelection,
   $isRangeSelection,
+  $isTextNode,
   $setSelection,
   BLUR_COMMAND,
   COMMAND_PRIORITY_LOW,
@@ -390,6 +391,24 @@ export default function FloatingToolbarPlugin() {
     });
   };
 
+  /** 서식 지우기(Notion 의 Tx) — 굵게 · 기울임 · 밑줄 · 취소선 · 코드와 글자/배경 색을 뺀다(링크는 둔다) */
+  const clearFormatting = () => {
+    editor.update(() => {
+      if (!$restore()) return;
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
+      // extract 는 선택 경계에서 글자 노드를 나눠 선택한 부분만 돌려준다
+      for (const node of selection.extract()) {
+        if ($isTextNode(node)) {
+          node.setFormat(0);
+          node.setStyle("");
+        }
+      }
+      selection.format = 0;
+      selection.style = "";
+    });
+  };
+
   const turnInto = (kind: BlockKind) => {
     openPanel(null);
     editor.update(() => {
@@ -652,6 +671,11 @@ export default function FloatingToolbarPlugin() {
             </button>
           );
         })}
+        <button type="button" className="lex-ft-btn lex-ft-clear" onClick={clearFormatting} aria-label="서식 지우기" title="서식 지우기">
+          <span className="lex-ft-glyph">
+            T<sub>x</sub>
+          </span>
+        </button>
         <button
           type="button"
           className={"lex-ft-btn" + (info.link !== null ? " active" : "") + (panel === "link" ? " open" : "")}

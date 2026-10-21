@@ -110,12 +110,14 @@ export const MARKDOWN_TRANSFORMERS: Transformer[] = [
 export function registerInstantBlocks(editor: LexicalEditor): () => void {
   return editor.registerNodeTransform(TextNode, (node) => {
     $replaceTypography(node);
-    const text = node.getTextContent();
+    // "--" 가 먼저 "—" 로 바뀌니 구분선은 "—-" 로도 알아본다
+    const raw = node.getTextContent();
+    const text = raw === "—-" ? "---" : raw;
     if (text !== "```" && text !== "---") return;
     const block = node.getParent();
     if (!$isParagraphNode(block) || block.getChildrenSize() !== 1) return;
     const selection = $getSelection();
-    if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.key !== node.getKey() || selection.anchor.offset !== 3) return;
+    if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.key !== node.getKey() || selection.anchor.offset !== raw.length) return;
     if (text === "```") {
       const code = $createCodeNode();
       block.replace(code);
@@ -132,6 +134,7 @@ export function registerInstantBlocks(editor: LexicalEditor): () => void {
 
 /** 입력 치환 — 커서 바로 앞이 이 글자들이면 기호로 바꾼다(코드 · 인라인 코드 안은 그대로) */
 const TYPOGRAPHY: [string, string][] = [
+  ["--", "—"],
   ["->", "→"],
   ["<-", "←"],
   ["=>", "⇒"],

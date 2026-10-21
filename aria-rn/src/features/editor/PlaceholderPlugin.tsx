@@ -9,17 +9,15 @@ import { $isToggleContainerNode, $isToggleContentNode, $isToggleTitleNode } from
 
 const ATTR = "data-lex-placeholder";
 
-/** 빈 블록에 보일 안내 — 제목 · 목록 · 할 일 · 토글 · 인용 · 콜아웃 안은 늘, 문단은 커서가 있을 때만(Notion 과 같다) */
+/** 빈 블록에 보일 안내 — 제목 · 리스트 · 할 일 · 토글 · 인용은 늘, 문단(콜아웃 안 포함)은 커서가 있을 때만. 문구도 Notion 한국어판과 같다 */
 function placeholderOf(node: ElementNode, focused: boolean): string | null {
   if ($isToggleTitleNode(node)) return "토글";
-  // 콜아웃 안 빈 줄은 Notion 처럼 늘 안내
-  if ($isParagraphNode(node) && $isCalloutNode(node.getParent())) return "내용 쓰기";
   if ($isHeadingNode(node)) return { h1: "제목 1", h2: "제목 2", h3: "제목 3", h4: "제목 4" }[node.getTag() as "h1" | "h2" | "h3" | "h4"] ?? null;
   if ($isListItemNode(node)) {
     const list = node.getParent();
-    return $isListNode(list) && list.getListType() === "check" ? "할 일" : "목록";
+    return $isListNode(list) && list.getListType() === "check" ? "할 일" : "리스트";
   }
-  if ($isQuoteNode(node)) return "빈 인용";
+  if ($isQuoteNode(node)) return "비어 있는 인용";
   if ($isParagraphNode(node) && focused) return "'/'를 눌러 블록 고르기";
   return null;
 }

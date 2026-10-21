@@ -4,7 +4,7 @@ import { HistoryExtension } from "@lexical/history";
 import { AutoLinkExtension, createLinkMatcherWithRegExp, LinkExtension } from "@lexical/link";
 import { CheckListExtension, ListExtension } from "@lexical/list";
 import { RichTextExtension } from "@lexical/rich-text";
-import { configExtension, defineExtension } from "lexical";
+import { $isElementNode, configExtension, defineExtension, type ElementNode } from "lexical";
 
 import { normalizeLinkUrl } from "./FloatingToolbarPlugin";
 import { CalloutExtension } from "./CalloutExtension";
@@ -14,6 +14,15 @@ import { ToggleExtension } from "./ToggleExtension";
 
 /** 들여쓰기 한도 — 단계 수(0 포함). 5 면 0~4, 다섯 단계까지 들어간다(목록 항목 포함) */
 export const MAX_INDENT = 5;
+
+/**
+ * 바로 위 블록보다 한 단계 깊게까지만 들인다(Notion 과 같다) — 위 블록이 없거나 이미 그만큼 들어가 있으면 막는다.
+ * 목록 항목은 ListExtension(hasStrictIndent)이 같은 규칙을 맡는다
+ */
+const $canIndentOneLevel = (block: ElementNode) => {
+  const prev = block.getPreviousSibling();
+  return prev !== null && $isElementNode(prev) && block.getIndent() <= prev.getIndent();
+};
 
 /** 붙여넣은 글이 온전한 http(s) 주소인지 — 선택한 글 위에 붙이면 링크가 된다 */
 const isPastableUrl = (url: string) => /^https?:\/\/\S+$/i.test(url) && normalizeLinkUrl(url) !== false;
@@ -40,7 +49,7 @@ export const editorExtension = defineExtension({
     configExtension(AutoLinkExtension, { matchers: [URL_MATCHER, EMAIL_MATCHER] }),
     CodeExtension,
     HorizontalRuleExtension,
-    configExtension(TabIndentationExtension, { maxIndent: MAX_INDENT }),
+    configExtension(TabIndentationExtension, { maxIndent: MAX_INDENT, $canIndent: $canIndentOneLevel }),
     // 이미지는 기기 안에서만 줄여 data URL 로 담는다(서버 업로드 없음)
     ImageExtension,
     ToggleExtension,
