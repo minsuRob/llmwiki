@@ -1,5 +1,6 @@
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListItemNode, type ListNode, type ListType } from "@lexical/list";
 import {
+  $copyNode,
   $createParagraphNode,
   $getNodeByKey,
   $getSelection,
@@ -230,17 +231,30 @@ export function $outlineShift(node: LexicalNode, outdent: boolean, until?: Lexic
   const from = Math.min(index, last);
   const to = subtreeEnd(entries, last);
   const d = entries[from].depth;
+  // 여러 블록을 고르면 고른 맨 위 블록들(앞 고른 블록의 자손이 아닌 것)이 모두 같은 깊이로 간다(Notion 실측):
+  // Tab 은 첫 블록 앞 형제의 자식 깊이, Shift+Tab 은 첫 블록보다 한 단계 위
+  const tops: number[] = [];
+  for (let k = from; k <= last; k += 1) if (tops.length === 0 || entries[k].depth <= entries[tops[tops.length - 1]].depth) tops.push(k);
+  const moveTo = (target: number) => {
+    const next = entries.map((e) => ({ ...e }));
+    tops.forEach((k) => {
+      const delta = target - entries[k].depth;
+      for (let j = k; j < subtreeEnd(entries, k); j += 1) next[j].depth = Math.max(0, entries[j].depth + delta);
+    });
+    if (next.some((e) => e.depth > MAX_DEPTH)) return true;
+    $writeOutline(scope, next);
+    return true;
+  };
   if (outdent) {
     if (d === 0) return entries.slice(from, to).some((e) => e.depth > 0) ? shiftRange(scope, entries, from, to, -1) : true;
-    return shiftRange(scope, entries, from, to, -1);
+    return moveTo(d - 1);
   }
   const prev = previousSibling(entries, from);
   if (prev < 0 || !canHaveChildren(entries[prev].node)) return true;
   // 바로 앞 형제가 토글이면 토글 안 마지막으로 들어간다(닫혀 있으면 연다)
   const prevNode = entries[prev].node;
   if ($isToggleContainerNode(prevNode)) return $moveIntoToggle(scope, entries, from, to, prevNode);
-  if (entries.slice(from, to).some((e) => e.depth + 1 > MAX_DEPTH)) return true;
-  return shiftRange(scope, entries, from, to, 1);
+  return moveTo(d + 1);
 }
 
 /** 내용이 빈 문단 하나뿐인 범위(새 토글) — 그 빈 문단은 버리고 채운다 */
@@ -418,5 +432,70 @@ export function $outlineBackspaceBlock(block: ElementNode): boolean {
   $writeOutline(scope, entries);
   if ($isTextNode(joint) && joint.isAttached()) joint.select(joint.getTextContentSize(), joint.getTextContentSize());
   else target.select(size, size);
+  return true;
+}
+
+/**
+ * Cmd+Shift+↑/↓(Notion) — 블록과 자식을 한 줄씩 옮긴다.
+ * ↑: 앞 형제에게 자식이 있으면 그 마지막 자식으로, 자식이 없으면 앞 형제와 자리를 바꾸고, 첫 자식이면 부모 앞(부모 깊이)으로.
+ * ↓: 다음 형제가 있으면 그 첫 자식으로, 마지막 자식이면 부모 뒤(부모 깊이)로
+ */
+export function $outlineMove(node: LexicalNode, dir: -1 | 1): boolean {
+  const at = $outlineAt(node);
+  if (!at) return false;
+  const { scope, entries, index } = at;
+  const d = entries[index].depth;
+  const end = subtreeEnd(entries, index);
+  const block = entries.slice(index, end);
+  const rest = [...entries.slice(0, index), ...entries.slice(end)];
+  const place = (pos: number, delta: number) => {
+    rest.splice(pos, 0, ...block.map((e) => ({ ...e, depth: Math.max(0, e.depth + delta) })));
+    $writeOutline(scope, rest);
+    return true;
+  };
+  if (dir < 0) {
+    const prev = previousSibling(entries, index);
+    if (prev >= 0) {
+      // 앞 형제에게 자식이 있으면(바로 앞 줄이 그 자손) 그 마지막 자식으로 — 자리는 그대로, 한 단계 깊게
+      if (prev < index - 1) return place(index, 1);
+      return place(prev, 0);
+    }
+    // 첫 자식 — 부모 앞으로
+    let parent = index - 1;
+    while (parent >= 0 && entries[parent].depth >= d) parent -= 1;
+    if (parent < 0) return true;
+    return place(parent, entries[parent].depth - d);
+  }
+  if (end < entries.length && entries[end].depth === d) {
+    // 다음 형제의 첫 자식으로 — 그 형제 줄 바로 뒤, 한 단계 깊게
+    return place(index + 1, 1);
+  }
+  if (d === 0) return true;
+  // 마지막 자식 — 부모 뒤(부모의 자손이 끝나는 자리)로
+  let parent = index - 1;
+  while (parent >= 0 && entries[parent].depth >= d) parent -= 1;
+  if (parent < 0) return true;
+  const parentEnd = subtreeEnd(entries, parent) - block.length;
+  return place(parentEnd, entries[parent].depth - d);
+}
+
+/** 노드를 글까지 통째로 복사한다(새 키) — 목록 항목은 안 글만(중첩 목록은 개요가 따로 짓는다) */
+function $copyBlock<T extends LexicalNode>(node: T): T {
+  const copy = $copyNode(node);
+  if ($isElementNode(node) && $isElementNode(copy)) copy.append(...node.getChildren().filter((c) => !$isListNode(c)).map($copyBlock));
+  return copy;
+}
+
+/** Cmd+D(Notion) — 블록과 자식을 통째로 바로 뒤에 복제하고 커서는 복제본 끝으로 */
+export function $outlineDuplicate(node: LexicalNode): boolean {
+  const at = $outlineAt(node);
+  if (!at) return false;
+  const { scope, entries, index } = at;
+  const end = subtreeEnd(entries, index);
+  const copies = entries.slice(index, end).map((e) => ({ ...e, node: $copyBlock(e.node), start: undefined, letters: undefined }));
+  entries.splice(end, 0, ...copies);
+  $writeOutline(scope, entries);
+  const first = copies[0].node;
+  if ($isElementNode(first)) first.selectEnd();
   return true;
 }

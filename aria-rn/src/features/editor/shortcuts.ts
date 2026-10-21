@@ -32,7 +32,7 @@ import {
 
 import { applyBlock, type BlockKind } from "./blocks";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
-import { $outlineBackspaceBlock, $outlineEmptyItemEnter, $outlineExitToggle, $outlineItemToBlock, $outlineShift } from "./outline";
+import { $outlineBackspaceBlock, $outlineDuplicate, $outlineEmptyItemEnter, $outlineExitToggle, $outlineItemToBlock, $outlineMove, $outlineShift } from "./outline";
 import { $isToggleContainerNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
@@ -143,20 +143,30 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
 
         if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === "d") {
           e.preventDefault();
-          const block = $currentBlock();
-          if (block) {
-            const copy = $deepCopy(block);
-            block.insertAfter(copy);
-            // 커서는 복사본으로(Notion 과 같다)
-            if ($isElementNode(copy)) copy.selectEnd();
+          const selection = $getSelection();
+          const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+          // 자식까지 통째로 바로 뒤에, 커서는 복사본으로(Notion)
+          if (anchor && !$outlineDuplicate(anchor)) {
+            const block = $currentBlock();
+            if (block) {
+              const copy = $deepCopy(block);
+              block.insertAfter(copy);
+              if ($isElementNode(copy)) copy.selectEnd();
+            }
           }
           return true;
         }
 
         if (!e.altKey && e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
           e.preventDefault();
-          const block = $currentBlock();
-          if (block) $moveBlock(block, e.key === "ArrowUp" ? -1 : 1);
+          const selection = $getSelection();
+          const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+          const dir = e.key === "ArrowUp" ? -1 : 1;
+          // 자식과 함께 한 줄씩(Notion) — 개요 밖 블록은 형제끼리만
+          if (anchor && !$outlineMove(anchor, dir)) {
+            const block = $currentBlock();
+            if (block) $moveBlock(block, dir);
+          }
           return true;
         }
 
