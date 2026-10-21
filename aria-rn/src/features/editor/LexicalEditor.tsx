@@ -2,6 +2,7 @@
 import "./editor.css";
 
 import type { DomWebViewProps } from "@expo/dom-webview";
+import { $generateHtmlFromNodes } from "@lexical/html";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -28,6 +29,8 @@ export interface EditorChange {
   text: string;
   /** 편집기 상태(JSON) — 저장 · 복원용 */
   json: string;
+  /** 편집기 내용을 HTML 로 — 원본 보기용 */
+  html: string;
 }
 
 /** 내용이 바뀔 때만(선택 이동 · 기록 합치기 제외) 평문과 상태를 한 번에 보낸다 */
@@ -46,7 +49,8 @@ function ChangePlugin({ onChange }: { onChange: (change: EditorChange) => Promis
       timer = setTimeout(() => {
         timer = null;
         const state = editor.getEditorState();
-        void latest.current({ text: state.read(() => $getRoot().getTextContent()), json: JSON.stringify(state.toJSON()) });
+        const { text, html } = editor.read(() => ({ text: $getRoot().getTextContent(), html: $generateHtmlFromNodes(editor, null) }));
+        void latest.current({ text, json: JSON.stringify(state.toJSON()), html });
       }, 250);
     });
     return () => {

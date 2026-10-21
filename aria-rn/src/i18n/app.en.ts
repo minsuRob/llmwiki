@@ -29,7 +29,7 @@ export default {
     settings: "Settings",
     more: "More",
   },
-  editor: { placeholder: "Enter some rich text…", empty: "Nothing written yet.", count: "{words} words · {chars} chars" },
+  editor: { placeholder: "Enter some rich text…", empty: "Nothing written yet.", close: "Close", count: "{words} words · {chars} chars" },
   ws: { personal: "Personal", company: "Company", switch: "Choose topic" },
   topic: {
     add: "Topic",

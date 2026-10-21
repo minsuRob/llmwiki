@@ -29,7 +29,7 @@ export default {
     settings: "설정",
     more: "더 보기",
   },
-  editor: { placeholder: "여기에 써 보세요…", empty: "아직 쓴 내용이 없어요.", count: "단어 {words} · 글자 {chars}" },
+  editor: { placeholder: "여기에 써 보세요…", empty: "아직 쓴 내용이 없어요.", close: "닫기", count: "단어 {words} · 글자 {chars}" },
   ws: { personal: "개인", company: "회사", switch: "주제 고르기" },
   topic: {
     add: "주제",
