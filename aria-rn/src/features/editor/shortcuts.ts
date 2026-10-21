@@ -27,7 +27,7 @@ import {
 
 import { applyBlock, type BlockKind } from "./blocks";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
-import { TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
+import { $isToggleContainerNode, $isToggleContentNode, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
 function isMod(e: KeyboardEvent): boolean {
@@ -70,6 +70,38 @@ function $deepCopy<T extends LexicalNode>(node: T): T {
   return copy;
 }
 
+/**
+ * 토글 안팎 Tab(Notion 과 같다)
+ * - Tab: 토글 바로 아래 블록 → 토글 안 마지막 줄로(닫혀 있으면 연다)
+ * - Shift+Tab: 토글 안 블록(들여쓰기 없음) → 토글 바로 아래로. 그 뒤 줄들은 한 단계 들여 써서 따라 나온다
+ */
+function $toggleTab(anchor: LexicalNode, outdent: boolean): boolean {
+  const block = $findMatchingParent(anchor, (n) => $isElementNode(n) && !n.isInline() && ($isRootOrShadowRoot(n.getParent()) || $isToggleContentNode(n.getParent())));
+  if (!$isElementNode(block) || block.getIndent() > 0 || $isListNode(block)) return false;
+  const parent = block.getParent();
+  if (outdent) {
+    if (!$isToggleContentNode(parent)) return false;
+    const container = parent.getParent();
+    if (!$isToggleContainerNode(container)) return false;
+    const following = block.getNextSiblings();
+    container.insertAfter(block);
+    let last: LexicalNode = block;
+    for (const node of following) {
+      last.insertAfter(node);
+      if ($isElementNode(node)) node.setIndent(node.getIndent() + 1);
+      last = node;
+    }
+    return true;
+  }
+  const prev = block.getPreviousSibling();
+  if (!$isToggleContainerNode(prev)) return false;
+  const content = prev.getContent();
+  if (!content) return false;
+  prev.setOpen(true);
+  content.append(block);
+  return true;
+}
+
 /** 같은 깊이의 바로 위 · 아래 형제와 자리를 바꾼다 */
 function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
   const sibling = dir < 0 ? block.getPreviousSibling() : block.getNextSibling();
@@ -87,7 +119,7 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
  * - Cmd+Shift+↑/↓: 블록 위 · 아래로 옮기기
  * - Cmd+Shift+X: 취소선(Cmd+Shift+S 와 같다)
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
- * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자)
+ * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자) · 토글 안팎으로 옮긴다
  * - Enter 로 만든 새 문단: 서식 없이 시작, 들여쓰기 깊이는 이어 간다
  * - 목록 항목 맨 앞 Backspace: 같은 깊이의 텍스트로(다시 누르면 한 단계씩 나오고, 맨 바깥에서 위 블록과 합친다 — Notion 과 같다)
  */
@@ -177,6 +209,10 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       (e) => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || $findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return false;
+        if ($toggleTab(selection.anchor.getNode(), e.shiftKey)) {
+          e.preventDefault();
+          return true;
+        }
         e.preventDefault();
         return editor.dispatchCommand(e.shiftKey ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND, undefined);
       },

@@ -33,7 +33,7 @@ import {
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, type HeadingTagType } from "@lexical/rich-text";
 
 import { $listItemToBlock, $setListItemType } from "./listItems";
-import { TOGGLE_TRANSFORMER } from "./ToggleExtension";
+import { $insertToggle, TOGGLE_TRANSFORMER } from "./ToggleExtension";
 
 /** 제목은 4단계까지 — "#" ~ "####" + 띄어쓰기(Notion 과 같다. "#####" 는 그대로 둔다) */
 const HEADING_1_4: ElementTransformer = {
@@ -173,6 +173,15 @@ function $convertListItemPrefix(node: TextNode): boolean {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.key !== node.getKey()) return false;
   const before = node.getTextContent().slice(0, selection.anchor.offset);
+  // "> " 은 토글로 — 목록 밖 문단으로 꺼낸 뒤 그 문단을 토글 제목으로 바꾼다
+  if (before === "> ") {
+    node.spliceText(0, before.length, "", true);
+    const paragraph = $createParagraphNode();
+    $listItemToBlock(item, paragraph);
+    paragraph.selectStart();
+    $insertToggle();
+    return true;
+  }
   // "# " ~ "#### " · "\" " "| " 은 목록 밖 제목 · 인용으로(깊이는 들여쓰기로 지킨다)
   const block = /^(#{1,4}) $/.exec(before);
   if (block || /^["“”|] $/.test(before)) {
