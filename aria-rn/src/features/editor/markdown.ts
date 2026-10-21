@@ -1,6 +1,8 @@
 import { $createCodeNode, $isCodeNode } from "@lexical/code-core";
 import { $createHorizontalRuleNode, $isHorizontalRuleNode, HorizontalRuleNode } from "@lexical/extension";
+import { $isListItemNode, type ListType } from "@lexical/list";
 import {
+  $generateNodesFromMarkdownString,
   BOLD_ITALIC_STAR,
   BOLD_ITALIC_UNDERSCORE,
   BOLD_STAR,
@@ -23,11 +25,14 @@ import {
   $getSelection,
   $isParagraphNode,
   $isRangeSelection,
+  COMMAND_PRIORITY_NORMAL,
+  PASTE_COMMAND,
   TextNode,
   type LexicalEditor,
 } from "lexical";
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, type HeadingTagType } from "@lexical/rich-text";
 
+import { $listItemToBlock, $setListItemType } from "./listItems";
 import { TOGGLE_TRANSFORMER } from "./ToggleExtension";
 
 /** 제목은 4단계까지 — "#" ~ "####" + 띄어쓰기(Notion 과 같다. "#####" 는 그대로 둔다) */
@@ -109,6 +114,7 @@ export const MARKDOWN_TRANSFORMERS: Transformer[] = [
  */
 export function registerInstantBlocks(editor: LexicalEditor): () => void {
   return editor.registerNodeTransform(TextNode, (node) => {
+    if ($convertListItemPrefix(node)) return;
     $replaceTypography(node);
     // "--" 가 먼저 "—" 로 바뀌니 구분선은 "—-" 로도 알아본다
     const raw = node.getTextContent();
@@ -154,4 +160,52 @@ function $replaceTypography(node: TextNode) {
     node.spliceText(offset - from.length, from.length, to, true);
     return;
   }
+}
+
+/**
+ * 목록 항목 맨 앞에 "[] " · "[x] " · "- " · "* " · "+ " · "1. " 을 치면 그 항목만 바꾼다(Notion 과 같다).
+ * "# " · "\" " 처럼 목록이 아닌 블록이면 목록 밖으로 꺼내 바꾼다.
+ * Lexical 의 마크다운 단축 입력은 맨 위 블록에서만 돌아 목록 안에서는 따로 본다
+ */
+function $convertListItemPrefix(node: TextNode): boolean {
+  const item = node.getParent();
+  if (!$isListItemNode(item) || item.getFirstChild() !== node) return false;
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.key !== node.getKey()) return false;
+  const before = node.getTextContent().slice(0, selection.anchor.offset);
+  // "# " ~ "#### " · "\" " "| " 은 목록 밖 제목 · 인용으로(깊이는 들여쓰기로 지킨다)
+  const block = /^(#{1,4}) $/.exec(before);
+  if (block || /^["“”|] $/.test(before)) {
+    node.spliceText(0, before.length, "", true);
+    $listItemToBlock(item, block ? $createHeadingNode(`h${block[1].length}` as HeadingTagType) : $createQuoteNode());
+    return true;
+  }
+  const match = /^(?:(\[( |x|X)?\])|([-*+])|(\d{1,9})\.) $/.exec(before);
+  if (!match) return false;
+  const type: ListType = match[1] ? "check" : match[3] ? "bullet" : "number";
+  node.spliceText(0, before.length, "", true);
+  $setListItemType(item, type, (match[2] ?? "").toLowerCase() === "x");
+  return true;
+}
+
+/**
+ * 여러 줄 일반 텍스트를 붙여넣으면 마크다운으로 읽어 블록으로 넣는다(Notion 과 같다) — "- 항목" · "# 제목" 등.
+ * HTML 이 같이 오면(다른 편집기 · 웹에서 복사) 그쪽 서식을 따르고, 파일(이미지)과 코드 블록 안은 건드리지 않는다
+ */
+export function registerMarkdownPaste(editor: LexicalEditor): () => void {
+  return editor.registerCommand(
+    PASTE_COMMAND,
+    (event) => {
+      const data = "clipboardData" in event ? event.clipboardData : null;
+      if (!data || data.types.includes("Files") || data.getData("text/html")) return false;
+      const text = data.getData("text/plain").replace(/\r\n?/g, "\n");
+      if (!text.includes("\n")) return false;
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection) || $isCodeNode(selection.anchor.getNode().getTopLevelElement())) return false;
+      event.preventDefault();
+      selection.insertNodes($generateNodesFromMarkdownString(text, MARKDOWN_TRANSFORMERS));
+      return true;
+    },
+    COMMAND_PRIORITY_NORMAL,
+  );
 }
