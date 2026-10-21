@@ -27,7 +27,7 @@ import {
 
 import { applyBlock, type BlockKind } from "./blocks";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
-import { $isToggleContainerNode, $isToggleContentNode, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
+import { $isToggleContainerNode, $isToggleContentNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
 function isMod(e: KeyboardEvent): boolean {
@@ -194,6 +194,15 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.offset !== 0) return false;
         const anchor = selection.anchor.getNode();
+        // 토글 제목 맨 앞: 토글을 푼다(제목은 같은 깊이 텍스트, 내용은 그 아래 한 단계 더) — 들여 쓴 토글도 위와 합치지 않게 직접 처리
+        const title = $findMatchingParent(anchor, $isToggleTitleNode);
+        if ($isToggleTitleNode(title) && (anchor.is(title) || title.getFirstDescendant()?.is(anchor) === true)) {
+          const container = title.getParent();
+          if (!$isToggleContainerNode(container)) return false;
+          e.preventDefault();
+          $unwrapToggle(container)?.selectStart();
+          return true;
+        }
         const item = $selectedListItem();
         if (item) {
           if (!(anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true)) return false;

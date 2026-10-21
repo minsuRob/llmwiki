@@ -7,7 +7,7 @@ import { $createParagraphNode, $getSelection, $isRangeSelection, type ElementNod
 
 import { INSERT_CALLOUT_COMMAND } from "./CalloutExtension";
 import { OPEN_IMAGE_PICKER_COMMAND } from "./ImageExtension";
-import { $listItemToBlock, $selectedListItem, $setListItemType } from "./listItems";
+import { $listItemToBlock, $listItemToToggle, $selectedListItem, $setListItemType } from "./listItems";
 import { INSERT_TOGGLE_COMMAND } from "./ToggleExtension";
 
 /** 블록 종류 — 슬래시 메뉴 · 블록 전환 단축키가 같은 목록을 쓴다 */
@@ -69,9 +69,19 @@ export function applyBlock(editor: LexicalEditor, kind: BlockKind) {
     case "divider":
       editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined);
       return;
-    case "toggle":
-      editor.dispatchCommand(INSERT_TOGGLE_COMMAND, undefined);
+    case "toggle": {
+      // 목록 항목이면 자식까지 토글 안으로, 깊이 그대로
+      const inList = editor.getEditorState().read(() => $selectedListItem() !== null);
+      if (!inList) {
+        editor.dispatchCommand(INSERT_TOGGLE_COMMAND, undefined);
+        return;
+      }
+      editor.update(() => {
+        const item = $selectedListItem();
+        if (item) $listItemToToggle(item);
+      });
       return;
+    }
     case "callout":
       editor.dispatchCommand(INSERT_CALLOUT_COMMAND, undefined);
       return;

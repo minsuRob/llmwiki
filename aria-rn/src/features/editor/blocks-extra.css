@@ -10,18 +10,19 @@
 }
 /* ▸ — ::before 는 빈 블록 안내(data-lex-placeholder)가 쓰니 ::after 로 왼쪽에 띄운다.
    누르는 자리 너비(26px)는 ToggleExtension 의 CARET_ZONE 과 같다 */
+/* 글꼴 문자(▸)는 글꼴마다 작게 그려져 Notion 처럼 또렷한 삼각형(SVG 마스크, 색은 --lex-text)으로 그린다 */
 .lex-root .lex-toggle-title::after {
-  content: "▸";
+  content: "";
   position: absolute;
   top: 3px;
   left: 1px;
   width: 22px;
   height: 1.5em;
   border-radius: 4px;
-  color: var(--lex-muted);
-  font-size: 1em;
-  line-height: 1.5em;
-  text-align: center;
+  background-color: var(--lex-text);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3.5 1.8 9.3 6l-5.8 4.2z'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3.5 1.8 9.3 6l-5.8 4.2z'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+  opacity: 0.8;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -32,7 +33,7 @@
 }
 @media (hover: hover) {
   .lex-root .lex-toggle-title:hover::after {
-    background: var(--lex-soft);
+    opacity: 1;
   }
 }
 .lex-root .lex-toggle-content {
