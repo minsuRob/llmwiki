@@ -1,5 +1,5 @@
-import { $createListItemNode, $createListNode, $isListNode, type ListNode } from "@lexical/list";
-import { $isElementNode, type LexicalNode } from "lexical";
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListNode } from "@lexical/list";
+import { $isElementNode, type ElementNode, type LexicalNode } from "lexical";
 
 /**
  * 목록을 levels 단계 더 깊게 — 바깥에 "중첩 담는 항목"을 levels 겹 씌운다.
@@ -29,4 +29,33 @@ export function $indentBlockBy(node: LexicalNode, levels: number): LexicalNode {
   }
   if ($isElementNode(node)) node.setIndent(node.getIndent() + levels);
   return node;
+}
+
+/** "중첩 담는 항목"만으로 감싼 목록 겹 수 — $nestList 로 들여 쓴 목록의 깊이 */
+export function $listWrapDepth(list: ListNode): number {
+  let depth = 0;
+  let current: ListNode = list;
+  for (;;) {
+    const first = current.getFirstChild();
+    if (current.getChildrenSize() !== 1 || !$isListItemNode(first) || first.getChildrenSize() !== 1 || !$isListNode(first.getFirstChild())) return depth;
+    current = first.getFirstChild() as ListNode;
+    depth += 1;
+  }
+}
+
+/** 블록 깊이(Notion 기준) — 문단 · 제목 등은 들여쓰기 값, 목록은 감싼 겹 수(맨 위 목록 = 0) */
+export function $blockDepth(node: LexicalNode): number {
+  if ($isListNode(node)) return $listWrapDepth(node);
+  return $isElementNode(node) ? node.getIndent() : 0;
+}
+
+/** 블록을 한 단계 내어 쓴다 — 목록은 바깥 감싼 겹 하나를 벗기고, 그 밖의 블록은 들여쓰기 값을 줄인다 */
+export function $outdentBlockOnce(node: LexicalNode): void {
+  if ($isListNode(node)) {
+    if ($listWrapDepth(node) === 0) return;
+    const inner = (node.getFirstChild() as ElementNode).getFirstChild() as ListNode;
+    node.replace(inner);
+    return;
+  }
+  if ($isElementNode(node) && node.getIndent() > 0) node.setIndent(node.getIndent() - 1);
 }

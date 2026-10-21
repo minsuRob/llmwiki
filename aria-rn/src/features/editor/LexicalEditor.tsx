@@ -14,6 +14,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import type { Palette } from "../../components/theme";
 import { editorExtension } from "./extension";
 import FloatingToolbarPlugin from "./FloatingToolbarPlugin";
+import { registerListStyles } from "./listStyle";
 import { MARKDOWN_TRANSFORMERS, registerInstantBlocks, registerMarkdownPaste } from "./markdown";
 import PlaceholderPlugin from "./PlaceholderPlugin";
 import { registerBlockShortcuts } from "./shortcuts";
@@ -59,7 +60,10 @@ function ChangePlugin({ onChange }: { onChange: (change: EditorChange) => Promis
 /** "# " · "- " · "[] " · "**굵게**" 같은 마크다운 단축 입력 + "```" · "---" 바로 바꾸기 + 여러 줄 마크다운 붙여넣기 */
 function MarkdownPlugin() {
   const [editor] = useLexicalComposerContext();
-  useEffect(() => mergeRegister(registerMarkdownShortcuts(editor, MARKDOWN_TRANSFORMERS), registerInstantBlocks(editor), registerMarkdownPaste(editor)), [editor]);
+  useEffect(
+    () => mergeRegister(registerMarkdownShortcuts(editor, MARKDOWN_TRANSFORMERS), registerInstantBlocks(editor), registerMarkdownPaste(editor), registerListStyles(editor)),
+    [editor],
+  );
   return null;
 }
 

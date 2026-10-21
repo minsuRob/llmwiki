@@ -17,6 +17,7 @@ import {
   INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   IS_APPLE,
+  KEY_ARROW_DOWN_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
@@ -28,6 +29,7 @@ import {
 
 import { applyBlock, type BlockKind } from "./blocks";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
+import { $blockDepth, $outdentBlockOnce } from "./nesting";
 import { $isToggleContainerNode, $isToggleContentNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
@@ -122,7 +124,8 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
  * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자) · 토글 안팎으로 옮긴다
  * - Enter 로 만든 새 문단: 서식 없이 시작, 들여쓰기 깊이는 이어 간다
- * - 목록 항목 맨 앞 Backspace: 같은 깊이의 텍스트로(다시 누르면 한 단계씩 나오고, 맨 바깥에서 위 블록과 합친다 — Notion 과 같다)
+ * - 목록 항목 맨 앞 Backspace: 같은 깊이의 텍스트로. 텍스트 맨 앞 Backspace: 마지막 자식이면 내어 쓰고, 아니면 위와 합치며 자식은 한 단계 올린다(Notion)
+ * - 맨 끝 코드 블록의 끝에서 ↓: 아래에 새 문단을 만들어 빠져나간다
  */
 export function registerBlockShortcuts(editor: LexicalEditor): () => void {
   return mergeRegister(
@@ -222,8 +225,8 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
           paragraph.selectStart();
           return true;
         }
-        // 닫힌 토글 바로 아래: 숨은 내용으로 들어가지 않게 토글 제목 끝으로
         const prev = block.getPreviousSibling();
+        // 닫힌 토글 바로 아래: 숨은 내용으로 들어가지 않게 토글 제목 끝으로
         if ($isToggleContainerNode(prev) && !prev.getOpen()) {
           const title = prev.getTitle();
           if (!title) return false;
@@ -236,7 +239,43 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
           else title.select(offset, offset);
           return true;
         }
-        return false;
+        // 문단 · 제목 맨 앞(Notion): 부모의 마지막 자식이면 한 단계 내어 쓰고(Lexical 기본), 아니면 위 블록과 합친다.
+        // 합칠 때 이 블록의 자식(바로 뒤 더 깊은 블록들)은 한 단계 올라온다
+        if (!($isParagraphNode(block) || $isHeadingNode(block)) || !$isRootNode(block.getParent()) || !prev) return false;
+        const depth = block.getIndent();
+        const children: LexicalNode[] = [];
+        let next = block.getNextSibling();
+        while (next && $blockDepth(next) > depth) {
+          children.push(next);
+          next = next.getNextSibling();
+        }
+        const lastChild = next === null || $blockDepth(next) < depth;
+        if (depth > 0 && lastChild) return false;
+        if (depth === 0 && children.length === 0) return false;
+        e.preventDefault();
+        if (depth > 0) block.setIndent(0);
+        selection.deleteCharacter(true);
+        children.forEach($outdentBlockOnce);
+        return true;
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    editor.registerCommand(
+      KEY_ARROW_DOWN_COMMAND,
+      (e) => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed() || e.shiftKey) return false;
+        const anchor = selection.anchor.getNode();
+        const code = $findMatchingParent(anchor, $isCodeNode);
+        if (!$isCodeNode(code) || code.getNextSibling() || !$isRootNode(code.getParent())) return false;
+        const last = code.getLastDescendant();
+        const atEnd = last === null ? anchor.is(code) : anchor.is(last) && selection.anchor.offset === last.getTextContentSize();
+        if (!atEnd) return false;
+        e.preventDefault();
+        const paragraph = $createParagraphNode();
+        code.insertAfter(paragraph);
+        paragraph.select();
+        return true;
       },
       COMMAND_PRIORITY_NORMAL,
     ),
