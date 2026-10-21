@@ -273,6 +273,15 @@ body:has(> #root .lex-dom) {
   padding-left: 0;
   text-decoration: none;
 }
+/* 중첩 목록은 깊이마다 들어간다 — 할 일 목록 안이면 부모 글자(체크 상자 오른쪽) 아래로 맞춘다 */
+.lex-li-nested > .lex-checklist {
+  padding-left: 1.6em;
+}
+.lex-checklist > .lex-li-nested > .lex-ul,
+.lex-checklist > .lex-li-nested > .lex-ol,
+.lex-checklist > .lex-li-nested > .lex-checklist {
+  padding-left: 28px;
+}
 .lex-li-checked.lex-li-nested::before,
 .lex-li-unchecked.lex-li-nested::before,
 .lex-li-checked.lex-li-nested::after {

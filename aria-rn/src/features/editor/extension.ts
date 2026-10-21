@@ -17,7 +17,7 @@ export const MAX_INDENT = 5;
 
 /**
  * 바로 위 블록보다 한 단계 깊게까지만 들인다(Notion 과 같다) — 위 블록이 없거나 이미 그만큼 들어가 있으면 막는다.
- * 목록 항목은 ListExtension(hasStrictIndent)이 같은 규칙을 맡는다
+ * 문단 · 목록 항목 모두 같은 규칙
  */
 const $canIndentOneLevel = (block: ElementNode) => {
   const prev = block.getPreviousSibling();
@@ -42,8 +42,9 @@ export const editorExtension = defineExtension({
     RichTextExtension,
     HistoryExtension,
     AutoFocusExtension,
-    // 목록은 바로 위 형제보다 한 단계까지만 들어간다(빈 칸 건너뛰기 없음)
-    configExtension(ListExtension, { hasStrictIndent: true }),
+    // 엄격 들여쓰기(hasStrictIndent)는 끈다 — 하위 항목을 문단으로 꺼낼 때 뒤 항목들이 제 깊이를 잃는다.
+    // Tab 으로 한 단계씩만 들어가는 규칙은 $canIndentOneLevel 이 목록 항목에도 똑같이 건다
+    ListExtension,
     CheckListExtension,
     configExtension(LinkExtension, { validateUrl: isPastableUrl }),
     configExtension(AutoLinkExtension, { matchers: [URL_MATCHER, EMAIL_MATCHER] }),
