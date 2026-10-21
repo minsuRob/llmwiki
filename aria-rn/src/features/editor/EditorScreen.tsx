@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { Text, useColorScheme, View } from "react-native";
 
 import { usePalette } from "../../components/theme";
 import { useT } from "../../i18n";
@@ -11,6 +11,7 @@ const DOM: EditorDomProps = { style: { flex: 1 }, containerStyle: { flex: 1 }, s
 export default function EditorScreen() {
   const c = usePalette();
   const t = useT();
+  const dark = useColorScheme() === "dark";
   const [plainText, setPlainText] = useState("");
   /** 편집기 상태(JSON) — 화면에 쓰지 않으니 state 대신 ref(바뀔 때마다 웹뷰로 props 를 다시 보내지 않게) */
   const editorState = useRef<string | null>(null);
@@ -29,6 +30,7 @@ export default function EditorScreen() {
       <View style={{ flex: 1 }}>
         <LexicalEditor
           palette={c}
+          dark={dark}
           placeholder={t("editor.placeholder")}
           onChange={async ({ text, json }) => {
             editorState.current = json;

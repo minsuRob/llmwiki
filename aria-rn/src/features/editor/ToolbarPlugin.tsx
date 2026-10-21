@@ -6,6 +6,8 @@ import {
   $isRangeSelection,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
+  INDENT_CONTENT_COMMAND,
+  OUTDENT_CONTENT_COMMAND,
   REDO_COMMAND,
   TEXT_TYPE_TO_FORMAT,
   UNDO_COMMAND,
@@ -25,6 +27,8 @@ const ICON = {
   left: ["M2 12.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"],
   center: ["M4 12.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"],
   right: ["M6 12.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-4-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm4-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-4-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"],
+  outdent: ["M2 3.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm5 3a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5zm-5 3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zM4.854 6.146a.5.5 0 0 1 0 .708L3.707 8l1.147 1.146a.5.5 0 0 1-.708.708l-1.5-1.5a.5.5 0 0 1 0-.708l1.5-1.5a.5.5 0 0 1 .708 0z"],
+  indent: ["M2 3.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm5 3a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5zm-5 3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zM2.146 6.146a.5.5 0 0 1 .708 0l1.5 1.5a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708-.708L3.293 8 2.146 6.854a.5.5 0 0 1 0-.708z"],
   justify: ["M2 12.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"],
 } as const;
 
@@ -51,7 +55,7 @@ const ALIGNS: { format: ElementFormatType & keyof typeof ICON; label: string }[]
   { format: "justify", label: "Justify Align" },
 ];
 
-/** 되돌리기 · 다시 하기 · 굵게 · 기울임 · 밑줄 · 취소선 · 정렬 */
+/** 되돌리기 · 다시 하기 · 굵게 · 기울임 · 밑줄 · 취소선 · 내어쓰기 · 들여쓰기 · 정렬 — 터치 기기엔 Tab 이 없어 들여쓰기도 버튼으로 */
 export default function ToolbarPlugin() {
   const [editor] = useLexicalComposerContext();
   const canUndo = useExtensionSignalValue(HistoryExtension, "canUndo");
@@ -94,6 +98,13 @@ export default function ToolbarPlugin() {
           </button>
         );
       })}
+      <div className="lex-divider" />
+      <button type="button" onClick={() => editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined)} className="lex-toolbar-item" aria-label="Outdent">
+        <Icon name="outdent" />
+      </button>
+      <button type="button" onClick={() => editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined)} className="lex-toolbar-item" aria-label="Indent">
+        <Icon name="indent" />
+      </button>
       <div className="lex-divider" />
       {ALIGNS.map(({ format: f, label }) => (
         <button key={f} type="button" onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, f)} className="lex-toolbar-item" aria-label={label}>
