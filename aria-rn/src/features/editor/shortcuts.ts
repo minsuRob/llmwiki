@@ -16,6 +16,7 @@ import {
   INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   IS_APPLE,
+  KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
@@ -25,6 +26,7 @@ import {
 } from "lexical";
 
 import { applyBlock, type BlockKind } from "./blocks";
+import { $listItemToBlock, $selectedListItem } from "./listItems";
 import { TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
@@ -87,6 +89,7 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
  * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자)
  * - Enter 로 만든 새 문단: 서식 없이 시작, 들여쓰기 깊이는 이어 간다
+ * - 목록 항목 맨 앞 Backspace: 같은 깊이의 텍스트로(다시 누르면 한 단계씩 나오고, 맨 바깥에서 위 블록과 합친다 — Notion 과 같다)
  */
 export function registerBlockShortcuts(editor: LexicalEditor): () => void {
   return mergeRegister(
@@ -150,6 +153,22 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
         }
 
         return false;
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      (e) => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.offset !== 0) return false;
+        const item = $selectedListItem();
+        if (!item) return false;
+        const anchor = selection.anchor.getNode();
+        const atStart = anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true;
+        if (!atStart) return false;
+        e.preventDefault();
+        $listItemToBlock(item, $createParagraphNode());
+        return true;
       },
       COMMAND_PRIORITY_NORMAL,
     ),

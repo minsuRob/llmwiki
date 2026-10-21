@@ -1,5 +1,11 @@
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListItemNode, type ListNode, type ListType } from "@lexical/list";
-import { $findMatchingParent, $getSelection, $isRangeSelection, type ElementNode, type LexicalNode } from "lexical";
+import { $findMatchingParent, $getSelection, $getState, $isRangeSelection, $setState, createState, type ElementNode, type LexicalNode } from "lexical";
+
+/**
+ * 할 일이 아니게 된 항목의 체크 값 — Lexical 은 할 일이 아닌 목록에서 체크 값을 지우니 따로 담아 둔다.
+ * 다시 할 일로 바꾸면 되살린다
+ */
+const wasChecked = createState("lexWasChecked", { parse: (v) => v === true });
 
 /** 커서가 든 목록 항목(중첩 목록을 담기만 하는 빈 항목은 건너뛴다) */
 export function $selectedListItem(): ListItemNode | null {
@@ -13,17 +19,23 @@ export function $selectedListItem(): ListItemNode | null {
  * Lexical 목록은 한 목록 안 항목이 모두 같은 종류라, 목록을 [앞 | 이 항목 | 뒤] 셋으로 나눈다.
  * 중첩 목록이면 각 조각을 바깥 목록의 "중첩 담는 항목"에 하나씩 담아 깊이를 지킨다
  */
-export function $setListItemType(item: ListItemNode, type: ListType, checked = false): void {
+export function $setListItemType(item: ListItemNode, type: ListType, checked?: boolean): void {
   const list = item.getParent();
   if (!$isListNode(list)) return;
+  // 체크 값은 "[] " · "[x] " 처럼 정해 줄 때만 바꾼다 — 할 일 → 글머리 → 할 일로 돌아와도 체크가 남는다(Notion 과 같다)
+  if (list.getListType() === "check" && type !== "check") $setState(item, wasChecked, item.getChecked() === true);
+  const applyChecked = () => {
+    if (type !== "check") return;
+    item.setChecked(checked ?? $getState(item, wasChecked));
+  };
   if (list.getListType() === type) {
-    if (type === "check") item.setChecked(checked);
+    if (checked !== undefined) item.setChecked(checked);
     return;
   }
   // 하나뿐이면 목록 종류만 바꾸면 된다
   if (list.getChildrenSize() === 1) {
     list.setListType(type);
-    item.setChecked(type === "check" ? checked : undefined);
+    applyChecked();
     $mergeWithNeighbours(list);
     return;
   }
@@ -38,7 +50,7 @@ export function $setListItemType(item: ListItemNode, type: ListType, checked = f
   const following = item.getNextSiblings();
   const mid = $createListNode(type);
   mid.append(item);
-  item.setChecked(type === "check" ? checked : undefined);
+  applyChecked();
   let anchor: LexicalNode = nested ? (host as ListItemNode) : list;
   const midNode = wrap(mid);
   anchor.insertAfter(midNode);
