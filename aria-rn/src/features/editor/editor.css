@@ -283,13 +283,23 @@ body:has(> #root .lex-dom) {
 .lex-input [data-lex-placeholder] {
   position: relative;
 }
-.lex-input [data-lex-placeholder]::before {
+/* 목록 항목은 ::before 를 체크 상자가 쓰니 안내는 ::after 로(체크된 빈 할 일은 체크 표시가 ::after 라 안내 없음) */
+.lex-input :not(li)[data-lex-placeholder]::before,
+.lex-input li:not(.lex-li-checked)[data-lex-placeholder]::after {
   content: attr(data-lex-placeholder);
   position: absolute;
+  white-space: nowrap;
   color: var(--lex-muted);
   opacity: 0.7;
   pointer-events: none;
   user-select: none;
+}
+.lex-input li:not(.lex-li-checked)[data-lex-placeholder]::after {
+  top: 3px;
+  left: 2px;
+}
+.lex-input li.lex-li-unchecked[data-lex-placeholder]::after {
+  left: 28px;
 }
 
 /* ── 슬래시 메뉴 ── */

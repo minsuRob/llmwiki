@@ -1,12 +1,13 @@
 import { $createCodeNode } from "@lexical/code-core";
 import { INSERT_HORIZONTAL_RULE_COMMAND } from "@lexical/extension";
-import { $isListItemNode, INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from "@lexical/list";
+import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, type ListType } from "@lexical/list";
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
-import { $createParagraphNode, $findMatchingParent, $getSelection, $isRangeSelection, type LexicalEditor } from "lexical";
+import { $createParagraphNode, $getSelection, $isRangeSelection, type ElementNode, type LexicalEditor } from "lexical";
 
 import { INSERT_CALLOUT_COMMAND } from "./CalloutExtension";
 import { OPEN_IMAGE_PICKER_COMMAND } from "./ImageExtension";
+import { $listItemToBlock, $selectedListItem, $setListItemType } from "./listItems";
 import { INSERT_TOGGLE_COMMAND } from "./ToggleExtension";
 
 /** 블록 종류 — 슬래시 메뉴 · 블록 전환 단축키가 같은 목록을 쓴다 */
@@ -43,18 +44,28 @@ export const BLOCKS: BlockDef[] = [
   { kind: "divider", label: "구분선", hint: "블록을 나누는 선", glyph: "—", keywords: ["divider", "hr", "line", "separator", "구분선", "선"], shortcut: "---" },
 ];
 
-/** 커서가 있는 블록을 다른 종류로 바꾼다(목록 · 구분선은 명령으로) */
+/** 목록이 아닌 블록 종류의 새 노드 */
+function $createBlock(kind: BlockKind): ElementNode {
+  switch (kind) {
+    case "h1":
+    case "h2":
+    case "h3":
+    case "h4":
+      return $createHeadingNode(kind);
+    case "quote":
+      return $createQuoteNode();
+    case "code":
+      return $createCodeNode();
+    default:
+      return $createParagraphNode();
+  }
+}
+
+const LIST_TYPES: Partial<Record<BlockKind, ListType>> = { bullet: "bullet", number: "number", check: "check" };
+
+/** 커서가 있는 블록을 다른 종류로 바꾼다 — 목록 항목이면 그 항목만(Notion 과 같다) */
 export function applyBlock(editor: LexicalEditor, kind: BlockKind) {
   switch (kind) {
-    case "bullet":
-      editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
-      return;
-    case "number":
-      editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
-      return;
-    case "check":
-      editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
-      return;
     case "divider":
       editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined);
       return;
@@ -69,33 +80,22 @@ export function applyBlock(editor: LexicalEditor, kind: BlockKind) {
       editor.dispatchCommand(OPEN_IMAGE_PICKER_COMMAND, undefined);
       return;
   }
-  // 목록 항목은 $setBlocksType 이 바로 바꾸지 못한다 — 목록을 먼저 풀어 문단으로 만든 뒤 바꾼다
-  const inList = editor.getEditorState().read(() => {
-    const selection = $getSelection();
-    return $isRangeSelection(selection) && $findMatchingParent(selection.anchor.getNode(), $isListItemNode) !== null;
-  });
-  if (inList) {
-    editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
-    if (kind === "paragraph") return;
+  const listType = LIST_TYPES[kind];
+  // 단축키 처리기처럼 이미 편집 중에 불리면 editor.update 가 뒤로 밀린다 — 목록 안인지는 먼저 읽어 정한다
+  const inList = editor.getEditorState().read(() => $selectedListItem() !== null);
+  if (!inList && listType) {
+    editor.dispatchCommand(listType === "bullet" ? INSERT_UNORDERED_LIST_COMMAND : listType === "number" ? INSERT_ORDERED_LIST_COMMAND : INSERT_CHECK_LIST_COMMAND, undefined);
+    return;
   }
   editor.update(() => {
+    const item = $selectedListItem();
+    if (item) {
+      if (listType) $setListItemType(item, listType);
+      else $listItemToBlock(item, $createBlock(kind));
+      return;
+    }
     const selection = $getSelection();
-    if (!$isRangeSelection(selection)) return;
-    $setBlocksType(selection, () => {
-      switch (kind) {
-        case "h1":
-        case "h2":
-        case "h3":
-        case "h4":
-          return $createHeadingNode(kind);
-        case "quote":
-          return $createQuoteNode();
-        case "code":
-          return $createCodeNode();
-        default:
-          return $createParagraphNode();
-      }
-    });
+    if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createBlock(kind));
   });
 }
 
