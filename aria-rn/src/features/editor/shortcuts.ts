@@ -1,5 +1,5 @@
 import { $isCodeNode } from "@lexical/code-core";
-import { $isListItemNode, $isListNode, type ListItemNode } from "@lexical/list";
+import { $createListItemNode, $isListItemNode, $isListNode, type ListItemNode } from "@lexical/list";
 import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { mergeRegister } from "@lexical/utils";
 import {
@@ -16,6 +16,7 @@ import {
   INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   IS_APPLE,
+  KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_TAB_COMMAND,
@@ -25,7 +26,8 @@ import {
 } from "lexical";
 
 import { applyBlock, type BlockKind } from "./blocks";
-import { TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
+import { $listItemToBlock, $selectedListItem } from "./listItems";
+import { $isToggleContainerNode, $isToggleContentNode, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
 /** Cmd(Mac) · Ctrl(그 밖) */
 function isMod(e: KeyboardEvent): boolean {
@@ -68,6 +70,38 @@ function $deepCopy<T extends LexicalNode>(node: T): T {
   return copy;
 }
 
+/**
+ * 토글 안팎 Tab(Notion 과 같다)
+ * - Tab: 토글 바로 아래 블록 → 토글 안 마지막 줄로(닫혀 있으면 연다)
+ * - Shift+Tab: 토글 안 블록(들여쓰기 없음) → 토글 바로 아래로. 그 뒤 줄들은 한 단계 들여 써서 따라 나온다
+ */
+function $toggleTab(anchor: LexicalNode, outdent: boolean): boolean {
+  const block = $findMatchingParent(anchor, (n) => $isElementNode(n) && !n.isInline() && ($isRootOrShadowRoot(n.getParent()) || $isToggleContentNode(n.getParent())));
+  if (!$isElementNode(block) || block.getIndent() > 0 || $isListNode(block)) return false;
+  const parent = block.getParent();
+  if (outdent) {
+    if (!$isToggleContentNode(parent)) return false;
+    const container = parent.getParent();
+    if (!$isToggleContainerNode(container)) return false;
+    const following = block.getNextSiblings();
+    container.insertAfter(block);
+    let last: LexicalNode = block;
+    for (const node of following) {
+      last.insertAfter(node);
+      if ($isElementNode(node)) node.setIndent(node.getIndent() + 1);
+      last = node;
+    }
+    return true;
+  }
+  const prev = block.getPreviousSibling();
+  if (!$isToggleContainerNode(prev)) return false;
+  const content = prev.getContent();
+  if (!content) return false;
+  prev.setOpen(true);
+  content.append(block);
+  return true;
+}
+
 /** 같은 깊이의 바로 위 · 아래 형제와 자리를 바꾼다 */
 function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
   const sibling = dir < 0 ? block.getPreviousSibling() : block.getNextSibling();
@@ -85,8 +119,9 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
  * - Cmd+Shift+↑/↓: 블록 위 · 아래로 옮기기
  * - Cmd+Shift+X: 취소선(Cmd+Shift+S 와 같다)
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
- * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자)
+ * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자) · 토글 안팎으로 옮긴다
  * - Enter 로 만든 새 문단: 서식 없이 시작, 들여쓰기 깊이는 이어 간다
+ * - 목록 항목 맨 앞 Backspace: 같은 깊이의 텍스트로(다시 누르면 한 단계씩 나오고, 맨 바깥에서 위 블록과 합친다 — Notion 과 같다)
  */
 export function registerBlockShortcuts(editor: LexicalEditor): () => void {
   return mergeRegister(
@@ -154,10 +189,56 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       COMMAND_PRIORITY_NORMAL,
     ),
     editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      (e) => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.offset !== 0) return false;
+        const anchor = selection.anchor.getNode();
+        const item = $selectedListItem();
+        if (item) {
+          if (!(anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true)) return false;
+          e.preventDefault();
+          $listItemToBlock(item, $createParagraphNode());
+          return true;
+        }
+        const block = anchor.getTopLevelElement();
+        if (!$isElementNode(block) || !(anchor.is(block) || block.getFirstDescendant()?.is(anchor) === true)) return false;
+        // 인용 맨 앞: 위와 합치지 않고 먼저 텍스트로(Notion 과 같다)
+        if ($isQuoteNode(block)) {
+          e.preventDefault();
+          const paragraph = $createParagraphNode();
+          paragraph.append(...block.getChildren());
+          block.replace(paragraph);
+          paragraph.selectStart();
+          return true;
+        }
+        // 닫힌 토글 바로 아래: 숨은 내용으로 들어가지 않게 토글 제목 끝으로
+        const prev = block.getPreviousSibling();
+        if ($isToggleContainerNode(prev) && !prev.getOpen()) {
+          const title = prev.getTitle();
+          if (!title) return false;
+          e.preventDefault();
+          const empty = block.getTextContentSize() === 0;
+          const offset = title.getTextContentSize();
+          if (!empty) title.append(...block.getChildren());
+          block.remove();
+          if (empty) title.selectEnd();
+          else title.select(offset, offset);
+          return true;
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    editor.registerCommand(
       KEY_TAB_COMMAND,
       (e) => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || $findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return false;
+        if ($toggleTab(selection.anchor.getNode(), e.shiftKey)) {
+          e.preventDefault();
+          return true;
+        }
         e.preventDefault();
         return editor.dispatchCommand(e.shiftKey ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND, undefined);
       },
@@ -169,6 +250,16 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
       () => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+        // 글이 있는 목록 항목 맨 앞 Enter: 위에 빈 항목을 넣는다(체크는 이 항목에 그대로 — 새 항목으로 옮겨 가지 않게)
+        const item = $selectedListItem();
+        if (item) {
+          const anchor = selection.anchor.getNode();
+          const atStart = selection.anchor.offset === 0 && (anchor.is(item) || item.getFirstDescendant()?.is(anchor) === true);
+          if (!atStart || item.getTextContentSize() === 0) return false;
+          const blank = $createListItemNode();
+          item.insertBefore(blank);
+          return true;
+        }
         const block = selection.anchor.getNode().getTopLevelElement();
         // 목록 · 토글 · 콜아웃 · 코드는 각자 처리가 있다 — 맨 위의 문단 · 제목 · 인용만
         if (!($isParagraphNode(block) || $isHeadingNode(block) || $isQuoteNode(block)) || !$isRootOrShadowRoot(block.getParent())) return false;

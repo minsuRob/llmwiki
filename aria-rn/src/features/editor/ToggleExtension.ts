@@ -160,7 +160,7 @@ function $normalizeContent(content: ToggleContentNode): void {
   if (content.isEmpty()) content.append($createParagraphNode());
 }
 
-/** Enter — 제목 맨 앞이면 토글 위에 빈 문단, 내용의 마지막 빈 문단이면 토글 밖으로 */
+/** Enter — 제목 맨 앞이면 토글 위에 빈 문단. 내용의 빈 마지막 줄은 Notion 처럼 그대로 새 줄(밖으로는 Shift+Tab) */
 function $onInsertParagraph(): boolean {
   const selection = $getSelection();
   if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
@@ -172,13 +172,7 @@ function $onInsertParagraph(): boolean {
     container.insertBefore($createParagraphNode());
     return true;
   }
-  if (!$isParagraphNode(anchor) || !anchor.isEmpty() || anchor.getNextSibling()) return false;
-  const content = anchor.getParent();
-  const container = content?.getParent();
-  if (!$isToggleContentNode(content) || !$isToggleContainerNode(container)) return false;
-  container.insertAfter(anchor);
-  anchor.select();
-  return true;
+  return false;
 }
 
 /** ↓ · → — 닫힌 토글 제목 끝에서는 숨은 내용을 건너뛰고, 문서 끝 토글이면 아래에 빈 문단을 만든다 */
