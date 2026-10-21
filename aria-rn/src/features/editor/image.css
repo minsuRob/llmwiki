@@ -1,0 +1,97 @@
+/* 이미지 블록 — 노션처럼 캡션 없이 단순하게. 자리는 원본 비율로 미리 잡아 내용이 밀리지 않는다 */
+.lex-root .lex-image {
+  margin: 4px 0 12px;
+  line-height: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.lex-root .lex-image-frame {
+  position: relative;
+  max-width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--lex-soft);
+  cursor: default;
+  transition: outline-color 120ms ease;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+.lex-root .lex-image-frame.loaded {
+  background: none;
+}
+.lex-root .lex-image-frame.selected {
+  outline-color: var(--lex-accent);
+}
+.lex-root .lex-image-thumb,
+.lex-root .lex-image-full {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+/* 작은 미리보기는 흐리게 — 가장자리가 비치지 않게 살짝 키운다 */
+.lex-root .lex-image-thumb {
+  filter: blur(12px);
+  transform: scale(1.08);
+}
+.lex-root .lex-image-full {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.lex-root .lex-image-frame.loaded .lex-image-full {
+  opacity: 1;
+}
+/* 원본 크기를 모를 때 — 이미지가 자기 높이로 자리를 잡는다 */
+.lex-root .lex-image-frame.unsized {
+  min-height: 48px;
+}
+.lex-root .lex-image-frame.unsized .lex-image-full {
+  position: static;
+  height: auto;
+}
+/* 오른쪽 손잡이 — 마우스는 올리면, 터치는 선택했을 때만 보이고 잡힌다 */
+.lex-root .lex-image-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.lex-root .lex-image-handle-bar {
+  width: 6px;
+  height: 44px;
+  max-height: 50%;
+  border-radius: 3px;
+  border: 1px solid var(--lex-card);
+  background: var(--lex-text);
+  opacity: 0.7;
+}
+.lex-root .lex-image-frame.selected .lex-image-handle,
+.lex-root .lex-image-frame.resizing .lex-image-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: hover) {
+  .lex-root .lex-image-frame:hover .lex-image-handle {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+.lex-root .lex-image-frame.resizing {
+  user-select: none;
+}
+.lex-root .lex-image-frame.resizing .lex-image-full {
+  transition: none;
+}
