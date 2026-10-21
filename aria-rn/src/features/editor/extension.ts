@@ -12,7 +12,7 @@ import { ImageExtension } from "./ImageExtension";
 import { editorTheme } from "./theme";
 import { ToggleExtension } from "./ToggleExtension";
 
-/** 들여쓰기 한도 — 블록(목록 항목 포함)은 이 깊이까지만 안으로 들어간다 */
+/** 들여쓰기 한도 — 단계 수(0 포함). 5 면 0~4, 다섯 단계까지 들어간다(목록 항목 포함) */
 export const MAX_INDENT = 5;
 
 /** 붙여넣은 글이 온전한 http(s) 주소인지 — 선택한 글 위에 붙이면 링크가 된다 */

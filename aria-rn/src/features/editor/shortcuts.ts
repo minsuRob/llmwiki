@@ -1,3 +1,4 @@
+import { $isCodeNode } from "@lexical/code-core";
 import { $isListItemNode, $isListNode, type ListItemNode } from "@lexical/list";
 import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { mergeRegister } from "@lexical/utils";
@@ -8,11 +9,17 @@ import {
   $isRangeSelection,
   $isRootOrShadowRoot,
   $createParagraphNode,
+  $findMatchingParent,
+  $isParagraphNode,
   COMMAND_PRIORITY_NORMAL,
   FORMAT_TEXT_COMMAND,
+  INDENT_CONTENT_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
   IS_APPLE,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
+  KEY_TAB_COMMAND,
+  OUTDENT_CONTENT_COMMAND,
   type LexicalEditor,
   type LexicalNode,
 } from "lexical";
@@ -78,6 +85,8 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
  * - Cmd+Shift+↑/↓: 블록 위 · 아래로 옮기기
  * - Cmd+Shift+X: 취소선(Cmd+Shift+S 와 같다)
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
+ * - Tab / Shift+Tab: 커서가 어디 있든 블록을 들이고 내어 쓴다(코드 안은 탭 문자)
+ * - Enter 로 만든 새 문단: 서식 없이 시작, 들여쓰기 깊이는 이어 간다
  */
 export function registerBlockShortcuts(editor: LexicalEditor): () => void {
   return mergeRegister(
@@ -99,22 +108,23 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
           return true;
         }
 
+        // 명령 처리기는 이미 편집(update) 안에서 돈다 — 여기서 editor.update 를 또 부르면 뒤로 밀려
+        // 처리했는지 알 수 없고 Enter 기본 동작까지 같이 돈다. $ 함수로 바로 고친다
         if (!e.altKey && !e.shiftKey && e.key === "Enter") {
+          const block = $currentBlock();
+          const list = block?.getParent();
           let handled = false;
-          editor.update(() => {
-            const block = $currentBlock();
-            const list = block?.getParent();
-            if ($isListItemNode(block) && $isListNode(list) && list.getListType() === "check") {
-              (block as ListItemNode).toggleChecked();
-              handled = true;
-            }
-          });
-          if (!handled) handled = editor.dispatchCommand(TOGGLE_OPEN_COMMAND, undefined);
+          if ($isListItemNode(block) && $isListNode(list) && list.getListType() === "check") {
+            (block as ListItemNode).toggleChecked();
+            handled = true;
+          } else {
+            handled = editor.dispatchCommand(TOGGLE_OPEN_COMMAND, undefined);
+          }
           if (handled) e.preventDefault();
           return handled;
         }
 
-        if (!e.altKey && e.shiftKey && e.code === "KeyX") {
+        if (!e.altKey && e.shiftKey && (e.code === "KeyX" || e.key.toLowerCase() === "x")) {
           e.preventDefault();
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
           return true;
@@ -122,23 +132,59 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
 
         if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === "d") {
           e.preventDefault();
-          editor.update(() => {
-            const block = $currentBlock();
-            if (block) block.insertAfter($deepCopy(block));
-          });
+          const block = $currentBlock();
+          if (block) {
+            const copy = $deepCopy(block);
+            block.insertAfter(copy);
+            // 커서는 복사본으로(Notion 과 같다)
+            if ($isElementNode(copy)) copy.selectEnd();
+          }
           return true;
         }
 
         if (!e.altKey && e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
           e.preventDefault();
-          editor.update(() => {
-            const block = $currentBlock();
-            if (block) $moveBlock(block, e.key === "ArrowUp" ? -1 : 1);
-          });
+          const block = $currentBlock();
+          if (block) $moveBlock(block, e.key === "ArrowUp" ? -1 : 1);
           return true;
         }
 
         return false;
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    editor.registerCommand(
+      KEY_TAB_COMMAND,
+      (e) => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || $findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return false;
+        e.preventDefault();
+        return editor.dispatchCommand(e.shiftKey ? OUTDENT_CONTENT_COMMAND : INDENT_CONTENT_COMMAND, undefined);
+      },
+      COMMAND_PRIORITY_NORMAL,
+    ),
+    // 새 문단은 서식 없이 시작하고(굵게 · 색이 따라오지 않게), 들여쓴 문단의 깊이는 이어 간다(Notion 과 같다)
+    editor.registerCommand(
+      INSERT_PARAGRAPH_COMMAND,
+      () => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+        const block = selection.anchor.getNode().getTopLevelElement();
+        // 목록 · 토글 · 콜아웃 · 코드는 각자 처리가 있다 — 맨 위의 문단 · 제목 · 인용만
+        if (!($isParagraphNode(block) || $isHeadingNode(block) || $isQuoteNode(block)) || !$isRootOrShadowRoot(block.getParent())) return false;
+        const indent = $isParagraphNode(block) ? block.getIndent() : 0;
+        selection.insertParagraph();
+        const next = $getSelection();
+        if (!$isRangeSelection(next)) return true;
+        const created = next.anchor.getNode().getTopLevelElement();
+        if ($isParagraphNode(created) && created.getTextContentSize() === 0) {
+          next.format = 0;
+          next.style = "";
+          created.setTextFormat(0);
+          created.setTextStyle("");
+          if (indent > 0) created.setIndent(indent);
+        }
+        return true;
       },
       COMMAND_PRIORITY_NORMAL,
     ),
