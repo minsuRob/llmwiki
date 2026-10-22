@@ -66,7 +66,8 @@ claude mcp add llmwiki -- node <저장소>/tools/llmwiki-mcp/server.mjs --local-
 ```
 
 - 도구: `llmwiki_workspaces` · `llmwiki_capture` · `llmwiki_work` · `llmwiki_read` · `llmwiki_inbox` · `llmwiki_propose`
-- 실제 Drive: `--local-drive` 대신 `LLMWIKI_DRIVE_TOKEN`(또는 `LLMWIKI_DRIVE_TOKEN_CMD`) — 토큰 받는 길은 열린 문제(docs/architecture.md 원칙 7)
+- 실제 Drive: 앱 설정 → Drive → **MCP 열쇠**에서 열쇠를 만들어 `~/.config/llmwiki/mcp-key`(권한 600)에 저장하면, MCP 가 서버(`mcpDriveToken`)에서 1시간 Drive 토큰만 받아 쓴다. 이때는 `--local-drive` 없이 등록한다. 설정 화면의 MCP 열쇠는 Google 로그인 + 서버에 Drive 를 이은 사용자에게만 보인다(docs/architecture.md 원칙 4 표)
+- 개발: `--local-drive http://127.0.0.1:8790`. 직접 넣는 `LLMWIKI_DRIVE_TOKEN(_CMD)` 도 된다
 - 시험: `npm run test:mcp`
 
 ### 데스크톱 셸(Electron) — 바로 실행

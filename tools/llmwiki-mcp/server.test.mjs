@@ -2,7 +2,8 @@
 // 실행: node --test tools/llmwiki-mcp/server.test.mjs
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
@@ -144,4 +145,72 @@ test("사용자가 앱에서 새로 만든 범주에도 남길 수 있다(MCP �
   assert.equal(saved.status, "saved");
   const r = await tool("llmwiki_capture", { workspace: "운동", text: "스쿼트 5x5" });
   assert.equal(r.error, false, r.text);
+});
+
+/** MCP 열쇠 길 — 가짜 mcpDriveToken 이 열쇠를 확인하고 1시간 토큰을 내주면, MCP 는 그 토큰으로 Drive 에 쓴다 */
+function startProc(args, env = {}) {
+  const p = spawn(process.execPath, [join(HERE, "server.mjs"), ...args], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, LLMWIKI_MCP_KEY: "", ...env } });
+  let buf = "";
+  const wait = new Map();
+  let n = 0;
+  p.stdout.on("data", (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const m = JSON.parse(buf.slice(0, i));
+      buf = buf.slice(i + 1);
+      wait.get(m.id)?.(m);
+    }
+  });
+  const call = (name, a = {}) =>
+    new Promise((r) => {
+      wait.set(++n, (m) => r({ text: m.result.content[0].text, error: m.result.isError }));
+      p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: n, method: "tools/call", params: { name, arguments: a } }) + "\n");
+    });
+  return { p, call };
+}
+
+test("MCP 열쇠 — 열쇠 파일로 토큰을 받아 쓰고, 열린 권한 · 틀린 열쇠 · 없는 열쇠는 알아듣게 거절한다", async () => {
+  const KEY = "lwk_aaaaaaaaaaaa." + "b".repeat(43);
+  let issued = 0;
+  const tokenSrv = createServer((req, res) => {
+    const ok = req.method === "POST" && req.headers.authorization === `Bearer ${KEY}`;
+    res.writeHead(ok ? 200 : 401, { "Content-Type": "application/json" });
+    if (ok) issued++;
+    res.end(JSON.stringify(ok ? { accessToken: TOKEN, expiresAt: Date.now() + 3600_000, email: "a@b.c" } : { error: { code: "bad_key", message: "MCP 열쇠가 틀렸거나 거둬졌어요." } }));
+  });
+  await new Promise((r) => tokenSrv.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${tokenSrv.address().port}/mcpDriveToken`;
+  const keyFile = join(dir, "mcp-key");
+  const args = ["--drive-origin", drive.url, "--token-url", url, "--key-file", keyFile];
+  try {
+    const none = startProc(args);
+    const r0 = await none.call("llmwiki_workspaces");
+    assert.equal(r0.error, true);
+    assert.match(r0.text, /MCP 열쇠가 없어요/);
+    none.p.kill();
+
+    writeFileSync(keyFile, KEY + "\n");
+    chmodSync(keyFile, 0o644);
+    const open = startProc(args);
+    assert.match((await open.call("llmwiki_workspaces")).text, /chmod 600/);
+    open.p.kill();
+
+    chmodSync(keyFile, 0o600);
+    const good = startProc(args);
+    assert.equal((await good.call("llmwiki_capture", { workspace: "개인", text: "열쇠로 남긴 조각" })).error, false);
+    assert.equal((await good.call("llmwiki_workspaces")).error, false);
+    assert.equal(issued, 1, "토큰은 만료 전까지 다시 받지 않는다");
+    good.p.kill();
+    const st = await repo.load();
+    assert.ok(st.sources.some((s) => s.text === "열쇠로 남긴 조각" && s.origin?.via === "mcp"));
+
+    const bad = startProc(args, { LLMWIKI_MCP_KEY: "lwk_cccccccccccc." + "d".repeat(43) });
+    const rb = await bad.call("llmwiki_workspaces");
+    assert.equal(rb.error, true);
+    assert.match(rb.text, /틀렸거나 거둬졌어요/);
+    bad.p.kill();
+  } finally {
+    await new Promise((r) => tokenSrv.close(r));
+  }
 });

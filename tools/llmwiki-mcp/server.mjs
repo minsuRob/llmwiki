@@ -9,14 +9,18 @@
  * - 저장소는 사용자 Drive 의 'llmwiki 작업실'(Drive REST 를 그대로). 개발 · 검증은 로컬 Drive(tools/local-drive).
  * - 로그(stderr)에는 도구 이름 · 결과 종류만. 조각 · 업무 내용과 토큰은 남기지 않는다.
  *
- * 실행
- *   node tools/llmwiki-mcp/server.mjs --local-drive http://127.0.0.1:8790 [--token local-dev-token]
- *   LLMWIKI_DRIVE_TOKEN=<1시간짜리 access token> node tools/llmwiki-mcp/server.mjs
- *   LLMWIKI_DRIVE_TOKEN_CMD='<토큰 한 줄을 찍는 명령>' node tools/llmwiki-mcp/server.mjs
+ * 실행 — 실제 Drive(기본): 앱 설정에서 만든 MCP 열쇠를 ~/.config/llmwiki/mcp-key(권한 600)에 두거나 LLMWIKI_MCP_KEY 로.
+ *   서버(mcpDriveToken)에서 1시간 access token 만 받아 쓴다. refresh token 은 이 컴퓨터로 오지 않는다(원칙 4 표).
+ *   node tools/llmwiki-mcp/server.mjs [--key-file <경로>] [--token-url <mcpDriveToken 주소>]
+ *   node tools/llmwiki-mcp/server.mjs --local-drive http://127.0.0.1:8790 [--token local-dev-token]   개발 · 검증
+ *   LLMWIKI_DRIVE_TOKEN=<access token> 또는 LLMWIKI_DRIVE_TOKEN_CMD='<토큰을 찍는 명령>'               직접 넣기
  * Claude Code 등록 예
- *   claude mcp add llmwiki -- node <저장소>/tools/llmwiki-mcp/server.mjs --local-drive http://127.0.0.1:8790
+ *   claude mcp add llmwiki -- node <저장소>/tools/llmwiki-mcp/server.mjs
  */
 import { execFile } from "node:child_process";
+import { readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { DriveFileStore } from "../../packages/core/src/drive.ts";
@@ -45,22 +49,63 @@ const log = (...a) => process.stderr.write(`[llmwiki-mcp] ${a.join(" ")}\n`);
 
 /* ───────── 토큰 ───────── */
 
+const TOKEN_URL = arg("token-url", process.env.LLMWIKI_TOKEN_URL ?? "https://asia-northeast3-llmwiki-minsu.cloudfunctions.net/mcpDriveToken");
+const KEY_FILE = arg("key-file", process.env.LLMWIKI_MCP_KEY_FILE ?? join(homedir(), ".config", "llmwiki", "mcp-key"));
+
+/** MCP 열쇠 — 환경 변수가 먼저, 없으면 파일. 다른 사용자가 읽을 수 있는 파일은 쓰지 않는다 */
+function readMcpKey() {
+  if (process.env.LLMWIKI_MCP_KEY) return { key: process.env.LLMWIKI_MCP_KEY.trim() };
+  let st;
+  try {
+    st = statSync(KEY_FILE);
+  } catch {
+    return { key: null };
+  }
+  if ((st.mode & 0o077) !== 0) return { key: null, problem: `${KEY_FILE} 를 다른 사용자도 읽을 수 있어요. chmod 600 ${KEY_FILE} 뒤에 다시 해 주세요.` };
+  return { key: readFileSync(KEY_FILE, "utf8").trim() || null };
+}
+
+class TokenError extends Error {}
+
 let token = LOCAL ? arg("token", "local-dev-token") : (process.env.LLMWIKI_DRIVE_TOKEN ?? null);
-let tokenAt = Date.now();
+/** 이 시각(ms) 2분 전까지 token 을 그대로 쓴다 */
+let tokenUntil = LOCAL || token ? Infinity : 0;
 async function freshToken() {
+  if (LOCAL || Date.now() < tokenUntil - 120_000) return;
   const cmd = process.env.LLMWIKI_DRIVE_TOKEN_CMD;
-  if (LOCAL || !cmd) return;
-  if (token && Date.now() - tokenAt < 45 * 60_000) return;
-  token = await new Promise((resolve) => execFile("/bin/sh", ["-c", cmd], { timeout: 30_000 }, (err, out) => resolve(err ? null : String(out).trim().split("\n")[0] || null)));
-  tokenAt = Date.now();
+  if (cmd) {
+    token = await new Promise((resolve) => execFile("/bin/sh", ["-c", cmd], { timeout: 30_000 }, (err, out) => resolve(err ? null : String(out).trim().split("\n")[0] || null)));
+    tokenUntil = Date.now() + 45 * 60_000;
+    return;
+  }
+  const { key, problem } = readMcpKey();
+  if (problem) throw new TokenError(problem);
+  if (!key) throw new TokenError(`MCP 열쇠가 없어요. 앱 설정 → Drive → MCP 열쇠에서 만들어 ${KEY_FILE} 에 저장해 주세요.`);
+  let res;
+  try {
+    res = await fetch(TOKEN_URL, { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: "{}" });
+  } catch {
+    throw new TokenError("토큰 서버에 닿지 못했어요. 네트워크를 확인해 주세요.");
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || typeof body.accessToken !== "string") {
+    token = null;
+    tokenUntil = 0;
+    throw new TokenError(body?.error?.message ?? `토큰을 받지 못했어요(HTTP ${res.status}).`);
+  }
+  token = body.accessToken;
+  tokenUntil = Number(body.expiresAt) || Date.now() + 50 * 60_000;
+  log("token", "issued");
 }
 
 /* ───────── 저장소 ───────── */
 
 const ws = ko.ws;
 const fallback = defaultManifest({ personal: ws.personal, company: ws.company, dev: ws.dev, reading: ws.reading });
+// --drive-origin: 열쇠 길을 시험할 때 Drive 만 로컬 Drive 로(개발 · 테스트용)
+const ORIGIN = LOCAL ?? arg("drive-origin");
 const store = new DriveFileStore(
-  { fetch: globalThis.fetch, token: () => token, ...(LOCAL ? { origin: LOCAL } : {}) },
+  { fetch: globalThis.fetch, token: () => token, ...(ORIGIN ? { origin: ORIGIN } : {}) },
   { root: ko.drive?.folder?.root ?? "llmwiki 작업실", summaries: ko.drive?.folder?.summaries ?? "업무 요약", appData: ko.drive?.folder?.appData ?? "앱 데이터" },
 );
 const repo = new WorkRepo(store, fallback);
@@ -281,7 +326,7 @@ rl.on("line", async (line) => {
       log(name, "ok");
       return send({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text }], isError: false } });
     } catch (e) {
-      const user = e instanceof UserError;
+      const user = e instanceof UserError || e instanceof TokenError;
       const code = e?.code ?? (user ? "user" : "error");
       log(name, "fail", code);
       const text = user ? e.message : code === "auth_expired" ? "Drive 토큰이 없거나 만료됐어요. LLMWIKI_DRIVE_TOKEN(_CMD) 를 확인해 주세요." : `실패했어요: ${e?.message ?? e}`;

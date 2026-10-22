@@ -16,6 +16,7 @@ import { confirmAsk } from "../work/io";
 import { JudgmentsCard } from "../work/JudgmentsCard";
 import { when } from "../work/parts";
 import { useWork } from "../work/WorkContext";
+import { McpKeysCard } from "./McpKeysCard";
 
 export default function SettingsScreen() {
   const c = usePalette();
@@ -112,6 +113,7 @@ export default function SettingsScreen() {
                 }
               />
             </View>
+            <McpKeysCard c={c} />
           </View>
         ) : work.storage === "drive" && !d.local ? (
           <Text style={body}>{t("drive.server.notLinked")}</Text>

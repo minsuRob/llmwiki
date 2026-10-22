@@ -46,6 +46,16 @@ export const driveLink = callable<{ code: string }, DriveAccess>("driveLink");
 export const driveToken = callable<Record<string, never>, DriveAccess>("driveToken");
 export const driveUnlink = callable<Record<string, never>, { ok: boolean; revoked: boolean }>("driveUnlink");
 export const driveStatus = callable<Record<string, never>, { linked: boolean; email?: string | null; linkedAt?: string; lastUsedAt?: string | null }>("driveStatus");
+export interface McpKeyInfo {
+  id: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+/** MCP 열쇠 — 이 컴퓨터의 MCP 가 Drive 1시간 토큰을 받을 때 쓴다(docs/architecture.md 원칙 4). 열쇠는 만들 때 한 번만 온다 */
+export const mcpKeyCreate = callable<{ label: string }, McpKeyInfo & { key: string }>("mcpKeyCreate");
+export const mcpKeyList = callable<Record<string, never>, { keys: McpKeyInfo[] }>("mcpKeyList");
+export const mcpKeyRevoke = callable<{ id: string }, { ok: boolean; revoked: boolean }>("mcpKeyRevoke");
 export const driveListWork = callable<Record<string, never>, { items: { id: string; title: string; status: string; workspaceId: string; updatedAt: string }[] }>("driveListWork");
 
 /** 서버 오류 → 사용자에게 보일 한 줄 */

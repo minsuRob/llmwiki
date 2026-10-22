@@ -47,6 +47,12 @@
 | 언제든 끊을 수 있다 | 'Drive 연결 해제' = Google 에서 폐기 + 서버 보관본 삭제. Google 계정에서 거두면(invalid_grant) 다음 사용 때 보관본을 바로 지운다 |
 | 남기는 기록 | 연결 · 해제 · 서버 읽기의 사실(uid · 동작 · 개수)만 Cloud Logging 에. 토큰 · 파일 내용은 남기지 않는다 |
 | 서버가 읽는 범위 | 지금은 업무 목록(제목 · 상태)만(`driveListWork`). 새 서버 읽기를 더할 때는 무엇을 읽고 무엇을 돌려주는지 이 표에 먼저 적는다 |
+| MCP 에 내주는 것(`mcpDriveToken`) | **1시간 access token 만**. refresh token 은 서버 밖으로 나가지 않는다. 이 컴퓨터의 MCP(`tools/llmwiki-mcp`)는 'MCP 열쇠'로 이 토큰을 받는다 |
+| MCP 열쇠 | 설정(Google 로그인 · 서버에 Drive 를 이은 사용자)에서 만들고 **한 번만** 보인다. 서버엔 SHA-256 해시만(`mcpKeys/{id}` — 규칙상 앱이 읽을 수 없다). 사용자당 5개, 이름 · 만든 시각 · 마지막 사용만 보인다 |
+| MCP 열쇠 거두기 | 설정에서 거두면 바로 막힌다(문서 삭제). 'Drive 연결 해제'는 그 사용자의 MCP 열쇠도 모두 지운다 |
+| MCP 열쇠 보관(이 컴퓨터) | `~/.config/llmwiki/mcp-key`(다른 사용자가 읽을 수 있는 권한이면 MCP 가 쓰지 않는다) 또는 환경 변수 `LLMWIKI_MCP_KEY` |
+| MCP 가 하는 Drive 일 | access token 범위는 앱과 같은 `drive.file`(앱이 만든 파일만). MCP 코드는 받은 것 남기기 · 매니페스트(정리 제안) · 원문(raw/)만 쓴다. 열쇠가 새면 거두기 |
+| MCP 기록 | 열쇠 발급 · 거두기 · 토큰 발급의 사실(uid · 열쇠 id · 동작)만. 열쇠 · 토큰 · Drive 내용은 남기지 않는다 |
 
 브라우저 쪽: access token 은 이 탭의 sessionStorage 에 만료 시각과 함께(탭을 닫으면 사라짐). 끝나기 2분 전에 서버에서 새로 받는다. 서버 열쇠가 없으면(익명 등) 만료 때 화면 위 알림에서 한 번 눌러 다시 받는다.
 
@@ -76,7 +82,7 @@
 - 쓰기는 둘뿐: 조각 남기기(정리 대기로) · 정리 제안. 확정 · 삭제 · 상태 전환 · 범주 만들기 도구는 없다. 규칙은 앱과 같은 core 함수(`newSource` · `prepareTriage` · `importTriage`) — 검사도 같다.
 - 비공개 범주는 남기기만 되고 읽기 · 묶기 · 제안은 `--include-private` 일 때만.
 - 앱과 MCP 가 같은 매니페스트를 번갈아 쓴다: Drive 저장소는 목록에서 본 버전을 바로 다음 읽기 한 번만 믿고, 매니페스트 저장은 충돌하면 최신본에 같은 바꿈을 다시 얹는다(`WorkRepo.saveManifestWith` · `mergeTriage`, 사본 없음).
-- 토큰: 개발은 로컬 Drive(`--local-drive`). 실제 Drive 는 `LLMWIKI_DRIVE_TOKEN`(1시간 access token) 또는 `LLMWIKI_DRIVE_TOKEN_CMD`(토큰을 찍는 명령) — 이 토큰을 어떻게 안전하게 받을지는 열린 문제(원칙 4 의 서버 보관 열쇠를 이 컴퓨터로 내줄지).
+- 토큰: 실제 Drive 는 설정에서 만든 **MCP 열쇠**로 서버(`mcpDriveToken`)에서 1시간 access token 을 받는다(원칙 4 표). 개발은 로컬 Drive(`--local-drive`). 직접 넣는 `LLMWIKI_DRIVE_TOKEN(_CMD)` 도 남겨 둔다.
 - 로그(stderr)에는 도구 이름 · 결과 종류만.
 
 ### 8. 바꾸기 전에
@@ -84,7 +90,6 @@
 - 커밋은 기능 브랜치에서, 테스트(`npm test` · 에뮬레이터 통합)가 통과한 뒤 main 에.
 
 ## 열린 문제
-- MCP(`tools/llmwiki-mcp`)가 실제 Drive 에 쓸 토큰을 받는 길 — 지금은 사람이 넣는 환경 변수뿐. 서버 보관 열쇠로 이 컴퓨터에 1시간 토큰을 내주려면 원칙 4 의 표에 먼저 적는다.
 - Drive 동시 수정: Drive v3 에 조건부 쓰기가 없어 쓰기 직전 버전 확인만 한다. 매니페스트는 충돌하면 다시 얹지만, 업무 · 자료 파일은 여전히 한 사람 · 한 기기 기준(MCP 는 업무 파일을 쓰지 않는다).
 - 기존 Firestore 기능(대화 · 할일 · 시냅스)을 작업실로 옮길지.
 - 데스크톱 셸 안의 Google 로그인 · Drive 동의 팝업이 막히는지(막히면 로그인만 시스템 브라우저 + Drive 는 브라우저에서 먼저 잇기).

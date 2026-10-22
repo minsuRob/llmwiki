@@ -25,7 +25,7 @@ const CLIENT_SECRET = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
 const TOKEN_KEY = defineSecret("DRIVE_TOKEN_KEY");
 /** 공개값(웹 앱에도 들어 있다) — Firebase 가 만든 웹 OAuth 클라이언트 */
 const CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID ?? "946261881838-5vr970sp0csucfb56lq5gjhj92arld3k.apps.googleusercontent.com";
-const SECRETS = { region: REGION, secrets: [CLIENT_SECRET, TOKEN_KEY] };
+export const SECRETS = { region: REGION, secrets: [CLIENT_SECRET, TOKEN_KEY] };
 
 interface LinkDoc {
   sealed: SealedToken;
@@ -39,7 +39,7 @@ const linkRef = (uid: string) => getFirestore().collection("driveLinks").doc(uid
 const client = (): OAuthClient => ({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET.value() });
 const http: Fetch = (url, init) => fetch(url, init);
 
-function requireGoogleUser(req: CallableRequest<unknown>): string {
+export function requireGoogleUser(req: CallableRequest<unknown>): string {
   const uid = requireUid(req);
   const provider = (req.auth?.token as { firebase?: { sign_in_provider?: string } } | undefined)?.firebase?.sign_in_provider;
   if (provider === "anonymous") throw new HttpsError("permission-denied", "Drive 를 서버에 이어 두려면 Google 로 로그인해 주세요.");
@@ -62,8 +62,8 @@ function fail(e: unknown): never {
   throw e;
 }
 
-/** 보관한 열쇠 → 새 access token. 거둬진 열쇠면 보관본을 지운다 */
-async function accessFor(uid: string): Promise<{ accessToken: string; expiresAt: number; email: string | null }> {
+/** 보관한 열쇠 → 새 access token. 거둬진 열쇠면 보관본을 지운다(MCP 토큰 발급도 이것을 쓴다) */
+export async function accessFor(uid: string): Promise<{ accessToken: string; expiresAt: number; email: string | null }> {
   const snap = await linkRef(uid).get();
   if (!snap.exists) throw new DriveTokenError("not_linked");
   const doc = snap.data() as LinkDoc;
@@ -123,7 +123,10 @@ export const driveUnlink = onCall(SECRETS, async (req) => {
     logger.warn("drive revoke failed — deleting anyway", { uid, error: e instanceof Error ? e.message : String(e) });
   }
   await linkRef(uid).delete();
-  logger.info("drive unlinked", { uid, revoked });
+  // MCP 열쇠는 이 연결로만 쓸모가 있다 — 함께 지운다
+  const keys = await getFirestore().collection("mcpKeys").where("uid", "==", uid).get();
+  await Promise.all(keys.docs.map((d) => d.ref.delete()));
+  logger.info("drive unlinked", { uid, revoked, mcpKeys: keys.size });
   return { ok: true, revoked };
 });
 

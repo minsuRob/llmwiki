@@ -7,7 +7,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 
 import { deleteApp, getApps, initializeApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, signInAnonymously, signOut } from "firebase/auth";
+import { GoogleAuthProvider, connectAuthEmulator, getAuth, signInAnonymously, signInWithCredential, signOut } from "firebase/auth";
 import { collection, connectFirestoreEmulator, doc, getDocs, getFirestore, orderBy, query, setDoc, terminate } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 
@@ -227,4 +227,67 @@ test("보안 규칙 — 앱은 자기 데이터를 읽기만, 남의 데이터�
   noteUid(auth.currentUser.uid);
   assert.notEqual(auth.currentUser.uid, mine);
   await assert.rejects(getDocs(collection(db, "users", mine, "tasks")), /permission/i);
+});
+
+/**
+ * MCP 열쇠 — 에뮬레이터에서만(관리자 권한으로 driveLinks 를 흉내 내야 한다). 원칙: docs/architecture.md 원칙 4 표.
+ * 진짜 Google 갱신(refreshAccess)은 driveTokens.test.ts 가 맡고, 여기서는 열쇠 확인 · 거두기 · 권한 경계를 본다.
+ */
+test("MCP 열쇠 — Google 사용자만, Drive 를 이었을 때만 만들고, 열쇠는 한 번만 · 서버엔 해시만, 거두면 바로 막힌다", { skip: CLOUD }, async () => {
+  // 익명은 만들 수 없다
+  await assert.rejects(call("mcpKeyCreate", { label: "익명" }), /Google 로 로그인|permission-denied/);
+  assert.deepEqual(await call("mcpKeyList", {}), { keys: [] });
+
+  const gApp = initializeApp(CONFIG, "google");
+  const gAuth = getAuth(gApp);
+  connectAuthEmulator(gAuth, `http://${AUTH_HOST}`, { disableWarnings: true });
+  const gFns = getFunctions(gApp, "asia-northeast3");
+  connectFunctionsEmulator(gFns, "127.0.0.1", FN_PORT);
+  const gDb = getFirestore(gApp);
+  connectFirestoreEmulator(gDb, FS_HOST, Number(FS_PORT));
+  const cred = await signInWithCredential(gAuth, GoogleAuthProvider.credential(JSON.stringify({ sub: "mcp-google-1", email: "mcp@example.com", email_verified: true })));
+  const gUid = cred.user.uid;
+  const gCall = (name, data) => httpsCallable(gFns, name)({ ...data, timeZone: TZ }).then((r) => r.data);
+
+  // 관리자 권한(에뮬레이터 owner)으로 driveLinks 를 흉내 낸다 — 앱은 이 자리를 읽지도 쓰지도 못한다
+  const linkUrl = `http://${FS_HOST}:${FS_PORT}/v1/projects/llmwiki-minsu/databases/(default)/documents/driveLinks/${gUid}`;
+  const admin = (method, body) => fetch(linkUrl, { method, headers: { Authorization: "Bearer owner", "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+
+  await assert.rejects(gCall("mcpKeyCreate", { label: "맥북" }), /먼저 Drive 를 서버에 이어|failed-precondition/);
+  assert.equal((await admin("PATCH", { fields: { email: { stringValue: "mcp@example.com" } } })).ok, true);
+
+  const made = await gCall("mcpKeyCreate", { label: "  내   맥북 " });
+  assert.match(made.key, /^lwk_[0-9a-z]{12}\.[A-Za-z0-9_-]{43}$/);
+  assert.equal(made.label, "내 맥북");
+  const listed = await gCall("mcpKeyList", {});
+  assert.deepEqual(listed.keys.map((k) => [k.id, k.label, k.lastUsedAt]), [[made.id, "내 맥북", null]]);
+  assert.equal(JSON.stringify(listed).includes(made.key.split(".")[1]), false, "목록에 열쇠가 없다");
+  await assert.rejects(getDocs(collection(gDb, "mcpKeys")), /permission/i);
+
+  const tokenUrl = `http://127.0.0.1:${FN_PORT}/llmwiki-minsu/asia-northeast3/mcpDriveToken`;
+  const ask = (key, method = "POST") => fetch(tokenUrl, { method, headers: { ...(key ? { Authorization: `Bearer ${key}` } : {}), "Content-Type": "application/json" }, ...(method === "POST" ? { body: "{}" } : {}) });
+
+  assert.equal((await ask(null)).status, 401);
+  assert.equal((await ask(made.key.replace(/.$/, (c) => (c === "A" ? "B" : "A")))).status, 401, "secret 이 하나만 달라도 막힌다");
+  assert.equal((await ask(made.key, "GET")).status, 405);
+  // 열쇠는 맞지만 서버에 Drive 열쇠가 없으면 — 열쇠를 확인한 뒤에야 나오는 답
+  assert.equal((await admin("DELETE")).ok, true);
+  const notLinked = await ask(made.key);
+  assert.equal(notLinked.status, 404);
+  assert.equal((await notLinked.json()).error.code, "not_linked");
+  assert.equal(notLinked.headers.get("cache-control"), "no-store");
+
+  // 남의 열쇠는 거두지 못한다(있어도 없는 것처럼)
+  assert.deepEqual(await call("mcpKeyRevoke", { id: made.id }), { ok: true, revoked: false });
+  assert.deepEqual(await gCall("mcpKeyRevoke", { id: made.id }), { ok: true, revoked: true });
+  assert.equal((await ask(made.key)).status, 401, "거두면 바로 막힌다");
+  assert.deepEqual((await gCall("mcpKeyList", {})).keys, []);
+
+  // 다섯 개까지
+  await admin("PATCH", { fields: { email: { stringValue: "mcp@example.com" } } });
+  for (let i = 0; i < 5; i++) await gCall("mcpKeyCreate", { label: `k${i}` });
+  await assert.rejects(gCall("mcpKeyCreate", { label: "k5" }), /5개까지|resource-exhausted/);
+  await admin("DELETE");
+  await terminate(gDb);
+  await deleteApp(gApp);
 });
