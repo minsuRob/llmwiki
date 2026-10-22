@@ -32,6 +32,7 @@ import {
   type WorkState,
 } from "../../../../packages/core/src/work.ts";
 import { importResult, prepareRun, type HandoffLabels, type ImportResult } from "../../../../packages/core/src/workHandoff.ts";
+import { importTriage, prepareTriage as prepareTriagePack, type TriageImport, type TriageLabels } from "../../../../packages/core/src/workTriage.ts";
 import { planRevert, planScrapMigration } from "../../../../packages/core/src/workMigrate.ts";
 import { copyStore, KvFileStore, MirroredStore, WorkRepo, type ConflictCopy, type FileStore, type KV, type SaveOutcome } from "../../../../packages/core/src/workStore.ts";
 import { dictOf, useI18n, type T } from "../../i18n";
@@ -86,6 +87,10 @@ interface WorkApi {
   capture: (text: string) => Promise<Source | null>;
   /** 받은 것 — core 가 돌려준 바뀐 업무 · 조각 · 매니페스트를 저장한다 */
   applyTriage: (r: { manifest?: WorkManifest; items?: WorkItem[]; sources?: Source[] }) => Promise<SaveState>;
+  /** 받은 것 — 이 범주의 정리 대기 조각을 Claude · Codex 에 보낼 정리 묶음으로. 조각이 없으면 null */
+  prepareTriage: (tool: AiTool) => Promise<{ markdown: string; runId: string; count: number; dropped: number } | null>;
+  /** 받은 것 — 돌아온 정리 결과를 제안으로 들인다(원문은 raw/ 에 먼저) */
+  importTriageText: (text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<TriageImport | { kind: "save_failed" }>;
   linkExisting: (itemId: string, sourceId: string, confirmCross?: boolean) => Promise<"linked" | "already" | "needs_confirm">;
   unlink: (itemId: string, sourceId: string) => Promise<void>;
   saveManifest: (fn: (m: WorkManifest) => WorkManifest) => Promise<SaveState>;
@@ -110,6 +115,12 @@ interface WorkApi {
 }
 
 const Ctx = createContext<WorkApi | null>(null);
+
+function triageLabelsFrom(t: T): TriageLabels {
+  const keys = ["title", "meta", "intro", "fragments", "works", "worksNone", "concepts", "conceptsNone", "rulesTitle", "rules", "returnFormat", "returnGuide", "droppedBudget"] as const;
+  const keep = Object.fromEntries(["workspace", "run", "at", "count", "titles"].map((k) => [k, `{${k}}`]));
+  return Object.fromEntries(keys.map((k) => [k, t(`triagePack.${k}`, keep)])) as unknown as TriageLabels;
+}
 
 function labelsFrom(t: T): HandoffLabels {
   const keys = ["title", "meta", "goal", "doneCriteria", "status", "summaryNone", "summaryStale", "decisions", "decisionsNone", "sources", "sourcesNone", "sourceAccess", "sourceNoExcerpt", "excludedCross", "scope", "taskDone", "openQuestions", "openNone", "nextActions", "returnFormat", "returnGuide", "rules", "rulesTitle", "droppedBudget"] as const;
@@ -530,6 +541,31 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     [getRepo, saveItem, cachedText],
   );
 
+  const prepareTriage = useCallback<WorkApi["prepareTriage"]>(
+    async (tool) => {
+      const r = prepareTriagePack(stateRef.current, workspaceId, { tool }, triageLabelsFrom(tRef.current), nowIso(), cachedText);
+      if (!r) return null;
+      // 기록이 저장되지 않아도 묶음은 복사할 수 있다 — 다만 그러면 가져올 때 S1 · W1 을 되짚지 못한다
+      await saveManifest(() => r.manifest);
+      return { markdown: r.markdown, runId: r.run.id, count: r.run.sourceIds.length, dropped: r.dropped.length };
+    },
+    [workspaceId, cachedText, saveManifest],
+  );
+
+  const importTriageText = useCallback<WorkApi["importTriageText"]>(
+    async (text, opts) => {
+      const repo = await getRepo();
+      if (!repo) return { kind: "save_failed" };
+      const r = importTriage(stateRef.current, text, nowIso(), opts);
+      if (r.kind !== "imported") return r;
+      const raw = await repo.saveRaw(r.rawHash, text);
+      if (!raw.ok) return { kind: "save_failed" };
+      const s = await saveManifest(() => r.manifest);
+      return s === "saved" ? r : { kind: "save_failed" };
+    },
+    [getRepo, saveManifest],
+  );
+
   const undo = useCallback(
     async (itemId: string, changeId: string) => {
       await update(itemId, (i) => {
@@ -770,6 +806,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       addSource,
       capture,
       applyTriage,
+      prepareTriage,
+      importTriageText,
       linkExisting,
       unlink,
       saveManifest,
@@ -789,7 +827,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       handoffLabels,
       templateText,
     }),
-    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, update, retry, createItem, addSource, capture, applyTriage, linkExisting, unlink, saveManifest, prepare, importText, undo, rawText, connectDrive, disconnectDrive, pickFromDrive, pickDriveOutput, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration, handoffLabels, templateText],
+    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, update, retry, createItem, addSource, capture, applyTriage, prepareTriage, importTriageText, linkExisting, unlink, saveManifest, prepare, importText, undo, rawText, connectDrive, disconnectDrive, pickFromDrive, pickDriveOutput, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration, handoffLabels, templateText],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

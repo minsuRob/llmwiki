@@ -32,6 +32,7 @@ import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
 import { ConflictPanel } from "./ConflictPanel";
 import { Card, Field, H, Muted, Pill, WorkspaceChips, when } from "./parts";
+import { TriagePanel } from "./TriagePanel";
 import { useWork } from "./WorkContext";
 
 const DAY = 86400000;
@@ -153,7 +154,8 @@ function Fragment({ c, s }: { c: Palette; s: Source }) {
         <Pill c={c} label={t(pill[st][0])} tone={pill[st][1]} />
       </View>
 
-      {st === "proposed"
+      {/* 엮인 뒤에도 남은 제안(개념 등)은 계속 보인다 — 숫자로만 남지 않게 */}
+      {st !== "dismissed"
         ? proposals.map((p) => (
             <ProposalLine
               key={p.id}
@@ -201,6 +203,7 @@ export default function TodayScreen() {
   const t = useT();
   const { ready, state, workspaceId } = useWork();
   const [showAll, setShowAll] = useState(false);
+  const [triaging, setTriaging] = useState(false);
   if (!ready) return <ActivityIndicator style={{ flex: 1, backgroundColor: c.bg }} color={c.muted} />;
 
   const inWs = state.items.filter((i) => i.workspaceId === workspaceId);
@@ -243,6 +246,7 @@ export default function TodayScreen() {
         <H c={c} right={waiting.length ? <Pill c={c} label={t("inbox.waitingCount", { count: waiting.length })} tone="accent" /> : null}>
           {t("inbox.title")}
         </H>
+        {triaging ? <TriagePanel c={c} onClose={() => setTriaging(false)} /> : waiting.length ? <Btn c={c} small label={t("triage.open")} onPress={() => setTriaging(true)} /> : null}
         {stream.length ? (
           shown.map((s) => <Fragment key={s.id} c={c} s={s} />)
         ) : (

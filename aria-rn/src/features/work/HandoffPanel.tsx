@@ -131,7 +131,7 @@ export function HandoffPanel({ c, item, onClose }: { c: Palette; item: WorkItem;
 }
 
 /** 이 실행자를 어떻게 돌리나 — 명령 한 줄(복사 가능)과 어디서 도는지 */
-function RunHint({ c, tool, file }: { c: Palette; tool: AiTool; file: string }) {
+export function RunHint({ c, tool, file }: { c: Palette; tool: AiTool; file: string }) {
   const t = useT();
   const ex = executorOf(tool);
   if (!ex) return null;

@@ -23,6 +23,8 @@ export interface DesktopRun {
   message?: string;
   counts?: { outputs: number; decisions: number; tasks: number };
   rawOnly?: boolean;
+  /** 받은 것 정리 실행 — 들인 정리 제안 수 */
+  triageAdded?: number;
 }
 
 interface DesktopApi {
@@ -40,13 +42,15 @@ const NONE: DesktopApi = { available: false, caps: null, runs: {}, start: async 
 
 export function DesktopRunsProvider({ children }: { children: React.ReactNode }) {
   const bridge = useMemo(() => desktop(), []);
-  const { ready, importText } = useWork();
+  const { ready, importText, importTriageText } = useWork();
   const [caps, setCaps] = useState<DesktopCapabilities | null>(null);
   const [runs, setRuns] = useState<Record<string, DesktopRun>>({});
   const importRef = useRef(importText);
+  const triageRef = useRef(importTriageText);
   useEffect(() => {
     importRef.current = importText;
-  }, [importText]);
+    triageRef.current = importTriageText;
+  }, [importText, importTriageText]);
   /** 같은 결과를 두 번 가져오지 않게(이벤트와 pending 이 겹칠 때) */
   const taking = useRef(new Set<string>());
 
@@ -64,6 +68,18 @@ export function DesktopRunsProvider({ children }: { children: React.ReactNode })
       taking.current.add(r.runId);
       patch(r.runId, { itemId: r.itemId, executor: r.executor, status: "importing" });
       try {
+        // 받은 것 정리 실행은 업무가 아니라 범주에 묶인다 — 같은 셸 경로, 다른 가져오기
+        if (isTriageTarget(r.itemId)) {
+          const t = await triageRef.current(r.text, { runId: r.runId, tool: r.executor as AiTool });
+          if (t.kind === "save_failed") {
+            patch(r.runId, { status: "save_failed" });
+            return;
+          }
+          if (t.kind === "imported") patch(r.runId, { status: "imported", triageAdded: t.added.length, rawOnly: t.warnings.includes("no_block") });
+          else patch(r.runId, { status: t.kind === "duplicate" ? "duplicate" : "failed", ...(t.kind === "no_run" ? { code: "no_result" as RunErrorCode } : {}) });
+          await bridge.ack(r.runId);
+          return;
+        }
         const res = await importRef.current(r.itemId, r.text, { runId: r.runId, tool: r.executor as AiTool });
         if (res.kind === "save_failed") {
           patch(r.runId, { status: "save_failed" });
@@ -160,5 +176,9 @@ export function runsOf(runs: Record<string, DesktopRun>, itemId: string): Deskto
     .filter((r) => r.itemId === itemId)
     .sort((a, b) => a.startedAt - b.startedAt);
 }
+
+/** 받은 것 정리 실행의 셸 대상 이름 — 셸은 해석하지 않고 돌려주기만 한다(ITEM_ID 모양 안) */
+export const triageTarget = (workspaceId: string) => `triage-${workspaceId}`.slice(0, 64);
+export const isTriageTarget = (itemId: string) => itemId.startsWith("triage-");
 
 export const isActive = (s: DesktopRunStatus) => s === "confirming" || s === "queued" || s === "running" || s === "importing";

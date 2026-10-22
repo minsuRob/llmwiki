@@ -237,7 +237,7 @@ export interface SourceOrigin {
 
 /** 받은 것 정리 제안 — Claude 가 내고 사람이 받아들인다. 범주를 넘지 않는다 */
 export type TriageKind = "file_source" | "new_work" | "concept_link";
-export type TriageFlag = "no_evidence";
+export type TriageFlag = "no_evidence" | "injection_suspect" | "bad_refs";
 
 export interface TriageProposal {
   id: string;
@@ -285,6 +285,25 @@ export interface WorkManifest {
   migrations: MigrationRecord[];
   /** 받은 것 정리 제안 — 업무가 아직 없을 수 있어(new_work) 범주 목록과 함께 둔다 */
   triage: TriageProposal[];
+  /** 정리 묶음 기록 — 묶음의 S1 · W1 이 어느 조각 · 업무인지(가져올 때 되짚는다). 최근 것만 */
+  triageRuns?: TriageRun[];
+}
+
+export interface TriageRun {
+  id: string;
+  workspaceId: string;
+  tool: AiTool;
+  /** S1, S2 … 순서대로 */
+  sourceIds: string[];
+  /** W1, W2 … 순서대로 */
+  itemIds: string[];
+  /** 조각마다 묶음에 넣은 줄 수 — 근거(S1:3) 검사 */
+  refLines: Record<string, number>;
+  startedAt: string;
+  finishedAt?: string | null;
+  /** 가져온 결과 원문 해시 — 같은 결과를 두 번 들이지 않는다 */
+  rawHash?: string | null;
+  counts?: { added: number; skipped: number } | null;
 }
 
 export interface WorkState {
@@ -695,6 +714,7 @@ export function fileSource(item: WorkItem, s: Source, nowIso: string, opts: { co
 /** Claude 가 낸 정리 제안(검사 전) */
 export interface TriageInput {
   kind: TriageKind;
+  flags?: TriageFlag[];
   sourceIds: string[];
   itemId?: string | null;
   title?: string;
@@ -763,7 +783,10 @@ export function proposeTriage(
       ...(x.kind === "concept_link" ? { concept } : {}),
       ...(x.note ? { note: x.note.trim().slice(0, 500) } : {}),
       refs,
-      ...(refs.length ? {} : { flags: ["no_evidence" as const] }),
+      ...((): { flags?: TriageFlag[] } => {
+        const flags = [...new Set([...(refs.length ? [] : (["no_evidence"] as TriageFlag[])), ...(x.flags ?? [])])];
+        return flags.length ? { flags } : {};
+      })(),
       runId: meta.runId ?? null,
       tool: meta.tool ?? null,
       createdAt: nowIso,
@@ -1059,6 +1082,7 @@ export function upgradeManifest(raw: Record<string, unknown> | null, fallback: W
   m.prefs.todayOrder ??= [];
   m.migrations ??= [];
   m.triage ??= [];
+  m.triageRuns ??= [];
   // 기존 사용자의 범주는 그대로 — 새 기본 범주(개발 · 독서)를 억지로 더하지 않는다. 영역(areas)은 지운다
   m.workspaces = (m.workspaces ?? fallback.workspaces).map((w) => {
     const { areas: _areas, ...rest } = w as Workspace & { areas?: unknown };
