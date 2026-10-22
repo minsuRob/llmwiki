@@ -7,12 +7,11 @@
     "node": "22"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=lib/index.js --external:firebase-functions --external:firebase-admin --external:@anthropic-ai/sdk",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=lib/index.js --external:firebase-functions --external:firebase-admin",
     "typecheck": "tsc --noEmit",
     "test": "TZ=UTC node --test --experimental-strip-types src/*.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.134.0",
     "firebase-admin": "^14.5.0",
     "firebase-functions": "^7.4.0"
   },

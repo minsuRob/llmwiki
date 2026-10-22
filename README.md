@@ -239,6 +239,6 @@ node functions/scripts/import-jobs.ts --src "<구직 폴더>" --uid <uid> --targ
 
 `--via admin` 은 Admin SDK 로 바로 쓰고(`gcloud auth application-default login` 필요), `--via function` 은 그 uid 로 `jobsSync` 함수를 부른다. 같은 코드(`functions/src/jobsStore.ts`)로 쓴다.
 
-## Claude
+## AI
 
-API 키는 앱에 두지 않는다. 함수 환경변수 `ANTHROPIC_API_KEY` 가 있으면 `claude-opus-5-5` 가 도구를 고르고 기록에서 개념을 뽑는다. 없으면 한국어 규칙이 같은 도구를 부른다. 로컬에서는 `functions/.env.local`(커밋하지 않음)에 넣는다.
+서버(Functions)는 AI API 를 부르지 않는다. 대화 · 시냅스는 `packages/core` 의 한국어 규칙으로만 돈다. AI 작업은 사용자 컴퓨터의 Claude Code · Codex 세션이 맡는다 — 대화 중에는 llmwiki MCP, 업무 단위로는 맥락 묶음(`tools/handoff/run.mjs` · 데스크톱 셸). API 키를 어디에도 두지 않는다.

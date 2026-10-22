@@ -225,7 +225,7 @@ export default function SettingsScreen() {
             onPress={() =>
               void act("syn", async () => {
                 const r = await run(() => rebuildSynapse({}));
-                return r ? t("settings.data.rebuilt", { nodes: r.nodes, edges: r.edges, via: r.via === "claude" ? "Claude" : t("settings.data.rules") }) : null;
+                return r ? t("settings.data.rebuilt", { nodes: r.nodes, edges: r.edges, via: t("settings.data.rules") }) : null;
               })
             }
           />

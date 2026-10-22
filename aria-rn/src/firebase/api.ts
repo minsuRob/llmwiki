@@ -16,7 +16,7 @@ function callable<Req, Res>(name: string) {
 }
 
 /** 대화 — functions/src/features/chat.ts */
-export const sendChat = callable<{ text: string }, { messageId: string; text: string; via: "claude" | "local" }>("chat");
+export const sendChat = callable<{ text: string }, { messageId: string; text: string; via: "local" }>("chat");
 
 /** 카드 단추 — functions/src/features/cards.ts */
 export type CardAction =
@@ -34,7 +34,7 @@ export type TaskAction =
 export const taskAction = callable<TaskAction, { id?: string; ok?: boolean }>("taskAction");
 
 /** 시냅스 — functions/src/features/synapse.ts */
-export const rebuildSynapse = callable<Record<string, never>, { nodes: number; edges: number; via: "claude" | "rules" }>("rebuildSynapse");
+export const rebuildSynapse = callable<Record<string, never>, { nodes: number; edges: number; via: "rules" }>("rebuildSynapse");
 
 /** Drive 열쇠 — functions/src/features/drive.ts. 서버가 refresh token 을 암호화해 두고 access token 만 내준다 */
 export interface DriveAccess {

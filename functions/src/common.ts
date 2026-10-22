@@ -75,8 +75,3 @@ function textsChanged(a: AppState, b: AppState): boolean {
     ]);
   return sig(a) !== sig(b);
 }
-
-export function anthropicKey(): string | null {
-  const k = process.env.ANTHROPIC_API_KEY?.trim();
-  return k ? k : null;
-}

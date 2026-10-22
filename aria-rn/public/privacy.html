@@ -44,7 +44,7 @@
 
 <h2>3. AI 처리</h2>
 <ul>
-  <li><strong>대화 기능:</strong> 사용자가 대화 화면에 쓴 글과 그 답을 만드는 데 필요한 맥락(할 일 · 일정 등)은 답을 만들기 위해 Anthropic 의 Claude API 로 보내질 수 있습니다.</li>
+  <li><strong>서버는 AI API 를 쓰지 않습니다.</strong> 대화 화면의 답과 개념 그래프는 서버 안의 규칙으로만 만들고, 사용자 글을 외부 AI 회사로 보내지 않습니다.</li>
   <li><strong>AI 로 이어하기 · 정리 맡기기:</strong> 사용자가 직접 실행할 때만, 사용자가 고른 AI(Claude · Codex · Gemma)에 '맥락 묶음'을 넘깁니다. 묶음에는 사용자가 이어 둔 자료와 받은 것 조각의 발췌가 들어갈 수 있습니다. 묶음은 사용자 컴퓨터의 도구(Claude Code · Codex CLI)나 개발자가 운영하는 Gemma 서버에서 처리됩니다. Gemma 서버에 남는 묶음과 결과는 받은 뒤 지우는 것을 목표로 하며, 지금은 개발자가 직접 정리합니다. llmwiki 는 Drive 데이터를 자동으로 AI 에 보내지 않습니다.</li>
   <li><strong>MCP:</strong> 사용자가 자기 컴퓨터의 Claude Code 등에 llmwiki MCP 를 등록하면, 그 도구가 사용자 대화 중에 받은 것에 조각을 남기고 정리 제안을 낼 수 있습니다. 확정 · 삭제는 앱에서 사용자만 할 수 있습니다.</li>
   <li>AI 가 낸 결과는 언제나 제안으로만 들어오고, 사용자가 받아들여야 반영됩니다.</li>
@@ -53,7 +53,6 @@
 <h2>4. 맡기는 곳(처리 위탁)</h2>
 <ul>
   <li>Google(Firebase Authentication · Firestore · Cloud Functions · Hosting · Cloud Logging, Google Drive API) — 서울 리전(asia-northeast3) 등</li>
-  <li>Anthropic(대화 기능의 Claude API)</li>
   <li>사용자가 직접 고른 AI 도구(Anthropic Claude Code · OpenAI Codex) — 사용자 자신의 계정과 컴퓨터에서 실행</li>
 </ul>
 
@@ -103,14 +102,14 @@
 
   <h2>3. AI processing</h2>
   <ul>
-    <li><strong>Chat:</strong> what you write in the chat screen, with the context needed to answer (tasks, events), may be sent to Anthropic's Claude API to generate replies.</li>
+    <li><strong>The server does not use any AI API.</strong> Chat replies and the concept graph are produced by rules on the server; your text is not sent to any AI company by the server.</li>
     <li><strong>Hand-off and inbox sorting:</strong> only when you start it, a context bundle is passed to the AI you choose (Claude, Codex or Gemma). The bundle may include excerpts from sources you linked and from inbox notes. It is processed by tools on your own computer (Claude Code, Codex CLI) or on a Gemma server run by the developer. Bundles and results left on the Gemma server are meant to be deleted after the result is received; for now the developer cleans them up manually. llmwiki never sends Drive data to an AI automatically.</li>
     <li><strong>MCP:</strong> if you register the llmwiki MCP in a tool on your computer, that tool can add notes to your inbox and submit sorting suggestions during your conversation. Only you can confirm or delete, in the app.</li>
     <li>AI output always arrives as a suggestion and is applied only after you accept it.</li>
   </ul>
 
   <h2>4. Service providers</h2>
-  <p>Google (Firebase Authentication, Firestore, Cloud Functions, Hosting, Cloud Logging, Google Drive API), Anthropic (Claude API for chat), and AI tools you choose to run with your own accounts (Anthropic Claude Code, OpenAI Codex).</p>
+  <p>Google (Firebase Authentication, Firestore, Cloud Functions, Hosting, Cloud Logging, Google Drive API), and AI tools you choose to run with your own accounts on your own computer (Anthropic Claude Code, OpenAI Codex).</p>
 
   <h2>5. Retention and deletion</h2>
   <ul>
