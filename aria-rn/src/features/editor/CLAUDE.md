@@ -8,8 +8,9 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
   - props 는 직렬화되는 값만(문자열 · 숫자 · 팔레트 객체 · 콜백). 노드나 함수 참조를 넘기지 않는다.
   - 이 파일은 **기본 내보내기 하나만** 둘 수 있다(린트 `expo/use-dom-exports`). 도우미는 다른 파일로(예: `markdownCompat.ts`).
 - 색은 앱 팔레트를 `--lex-*` CSS 변수로 받는다. 모든 CSS 는 `.lex-root` 아래로 가둔다(`editor.css`, 웹에서 앱 페이지와 섞이지 않게).
-- **편집기 탭 내용은 아직 저장하지 않는다**(`EditorScreen.tsx` 는 평문 미리보기 · JSON/HTML 원본 팝업만). 저장을 붙이려면 `onChange` 의 `json` 을 쓴다.
-- 자동 시험이 없다 — 바꾸면 웹(`web-emulator`)에서 직접 입력해 확인한다.
+- **페이지 본문은 마크다운이 정본이다.** `initialMarkdown` 으로 넣고(`$fromMarkdown`), 사람이 고치면 1.5초 멈춤 · 초점을 잃을 때 `onMarkdown` 으로 넘긴다(`$toMarkdown`). 넣은 직후 내보낸 글을 기준으로 삼아 실제로 고쳤을 때만 보낸다. 다른 본문은 부르는 쪽이 `key` 로 새 편집기를.
+- 편집기 탭(`EditorScreen.tsx`)은 아직 저장하지 않는다(평문 미리보기 · JSON/HTML 원본 팝업만, `onChange`).
+- 시험: `npm run test:editor`(헤드리스 Lexical 마크다운 왕복 — `markdown.test.ts`). 화면 동작은 웹에서 직접 입력해 확인한다.
 
 ## 지도
 
@@ -17,9 +18,9 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 |---|---|
 | `extension.ts` | 편집기 확장 묶음(`editorExtension`) — RichText · History · AutoFocus · List · CheckList · Link · AutoLink · Code · HorizontalRule · Image · Toggle · Callout. 모듈 범위에 두어야 다시 만들어지지 않는다 |
 | `LexicalEditor.tsx` | 편집기 본체 — 도구 막대 · 마크다운 · 블록 단축키 · 슬래시 메뉴 · 떠 있는 도구 막대 · 변경 알림(`EditorChange` = text · json · html) |
-| `LexicalViewer.tsx` | **읽기 전용** — 같은 노드 · 테마 · 마크다운 규칙으로 마크다운을 서식 있게. `markdown` prop 이 바뀌면 다시 읽는다(업무 원본 보기에서 씀) |
-| `markdownCompat.ts` | 일반 마크다운 → 이 편집기 규칙(`> 인용` → `| 인용`, `>` 는 토글이라) |
-| `markdown.ts` | `MARKDOWN_TRANSFORMERS`(순서 중요) · 바로 바꾸기(```` ``` ```` · `---`) · 여러 줄 마크다운 붙여넣기 |
+| `LexicalViewer.tsx` | **읽기 전용** — 같은 노드 · 테마 · 마크다운 규칙으로 마크다운을 서식 있게. `markdown` prop 이 바뀌면 다시 읽는다(펼쳐 보기에서 씀) |
+| `markdownCompat.ts` | 일반 마크다운 → 이 편집기 규칙(`> 인용` → `| 인용`, `>` 는 토글이라. 콜아웃 `> [!note]` 줄은 그대로) |
+| `markdown.ts` | `MARKDOWN_TRANSFORMERS`(순서 중요 — 토글 `<details>` · 콜아웃 · 이미지가 맨 앞) · `$toMarkdown` · `$fromMarkdown` · 바로 바꾸기(```` ``` ```` · `---`) · 여러 줄 마크다운 붙여넣기 |
 | `blocks.ts` | 블록 종류 목록 `BLOCKS`(텍스트 · 제목1~4 · 글머리 · 번호 · 할 일 · 토글 · 콜아웃 · 인용 · 코드 · 이미지 · 구분선) — 슬래시 메뉴와 블록 바꾸기 단축키가 같이 쓴다. 새 블록은 여기에 더한다 |
 | `outline.ts` | **블록 개요 모델** — 한 범위(문서 · 토글 안 · 콜아웃 안)를 "순서 + 깊이(0~4) + 종류" 줄(`OutlineEntry`)로 읽고(`$readOutline`) 고쳐서 다시 짓는다(`$writeOutline`). 들여쓰기 · 내어쓰기 · 옮기기 · 복제 · Enter · Backspace 가 모두 이것으로 |
 | `shortcuts.ts` | Notion 식 단축키(아래) · 한글 조합 중 Enter(`registerImeEnter`) |
@@ -33,7 +34,9 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 
 ## 마크다운 규칙(입력 · 붙여넣기 · 뷰어 공통)
 
-`#`~`####` 제목 · `>` **토글** · `"` 또는 `|` 인용 · `[]`/`[x]` 할 일 · `-` 글머리 · `1.`/`a.` 번호 · ```` ``` ```` 코드 · `---` 구분선 · `**굵게**` · `*기울임*` · `~취소~` · `` `코드` `` · 링크. 일반 마크다운의 `>` 인용은 이 편집기에서 토글이 되니, 바깥 마크다운을 넣을 때는 `toEditorMarkdown` 을 거친다.
+입력: `#`~`####` 제목 · `>` **토글** · `"` 또는 `|` 인용 · `[]`/`[x]` 할 일 · `-` 글머리 · `1.`/`a.` 번호 · ```` ``` ```` 코드 · `---` 구분선 · `**굵게**` · `*기울임*` · `~취소~` · `` `코드` `` · 링크. 일반 마크다운의 `>` 인용은 이 편집기에서 토글이 되니, 바깥 마크다운을 넣을 때는 `toEditorMarkdown`(`$fromMarkdown` 이 부른다)을 거친다.
+
+내보내기(페이지 본문 정본): 블록 사이 빈 줄 · 중첩 목록 4칸 · 인용 `> ` · 토글 `<details><summary>제목</summary> … </details>`(안쪽 블록 그대로, 중첩 가능) · 콜아웃 `> [!note] 💡` + `> ` 줄 · 이미지 `![설명](주소 "너비")`. 블록 들여쓰기 · `a.` 목록은 마크다운에 담기지 않는다(열린 문제).
 
 ## 단축키(shortcuts.ts)
 

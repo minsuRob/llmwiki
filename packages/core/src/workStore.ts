@@ -2,11 +2,11 @@
  * 작업실 저장소 — 파일 단위로 읽고 쓴다. 실제 Google Drive(앱 drive.ts) · 기기 저장소(KV) · 테스트용 메모리가 같은 틀(FileStore)을 따른다.
  *
  * 놓는 자리
- *   state/manifest.json        작업실 · 영역 · 오늘 순서 · 이행 기록(작다)
- *   state/items/{id}.json      업무 하나 = 파일 하나(큰 파일 하나에 몰지 않는다)
- *   state/sources/{id}.json    원본 자료 하나 = 파일 하나(여러 업무가 같은 파일을 가리킨다)
- *   raw/{hash}.txt             가져온 AI 결과 원문(한 번 쓰면 바꾸지 않는다)
- *   summaries/{id}.md          사람이 읽는 업무 요약(앱이 만든다 — 사람이 고칠 필요 없다)
+ *   state/manifest.json        범주 · 정리 제안 · 본문 제안 · 넘기기 기록 · 이행 기록(작다)
+ *   state/sources/{id}.json    원본 자료 하나 = 파일 하나(여러 페이지가 같은 파일을 가리킨다)
+ *   raw/{hash}.txt             가져온 AI 결과 원문 · 본문 제안 본문(한 번 쓰면 바꾸지 않는다)
+ *   pagesmd/{id}.md            사람이 읽는 페이지 사본(Drive '페이지' 폴더에 '제목.md' — 쓰기만 한다)
+ *   state/items/{id}.json      옛 업무(스키마 2, workV2.ts) — 읽어서 페이지로 옮기기만 한다. 지우지 않는다
  *   state/index/{범주}.json    페이지 색인(트리 · 제목 · 본문 지문) — 범주 하나 = 파일 하나(pages.ts)
  *   state/pages/{id}.json      사람이 만들거나 고친 페이지 문서(본문 · 자료 · 되돌리기)
  *   state/packs/{packId}.json  가져온 본문 묶음(한 번 쓰고 고치지 않는다 — 고치면 그 페이지만 state/pages 로 옮긴다)
@@ -32,15 +32,8 @@ import {
   type PageMeta,
   type PagePack,
 } from "./pages.ts";
-import {
-  upgradeItem,
-  upgradeManifest,
-  upgradeSource,
-  type Source,
-  type WorkItem,
-  type WorkManifest,
-  type WorkState,
-} from "./work.ts";
+import { upgradeManifest, upgradeSource, type Source, type WorkManifest } from "./work.ts";
+import { upgradeItem, type WorkItem } from "./workV2.ts";
 
 export type StoreErrorCode = "auth_expired" | "offline" | "forbidden" | "not_configured" | "unknown";
 
@@ -294,25 +287,11 @@ export class WorkRepo {
 
   readonly store: FileStore;
   private fallbackManifest: WorkManifest;
-  private renderSummary?: (item: WorkItem) => string;
   private bodyCache?: BodyCache;
-  constructor(store: FileStore, fallbackManifest: WorkManifest, renderSummary?: (item: WorkItem) => string, opts: { bodyCache?: BodyCache } = {}) {
+  constructor(store: FileStore, fallbackManifest: WorkManifest, opts: { bodyCache?: BodyCache } = {}) {
     this.store = store;
     this.fallbackManifest = fallbackManifest;
-    this.renderSummary = renderSummary;
     this.bodyCache = opts.bodyCache;
-  }
-
-  /** 설정 · 업무 · 자료를 함께 읽는다 — Drive 는 요청 하나가 느려 차례로 읽으면 파일 수만큼 기다린다 */
-  async load(): Promise<WorkState> {
-    const [m, items, sources] = await Promise.all([
-      this.store.read(PATHS.manifest),
-      this.readAll("state/items/", (raw) => upgradeItem(raw)),
-      this.readAll("state/sources/", (raw) => upgradeSource(raw)),
-    ]);
-    if (m) this.versions.set(PATHS.manifest, m.version);
-    const manifest = upgradeManifest(m ? (JSON.parse(m.text) as Record<string, unknown>) : null, this.fallbackManifest);
-    return { manifest, items, sources };
   }
 
   private async readAll<T>(prefix: string, up: (raw: Record<string, unknown>) => T): Promise<T[]> {
@@ -330,14 +309,6 @@ export class WorkRepo {
       }
     });
     return out;
-  }
-
-  /** 지금 저장소에서 다시 읽는다(충돌 후 · 다른 기기에서 바뀐 뒤) */
-  async reloadItem(id: string): Promise<WorkItem | null> {
-    const f = await this.store.read(PATHS.item(id));
-    if (!f) return null;
-    this.versions.set(PATHS.item(id), f.version);
-    return upgradeItem(JSON.parse(f.text) as Record<string, unknown>);
   }
 
   private async put<T extends { rev: number }>(path: string, value: T, nowIso: string, parse: (text: string) => T, opts: { noCopy?: boolean } = {}): Promise<SaveOutcome<T>> {
@@ -372,21 +343,6 @@ export class WorkRepo {
         return { status: "conflict", remote, copyPath };
       }
       return { status: "failed", code: e instanceof StoreError ? e.code : "unknown", message: (e as Error)?.message ?? String(e) };
-    }
-  }
-
-  async saveItem(item: WorkItem, nowIso: string): Promise<SaveOutcome<WorkItem> & { summaryFailed?: boolean }> {
-    const r = await this.put(PATHS.item(item.id), item, nowIso, (t) => upgradeItem(JSON.parse(t) as Record<string, unknown>));
-    if (r.status !== "saved" || !this.renderSummary) return r;
-    // 사람이 읽는 요약 — 상태 파일이 저장된 뒤에만. 실패해도 상태는 저장된 것이고, 따로 알린다
-    const sp = PATHS.summary(item.id);
-    try {
-      const cur = await this.store.read(sp);
-      const { version } = await this.store.write(sp, this.renderSummary(r.value), cur?.version ?? null);
-      this.versions.set(sp, version);
-      return r;
-    } catch {
-      return { ...r, summaryFailed: true };
     }
   }
 
@@ -432,8 +388,11 @@ export class WorkRepo {
 
   /* ───────── 페이지(스키마 3) ───────── */
 
-  /** 매니페스트 · 색인(범주마다 하나) · 자료만 — 페이지 본문은 열 때 readBody. hasIndex: 색인이 하나라도 있나(없으면 아직 이행 전) */
-  async loadPages(): Promise<{ manifest: WorkManifest; pages: PageMeta[]; sources: Source[]; hasIndex: boolean }> {
+  /**
+   * 매니페스트 · 색인(범주마다 하나) · 자료를 함께 읽는다 — 페이지 본문은 열 때 readBody. Drive 는 요청 하나가 느려 동시에(8개씩).
+   * hasIndex: 색인이 하나라도 있나(없으면 아직 이행 전 — 옛 업무 파일은 listItemIds · readItems 로)
+   */
+  async load(): Promise<{ manifest: WorkManifest; pages: PageMeta[]; sources: Source[]; hasIndex: boolean }> {
     const [m, indexes, sources] = await Promise.all([
       this.store.read(PATHS.manifest),
       this.readAll("state/index/", (raw) => raw),

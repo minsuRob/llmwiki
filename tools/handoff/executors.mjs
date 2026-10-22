@@ -5,7 +5,7 @@
 // 어댑터 모양:
 //   id, label, kind('cli'|'api'), status('ready'|'planned')
 //   command({ bundlePath, workdir, mode, mcpConfig, model }) -> { cmd, args, stdinFile }
-//   readOutput(stdout) -> 모델이 쓴 최종 텍스트(여기서 llmwiki-result 블록을 찾는다)
+//   readOutput(stdout) -> 모델이 쓴 최종 텍스트(여기서 llmwiki-page · llmwiki-triage 블록을 찾는다)
 
 // 조사 위임 기본 권한: 웹 조사·읽기만. 파일 수정·셸 실행은 막는다.
 const RESEARCH_TOOLS = ['WebSearch', 'WebFetch', 'Read', 'Grep', 'Glob'];

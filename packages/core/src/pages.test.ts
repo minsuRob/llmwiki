@@ -31,7 +31,8 @@ import {
   type MigrateLabels,
   type PageMeta,
 } from "./pages.ts";
-import { addWorkspace, createWorkItem, defaultManifest, type WorkItem, type WorkManifest } from "./work.ts";
+import { addWorkspace, defaultManifest, type WorkManifest } from "./work.ts";
+import { createWorkItem, type WorkItem } from "./workV2.ts";
 import { MemoryFileStore, PATHS, WorkRepo } from "./workStore.ts";
 
 const NOW = "2026-10-22T09:00:00.000Z";
@@ -208,7 +209,7 @@ test("가져오기 — 묶음으로 쓰고 색인은 마지막, 다시 가져오
   assert.equal(files.filter((f) => f.startsWith("state/pages/")).length, 0, "가져온 페이지는 제 파일이 없다");
   // 다른 저장소 인스턴스(다른 기기)에서 처음 열기 — 색인만 읽고, 본문은 열 때 묶음에서
   const repo2 = new WorkRepo(store, manifest());
-  const loaded = await repo2.loadPages();
+  const loaded = await repo2.load();
   assert.equal(loaded.hasIndex, true);
   pages = [...loaded.pages, parent.page];
   const kids = childrenOf(pages, "ws-personal", parent.page.id);
@@ -253,8 +254,8 @@ test("색인 동시 쓰기 — 다른 기기가 먼저 고쳤으면 그 최신�
   const a = createPage([], { workspaceId: "ws-personal", title: "A" }, NOW);
   if (a.kind !== "ok") return assert.fail();
   await mine.saveIndexWith("ws-personal", [], () => a.pages, NOW);
-  const t0 = await theirs.loadPages();
-  const mine0 = await mine.loadPages();
+  const t0 = await theirs.load();
+  const mine0 = await mine.load();
   const b = createPage(t0.pages, { workspaceId: "ws-personal", title: "B(다른 기기)" }, NOW);
   if (b.kind !== "ok") return assert.fail();
   assert.equal((await theirs.saveIndexWith("ws-personal", t0.pages, () => b.pages, NOW)).status, "saved");

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// 위임 실행 — 앱에서 내보낸 맥락 묶음(.md)을 실행자에 넘기고, 답을 <묶음>-result.md 로 남긴다. 의존성 없음.
+// 위임 실행 — 앱에서 내보낸 페이지 · 정리 묶음(.md)을 실행자에 넘기고, 답을 <묶음>-result.md 로 남긴다. 의존성 없음.
 //
 //   node tools/handoff/run.mjs <claude|codex|gemma> <묶음.md> [--out 결과.md] [--model 이름] [--dry-run]
 //   node tools/handoff/run.mjs gemma --fetch <작업 id> [--out 결과.md]      (기다리다 끊긴 Gemma 작업 받아 오기)
 //
 // - claude · codex: 이 컴퓨터의 CLI 를 비대화형으로(조사 모드: 읽기 · 웹만, 파일 수정 · 셸 금지 / Codex 는 읽기 전용 샌드박스).
 // - gemma: 오라클 서버 작업 큐(oracle.mjs). 서버가 Gemma 를 켜고 묶음을 읽혀 답을 만든다.
-// 답을 업무에 반영하지 않는다. 앱의 '작업 결과 가져오기'에 붙여 넣거나 파일로 넣으면 같은 검사를 거쳐 '제안'으로만 들어간다.
+// 답을 페이지에 반영하지 않는다. 앱의 '결과 가져오기'에 붙여 넣으면 같은 검사를 거쳐 '제안'으로만 들어간다.
 // 실행 본문은 lib.mjs — 데스크톱 셸도 같은 코드를 쓴다. 여기는 인자 · 파일 · 출력만.
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
@@ -56,5 +56,5 @@ try {
 
 await writeFile(outPath, text);
 process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
-const hasBlock = /```\s*llmwiki-result/.test(text);
-console.error(`\n→ ${outPath} 에 저장했다.${hasBlock ? '' : ' (llmwiki-result 블록이 없다 — 가져오면 원문만 남는다)'} 앱의 '작업 결과 가져오기'로 넣어 주세요.`);
+const hasBlock = /```\s*llmwiki-(page|triage|result)/.test(text);
+console.error(`\n→ ${outPath} 에 저장했다.${hasBlock ? '' : ' (llmwiki-page · llmwiki-triage 블록이 없다 — 가져와도 제안이 생기지 않는다)'} 앱의 '결과 가져오기'로 넣어 주세요.`);

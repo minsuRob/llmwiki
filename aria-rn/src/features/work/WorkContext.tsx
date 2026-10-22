@@ -307,7 +307,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     [driveDeps],
   );
 
-  const newRepo = useCallback((store: FileStore) => new WorkRepo(store, fallbackManifest(), undefined, uidRef.current ? { bodyCache: bodyCacheFor(uidRef.current) } : {}), [fallbackManifest]);
+  const newRepo = useCallback((store: FileStore) => new WorkRepo(store, fallbackManifest(), uidRef.current ? { bodyCache: bodyCacheFor(uidRef.current) } : {}), [fallbackManifest]);
 
   /**
    * 옛 업무 → 페이지(한 번). 색인에 없는 업무 파일만 읽어 옮긴다. 순서: 원본 보관 → 문서 → 이행 제안(원문 · 매니페스트) → 색인.
@@ -354,7 +354,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const readState = useCallback(
     async (repo: WorkRepo, opts: { migrate: boolean }) => {
-      const loaded = await repo.loadPages();
+      const loaded = await repo.load();
       const base: PagesState = { manifest: loaded.manifest, pages: loaded.pages, sources: loaded.sources };
       const mig = opts.migrate ? await migrate(repo, base) : { s: base, docs: [] as PageDoc[], failed: false };
       const pending = uidRef.current ? await readPending(uidRef.current) : [];
@@ -1114,7 +1114,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     const repo = repoRef.current;
     if (!repo) return;
     await repo.resolveConflict(c, choice, nowIso());
-    const s = await repo.loadPages();
+    const s = await repo.load();
     setState({ manifest: s.manifest, pages: s.pages, sources: s.sources });
     // 고른 쪽 문서를 다시 읽게 비운다
     const id = /^state\/pages\/(.+)\.json$/.exec(c.path)?.[1];

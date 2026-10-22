@@ -1,4 +1,4 @@
-// Gemma 실행 — 오라클 서버 작업 큐(jobd)에 맥락 묶음을 올리고, 끝나면 답을 받아 온다. 의존성 없음.
+// Gemma 실행 — 오라클 서버 작업 큐(jobd)에 묶음을 올리고, 끝나면 답을 받아 온다. 의존성 없음.
 // 접속은 ~/.ssh/config 의 호스트 별칭(기본 oci-a1)을 쓴다. 서버는 정해진 작업 종류(handoff_gemma)만 돌린다.
 // createOracle({ run }) 로 ssh · scp 를 바꿔 끼워 시험한다(lib.test.mjs). 기본 함수들은 MCP(oci-jobs-mcp.mjs) · run.mjs · 데스크톱이 같이 쓴다.
 import { execFile } from 'node:child_process';

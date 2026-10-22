@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createPage, trashPage } from "../../packages/core/src/pages.ts";
-import { createWorkItem, defaultManifest } from "../../packages/core/src/work.ts";
+import { defaultManifest } from "../../packages/core/src/work.ts";
+import { createWorkItem } from "../../packages/core/src/workV2.ts";
 import { MemoryFileStore, PATHS, WorkRepo } from "../../packages/core/src/workStore.ts";
 import { listPages } from "./driveList.ts";
 
@@ -18,7 +19,8 @@ test("서버 읽기 — 색인에서 id · 제목 · 범주 · 부모 · 고친 
   const c = createPage(b.pages, { workspaceId: "ws-personal", title: "버린 것" }, NOW);
   if (c.kind !== "ok") return assert.fail();
   await repo.saveIndexWith("ws-personal", [], () => trashPage(c.pages, c.page.id, "with_children", NOW).pages, NOW);
-  await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: "옛 업무" }, NOW), NOW);
+  const old = createWorkItem({ workspaceId: "ws-personal", title: "옛 업무" }, NOW);
+  store.externalWrite(PATHS.item(old.id), JSON.stringify(old));
   const r = await listPages(store);
   assert.equal(r.source, "index");
   assert.deepEqual(r.items.map((x) => [x.title, x.parentId]).sort(), [["취준", null], ["피트인", a.page.id]].sort());

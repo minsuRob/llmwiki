@@ -1,5 +1,5 @@
-// 위임 실행 본문 — 맥락 묶음을 실행자(Claude · Codex CLI, 오라클 Gemma 큐)에 넘기고 답 글을 돌려준다. 의존성 없음.
-// 터미널 CLI(run.mjs)와 데스크톱 셸(desktop/ 메인)이 같이 쓴다. 답을 업무에 반영하지 않는다 — 앱의 가져오기가 검사해 '제안'으로만 넣는다.
+// 위임 실행 본문 — 페이지 · 정리 묶음을 실행자(Claude · Codex CLI, 오라클 Gemma 큐)에 넘기고 답 글을 돌려준다. 의존성 없음.
+// 터미널 CLI(run.mjs)와 데스크톱 셸(desktop/ 메인)이 같이 쓴다. 답을 페이지에 반영하지 않는다 — 앱의 가져오기가 검사해 '제안'으로만 넣는다.
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 

@@ -6,11 +6,11 @@
 
 | 곳 | 맡은 일 | 더 볼 곳 |
 |---|---|---|
-| `src/app/` | 경로(얇은 파일). 아래 탭 = 오늘(`index`) · 업무(`work/index`) · 보관함 · 편집기 · 대화. 숨은 경로 = `work/[id]` · tasks · calendar · notes · jobs · synapse · settings. 탭 목록은 `_layout.tsx` 의 `TABS` · `HIDDEN` | — |
-| `src/features/work/` | **작업실 화면 전부**(오늘 · 업무 · 상세 · 보관함 · 받은 것 · 정리 맡기기 · 원본 보기) + 저장 경로(`WorkContext`) | `src/features/work/CLAUDE.md` |
-| `src/features/editor/` | Lexical 편집기 · 읽기 전용 뷰어 | `src/features/editor/CLAUDE.md` |
+| `src/app/` | 경로(얇은 파일). 아래 탭 = 오늘(`index`) · 페이지(`work/index`) · 보관함 · 편집기 · 대화. 숨은 경로 = `work/[id]`(페이지 — 넓으면 나눈 화면) · tasks · calendar · notes · jobs · synapse · settings. 탭 목록은 `_layout.tsx` 의 `TABS` · `HIDDEN` | — |
+| `src/features/work/` | **작업실 화면 전부**(오늘 · 페이지 트리 · 페이지 · 본문 제안 비교 · 펼쳐 보기 · 가져오기 · 보관함 · 받은 것) + 저장 경로(`WorkContext`) | `src/features/work/CLAUDE.md` |
+| `src/features/editor/` | Lexical 편집기(페이지 본문 — 마크다운 왕복) · 읽기 전용 뷰어 | `src/features/editor/CLAUDE.md` |
 | `src/features/settings/` | 설정(언어 · Drive · MCP 열쇠 · 계정 · 판단 기록) | `McpKeysCard.tsx` |
-| `src/features/{chat,tasks,calendar,notes,synapse,jobs}/` | **옛 기능**(Firestore). 대화는 서버 규칙 길만(AI 없음) | `src/firebase/` |
+| `src/features/{chat,tasks,calendar,notes,synapse,jobs}/` | **옛 기능**(Firestore). 대화는 서버 규칙 길만(AI 없음). 취준(jobs)에는 '페이지로 가져오기'(`work/ImportPagesSheet.tsx`)가 붙어 있다 | `src/firebase/` |
 | `src/features/auth/` | 로그인 화면 | — |
 | `src/firebase/` | Firebase 설정 · 익명/Google 로그인 · 옛 기능 데이터 구독(`data.tsx`) · 함수 호출(`api.ts`) | — |
 | `src/i18n/` | 문구. `app.ko.ts` · `app.en.ts` = 작업실 · 공통, `legacy.*` = 옛 화면. 두 언어 키를 같이 더한다 | — |
@@ -30,7 +30,10 @@
 ```bash
 npm run typecheck
 npm run lint            # 기존 오류 13개(synapse · firebase/data)는 이번 일과 무관
-npm run web:emulator    # 에뮬레이터에 붙은 웹 — 루트 .claude/launch.json 의 web-emulator · web-local-drive-inbox 로 띄운다
+npm run test:editor     # 편집기 마크다운 왕복(scripts/test-editor.mjs — functions 의 esbuild 로 묶어 node --test)
+npm run web:emulator    # 에뮬레이터에 붙은 웹 — 루트 .claude/launch.json 이 있으면 그것으로(이 컴퓨터에만)
+# 로컬 Drive 웹: EXPO_PUBLIC_LOCAL_DRIVE_URL=http://127.0.0.1:8790 npm run web:emulator -- --port 8088 (먼저 루트 npm run local-drive)
+# 에뮬레이터 포트를 바꿔 띄웠으면 EXPO_PUBLIC_EMULATOR_PORTS="auth,firestore,functions"
 ```
 
 화면을 바꾸면 브라우저에서 눌러 보고 끝낸다. 실제 Drive 는 배포본(로그인 · Drive 연결 필요)에서만 확인된다.

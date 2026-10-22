@@ -8,7 +8,7 @@
  *
  * 저장소 자리: 내 드라이브에 앱이 만든 보이는 폴더 하나(이름은 앱이 넘김) 아래
  *   페이지 폴더 — pagesmd/{id}.md 를 '제목.md' 로 (사람이 읽는 사본 — 앱이 쓰기만 하고 다시 읽지 않는다. 처음 쓸 때 만든다)
- *   업무 요약 폴더 — summaries/*.md (옛 업무 요약 — 더는 쓰지 않는다)
+ *   업무 요약 폴더 — summaries/*.md (옛 업무 요약 — 더는 쓰지 않는다. 있던 사용자의 폴더는 그대로 둔다)
  *   앱 데이터 폴더 — state/* · raw/* · archive/* · conflicts/* (앱이 관리한다)
  * 파일은 appProperties(llmwikiPath · llmwikiDir)로 찾는다 — 이름이 바뀌어도 깨지지 않는다.
  *
@@ -137,9 +137,10 @@ export interface DriveFolderNames {
 
 export class DriveFileStore implements FileStore {
   readonly kind = "drive" as const;
-  private folders: Promise<{ root: string; summaries: string; appData: string }> | null = null;
-  private folderIds: { root: string; summaries: string; appData: string } | null = null;
-  private pagesFolder: Promise<string> | null = null;
+  private folders: Promise<{ root: string; appData: string }> | null = null;
+  private folderIds: { root: string; appData: string } | null = null;
+  /** 보이는 하위 폴더(역할 → id) — 처음 그 폴더에 쓸 때만 찾거나 만든다(서버 · MCP 는 만들지 않게) */
+  private visible = new Map<string, Promise<string>>();
   /** 경로 → 마지막으로 본 id · 버전(list · find · write 가 채운다) */
   private known = new Map<string, { id: string; version: string }>();
   /** 방금 목록에서 본 경로 — 바로 이어지는 읽기 한 번만 찾기 없이 읽는다. 그 뒤엔 다시 찾아 지금 버전을 본다(다른 곳 · MCP 가 고쳤을 수 있다) */
@@ -171,8 +172,8 @@ export class DriveFileStore implements FileStore {
   async ensureFolders() {
     this.folders ??= (async () => {
       const root = await this.folder("root", this.names.root);
-      const [summaries, appData] = await Promise.all([this.folder("summaries", this.names.summaries, root), this.folder("appData", this.names.appData, root)]);
-      this.folderIds = { root, summaries, appData };
+      const appData = await this.folder("appData", this.names.appData, root);
+      this.folderIds = { root, appData };
       return this.folderIds;
     })().catch((e) => {
       this.folders = null;
@@ -181,15 +182,18 @@ export class DriveFileStore implements FileStore {
     return this.folders;
   }
 
-  /** 페이지 사본 폴더 — 처음 사본을 쓸 때만 찾거나 만든다(서버 · MCP 는 만들지 않게) */
-  private ensurePagesFolder(): Promise<string> {
-    this.pagesFolder ??= this.ensureFolders()
-      .then((f) => this.folder("pages", this.names.pages ?? "페이지", f.root))
-      .catch((e) => {
-        this.pagesFolder = null;
-        throw e;
-      });
-    return this.pagesFolder;
+  private ensureVisible(role: "pages" | "summaries", name: string): Promise<string> {
+    let p = this.visible.get(role);
+    if (!p) {
+      p = this.ensureFolders()
+        .then((f) => this.folder(role, name, f.root))
+        .catch((e) => {
+          this.visible.delete(role);
+          throw e;
+        });
+      this.visible.set(role, p);
+    }
+    return p;
   }
 
   rootFolderUrl(): string | null {
@@ -270,7 +274,7 @@ export class DriveFileStore implements FileStore {
       if (res.ok && opts.name) await call(this.deps, `${api(this.deps)}/${q(f.id)}?fields=id`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: opts.name }) });
     } else {
       const folders = await this.ensureFolders();
-      const parent = path.startsWith("pagesmd/") ? await this.ensurePagesFolder() : path.startsWith("summaries/") ? folders.summaries : folders.appData;
+      const parent = path.startsWith("pagesmd/") ? await this.ensureVisible("pages", this.names.pages ?? "페이지") : path.startsWith("summaries/") ? await this.ensureVisible("summaries", this.names.summaries) : folders.appData;
       const boundary = `llmwiki${Date.now().toString(36)}`;
       const meta = { name: opts.name ?? path.slice(path.lastIndexOf("/") + 1), parents: [parent], mimeType: mime, appProperties: { llmwikiPath: path, llmwikiDir: this.dirOf(path) } };
       const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n${text}\r\n--${boundary}--`;

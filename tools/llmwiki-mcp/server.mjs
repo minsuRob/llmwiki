@@ -129,7 +129,7 @@ const migrateLabels = {
  * 그때 본문은 virtual 에 있다(앱이 처음 열 때 실제로 옮긴다).
  */
 async function loadState() {
-  const r = await repo.loadPages();
+  const r = await repo.load();
   const state = { manifest: r.manifest, pages: r.pages, sources: r.sources, virtual: new Map() };
   if (r.hasIndex) return state;
   const ids = await repo.listItemIds().catch(() => []);

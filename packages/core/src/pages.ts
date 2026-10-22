@@ -16,7 +16,8 @@
 import { scanInjection } from "./inject.ts";
 import { newId } from "./types.ts";
 import { hashText as hash } from "./hash.ts";
-import type { AiTool, ChangeEntry, Importance, MigrationRecord, Msg, Proposal, WorkItem, WorkManifest, WorkStatus, Workspace } from "./work.ts";
+import type { AiTool, ChangeEntry, MigrationRecord, Msg, WorkManifest, Workspace } from "./work.ts";
+import type { Importance, Proposal, WorkItem, WorkStatus } from "./workV2.ts";
 
 export const PAGES_SCHEMA_VERSION = 3;
 

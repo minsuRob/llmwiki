@@ -5,7 +5,7 @@
  * 읽은 것은 저장하지도 로그에 남기지도 않는다 — 돌려주기만.
  */
 import { upgradeIndex } from "../../packages/core/src/pages.ts";
-import { upgradeItem } from "../../packages/core/src/work.ts";
+import { upgradeItem } from "../../packages/core/src/workV2.ts";
 import type { FileStore } from "../../packages/core/src/workStore.ts";
 
 export interface ListedPage {

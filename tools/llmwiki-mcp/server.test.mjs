@@ -11,8 +11,9 @@ import { fileURLToPath } from "node:url";
 
 import { DriveFileStore } from "../../packages/core/src/drive.ts";
 import { acceptBodyProposal, createPage, editBody, openBodyProposals, syncMeta } from "../../packages/core/src/pages.ts";
-import { addWorkspace, createWorkItem, defaultManifest } from "../../packages/core/src/work.ts";
-import { WorkRepo } from "../../packages/core/src/workStore.ts";
+import { addWorkspace, defaultManifest } from "../../packages/core/src/work.ts";
+import { PATHS, WorkRepo } from "../../packages/core/src/workStore.ts";
+import { createWorkItem } from "../../packages/core/src/workV2.ts";
 import { startLocalDrive } from "../local-drive/server.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -42,7 +43,9 @@ before(async () => {
   repo = new WorkRepo(store, defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" }));
   const st = await repo.load();
   await repo.saveManifest(st.manifest, new Date().toISOString());
-  await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: "그룹바이 지원 후보 정리", goal: "지원할 곳 고르기" }, new Date().toISOString()), new Date().toISOString());
+  // 옛 업무(스키마 2) 하나 — 앱이 아직 페이지로 옮기기 전
+  const legacy = createWorkItem({ workspaceId: "ws-personal", title: "그룹바이 지원 후보 정리", goal: "지원할 곳 고르기" }, new Date().toISOString());
+  await repo.store.write(PATHS.item(legacy.id), JSON.stringify(legacy), null);
 
   proc = spawn(process.execPath, [join(HERE, "server.mjs"), "--local-drive", drive.url, "--token", TOKEN], { stdio: ["pipe", "pipe", "pipe"] });
   let buf = "";
@@ -122,7 +125,7 @@ test("남기기 → 정리 묶음 → 제안 → 앱 저장소에 정리 대기 
   assert.equal(open.length, 2);
   assert.ok(open.every((p) => p.workspaceId === "ws-personal" && p.tool === "claude" && p.sourceIds[0] === frag.id));
   assert.equal(open.find((p) => p.kind === "file_source")?.itemId, itemId, "P1 은 옛 업무 id 그대로(이행이 id 를 지킨다)");
-  assert.equal(st.items[0].sourceIds.length, 0, "제안만 — 업무는 아직 그대로");
+  assert.equal(JSON.parse((await repo.store.read(PATHS.item(itemId))).text).sourceIds.length, 0, "제안만 — 업무는 아직 그대로");
   assert.equal(st.sources.find((s) => s.id === frag.id)?.triage, "inbox", "조각도 아직 정리 대기");
 });
 
@@ -138,7 +141,7 @@ test("비공개 범주는 남기기만 되고 읽기 · 묶기는 막힌다", as
   }
   const st = await repo.load();
   const item = createWorkItem({ workspaceId: "ws-company", title: "실적 보고" }, new Date().toISOString());
-  await repo.saveItem(item, new Date().toISOString());
+  await repo.store.write(PATHS.item(item.id), JSON.stringify(item), null);
   assert.match((await tool("llmwiki_read", { item: item.id })).text, /비공개 범주/);
   assert.ok(st.manifest.workspaces.find((w) => w.id === "ws-company")?.private);
 });
@@ -163,7 +166,7 @@ test("색인이 생기면(앱이 이행 · 새 페이지) 색인만 읽고, 본�
 
 test("하위 다이제스트 · 전문(cursor) → 본문 제안 → 앱에서 받기: 새것은 바로, 그사이 사람이 고친 것은 낡음(stale)", async () => {
   const now = new Date().toISOString();
-  const st0 = await repo.loadPages();
+  const st0 = await repo.load();
   const top = createPage(st0.pages, { workspaceId: "ws-personal", title: "공고 모음", body: "# 공고 종합\n- 아직 없음" }, now);
   let pages = top.pages;
   const ids = [];
@@ -196,7 +199,7 @@ test("하위 다이제스트 · 전문(cursor) → 본문 제안 → 앱에서 �
   assert.equal((await tool("llmwiki_propose_page", { page: ids[0], body: "## 주요 업무\n\nAI 가 줄임", base: kidBase })).error, false);
 
   // 앱 쪽 — 같은 core 함수로 받는다(문서를 읽고, 원문은 raw/ 에서)
-  const app = await repo.loadPages();
+  const app = await repo.load();
   const open = openBodyProposals(app.manifest);
   assert.equal(open.length, 2);
   assert.ok(open.every((p) => p.origin === "ai" && p.status === "open"), "MCP 는 열린 제안만 만든다");

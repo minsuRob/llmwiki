@@ -9,8 +9,8 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import { DriveFileStore, getMeta, readText, type DriveDeps, type Fetch } from "./drive.ts";
-import { applyRemoteMeta, createWorkItem, defaultManifest, linkSource, mergeTriage, newSource, proposeTriage, setSummary, setWorkStatus, staleSources, type Source, type WorkItem } from "./work.ts";
-import { createPage, mirrorTodo, pageMdText } from "./pages.ts";
+import { applyRemoteMeta, defaultManifest, mergeTriage, newSource, proposeTriage, type Source } from "./work.ts";
+import { createPage, editBody, mirrorTodo, pageMdText, type PageDoc, type PageMeta } from "./pages.ts";
 import { PATHS, WorkRepo } from "./workStore.ts";
 
 // @ts-expect-error — 순수 JS 개발 도구
@@ -49,21 +49,32 @@ async function pick(name: string): Promise<{ id: string; mimeType: string }> {
   return f;
 }
 
-test("로컬 Drive — 작업실 폴더가 디스크에 생기고, 업무 상태 · 사람이 읽는 요약이 진짜 파일로 저장된다 · 다시 열면 그대로", async () => {
-  const store = new DriveFileStore(deps, names);
-  const repo = new WorkRepo(store, manifest(), (i) => `# ${i.title}\n상태: ${i.status}`);
-  await repo.load();
-  const item = createWorkItem({ workspaceId: "ws-company", title: "10월 실적 보고" }, NOW);
-  const r = await repo.saveItem(setWorkStatus(item, "waiting", NOW), NOW);
-  assert.equal(r.status, "saved");
-  const stateFile = join(server.root, "llmwiki 작업실", "앱 데이터", `${item.id}.json`);
-  const summaryFile = join(server.root, "llmwiki 작업실", "업무 요약", `${item.id}.md`);
-  assert.ok(existsSync(stateFile), "앱 데이터 폴더에 상태 파일");
-  assert.equal(JSON.parse(readFileSync(stateFile, "utf8")).status, "waiting");
-  assert.equal(readFileSync(summaryFile, "utf8"), "# 10월 실적 보고\n상태: waiting");
+/** 새 페이지 하나 — 문서를 쓰고 색인에 얹는다 */
+async function newPage(repo: WorkRepo, title: string, body: string, workspaceId = "ws-company"): Promise<{ meta: PageMeta; doc: PageDoc }> {
+  const cur = (await repo.load()).pages;
+  const r = createPage(cur, { workspaceId, title, body }, NOW);
+  if (r.kind !== "ok") throw new Error();
+  const d = await repo.savePageDoc(r.doc, NOW);
+  if (d.status !== "saved") throw new Error(d.status);
+  const i = await repo.saveIndexWith(workspaceId, cur, (ps) => [...ps, r.page], NOW);
+  if (i.status !== "saved") throw new Error(i.status);
+  return { meta: r.page, doc: d.value };
+}
+
+test("로컬 Drive — 작업실 폴더가 디스크에 생기고, 페이지 문서 · 색인이 진짜 파일로 저장된다 · 다시 열면 색인만 읽고 본문은 열 때", async () => {
+  const repo = new WorkRepo(new DriveFileStore(deps, names), manifest());
+  const { meta } = await newPage(repo, "10월 실적 보고", "# 10월\n- 매출 120억");
+  const docFile = join(server.root, "llmwiki 작업실", "앱 데이터", `${meta.id}.json`);
+  const indexFile = join(server.root, "llmwiki 작업실", "앱 데이터", "ws-company.json");
+  assert.ok(existsSync(docFile), "앱 데이터 폴더에 페이지 문서");
+  assert.equal(JSON.parse(readFileSync(docFile, "utf8")).body, "# 10월\n- 매출 120억");
+  assert.ok(JSON.parse(readFileSync(indexFile, "utf8")).pages.some((p: PageMeta) => p.id === meta.id));
   // 앱을 다시 연 것처럼 — 새 저장소 객체
-  const again = await new WorkRepo(new DriveFileStore(deps, names), manifest()).load();
-  assert.equal(again.items.find((i) => i.id === item.id)?.status, "waiting");
+  const again = new WorkRepo(new DriveFileStore(deps, names), manifest());
+  const st = await again.load();
+  const m = st.pages.find((p) => p.id === meta.id);
+  assert.ok(m && st.hasIndex);
+  assert.equal(await again.readBody(m), "# 10월\n- 매출 120억");
 });
 
 test("로컬 Drive 원본 — Docs/Sheets 는 export, md 는 내려받기, PDF 는 링크만", async () => {
@@ -85,23 +96,18 @@ test("로컬 Drive 원본 — Docs/Sheets 는 export, md 는 내려받기, PDF �
   if (m.ok) assert.deepEqual(await readText(deps, m.meta), { ok: false, status: "unsupported" });
 });
 
-test("로컬 Drive — 원본을 디스크에서 고치면 버전이 오르고, 요약이 이전 버전 기준이라는 것이 보인다 · 이름을 바꿔도 같은 id · 지우면 접근 불가", async () => {
+test("로컬 Drive — 원본을 디스크에서 고치면 버전이 오르고 · 이름을 바꿔도 같은 id · 지우면 접근 불가", async () => {
   const f = await pick("10월 매출.gsheet");
   const m1 = await getMeta(deps, f.id);
   assert.ok(m1.ok);
   if (!m1.ok) return;
   let src: Source = newSource({ workspaceId: "ws-company", provider: "drive", externalId: f.id, title: m1.meta.name, remoteVersion: m1.meta.version, format: "sheet" }, NOW);
-  let item: WorkItem = createWorkItem({ workspaceId: "ws-company", title: "보고" }, NOW);
-  const l = linkSource(item, src, NOW);
-  if (l.kind === "linked") item = l.item;
-  item = setSummary(item, "10월 120억", [src], NOW);
-
   const path = join(server.root, "10월 실적", "10월 매출.gsheet");
   editOnDisk(path, "월,매출(억)\n9월,109\n10월,125\n");
   const m2 = await getMeta(deps, f.id);
   assert.ok(m2.ok && Number(m2.meta.version) > Number(m1.meta.version), "버전이 오른다");
   if (m2.ok) src = applyRemoteMeta(src, { ok: true, version: m2.meta.version, modifiedAt: m2.meta.modifiedTime }, NOW);
-  assert.deepEqual(staleSources(item, [src]).map((s) => s.id), [src.id], "요약이 옛 버전 기준");
+  assert.equal(src.remoteVersion, m2.ok ? m2.meta.version : null, "자료는 새 버전을 따라간다");
 
   renameSync(path, join(server.root, "10월 실적", "10월 매출(최종).gsheet"));
   const m3 = await getMeta(deps, f.id);
@@ -111,65 +117,57 @@ test("로컬 Drive — 원본을 디스크에서 고치면 버전이 오르고, 
   assert.deepEqual(await getMeta(deps, f.id), { ok: false, status: "lost" });
 });
 
-test("로컬 Drive — 디스크에서 상태 파일을 바깥에서 고치면 충돌: 덮어쓰지 않고 내 쪽은 사본 파일로", async () => {
-  const store = new DriveFileStore(deps, names);
-  const repo = new WorkRepo(store, manifest());
-  await repo.load();
-  let item = createWorkItem({ workspaceId: "ws-company", title: "충돌 시험" }, NOW);
-  const s = await repo.saveItem(item, NOW);
-  if (s.status === "saved") item = s.value;
-  const stateFile = join(server.root, "llmwiki 작업실", "앱 데이터", `${item.id}.json`);
-  editOnDisk(stateFile, JSON.stringify({ ...item, title: "충돌 시험(다른 기기)", rev: 5 }));
-  const r = await repo.saveItem(setWorkStatus(item, "done", NOW), NOW);
+test("로컬 Drive — 디스크에서 페이지 문서를 바깥에서 고치면 충돌: 덮어쓰지 않고 내 쪽은 사본 파일로", async () => {
+  const repo = new WorkRepo(new DriveFileStore(deps, names), manifest());
+  const { doc } = await newPage(repo, "충돌 시험", "처음");
+  const docFile = join(server.root, "llmwiki 작업실", "앱 데이터", `${doc.id}.json`);
+  editOnDisk(docFile, JSON.stringify({ ...doc, body: "다른 기기가 고침", rev: 5 }));
+  const r = await repo.savePageDoc(editBody(doc, "내가 고침", NOW), NOW);
   assert.equal(r.status, "conflict");
-  assert.equal(JSON.parse(readFileSync(stateFile, "utf8")).title, "충돌 시험(다른 기기)", "바깥 변경이 그대로");
-  const copies = await repo.listConflicts();
-  const mine = copies.find((c) => c.path === PATHS.item(item.id));
-  assert.ok(mine && JSON.parse(mine.mine).status === "done", "내 변경은 충돌 사본에");
+  assert.equal(JSON.parse(readFileSync(docFile, "utf8")).body, "다른 기기가 고침", "바깥 변경이 그대로");
+  const mine = (await repo.listConflicts()).find((c) => c.path === PATHS.page(doc.id));
+  assert.ok(mine && JSON.parse(mine.mine).body === "내가 고침", "내 변경은 충돌 사본에");
 });
 
 test("로컬 Drive — 권한이 끊기면(401) 저장 실패로 알린다", async () => {
   const repo = new WorkRepo(new DriveFileStore(deps, names), manifest());
   await repo.load();
   await fetch(`${server.url}/__revoke`);
-  const r = await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: "x" }, NOW), NOW);
+  const r = createPage([], { workspaceId: "ws-personal", title: "x" }, NOW);
+  const out = r.kind === "ok" ? await repo.savePageDoc(r.doc, NOW) : null;
   await fetch(`${server.url}/__renew`);
-  assert.equal(r.status, "failed");
-  assert.equal(r.status === "failed" && r.code, "auth_expired");
+  assert.equal(out?.status, "failed");
+  assert.equal(out?.status === "failed" && out.code, "auth_expired");
 });
 
-test("로컬 Drive — 불러오기는 목록 1번 + 파일마다 내려받기 1번(찾기 없음), 바깥 변경은 그래도 충돌로 잡는다", async () => {
-  // 업무 5개를 더 쓰고, 다른 인스턴스(다시 연 앱)로 불러온다. 폴더는 이름이 아니라 역할로 찾으므로 앞 시험의 업무도 함께 보인다
-  const names2 = names;
-  const writer = new WorkRepo(new DriveFileStore(deps, names2), manifest());
-  await writer.load();
-  const ids: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const it = createWorkItem({ workspaceId: "ws-company", title: `업무 ${i}` }, NOW);
-    ids.push(it.id);
-    assert.equal((await writer.saveItem(it, NOW)).status, "saved");
-  }
+test("로컬 Drive — 불러오기는 목록 + 파일마다 내려받기 1번(찾기는 매니페스트뿐), 바깥 변경은 그래도 충돌로 잡는다", async () => {
+  const writer = new WorkRepo(new DriveFileStore(deps, names), manifest());
+  const made = [];
+  for (let i = 0; i < 3; i++) made.push(await newPage(writer, `페이지 ${i}`, `본문 ${i}`, "ws-dev"));
+  for (let i = 0; i < 3; i++) await writer.saveSource(newSource({ workspaceId: "ws-dev", provider: "paste", title: `조각 ${i}`, text: `조각 ${i}`, triage: "inbox" }, NOW), NOW);
 
   const calls: string[] = [];
   const counting: DriveDeps = { ...deps, fetch: ((url: string, init?: Parameters<Fetch>[1]) => (calls.push(`${init?.method ?? "GET"} ${url}`), deps.fetch(url, init))) as Fetch };
-  const reader = new WorkRepo(new DriveFileStore(counting, names2), manifest());
+  const reader = new WorkRepo(new DriveFileStore(counting, names), manifest());
   const loaded = await reader.load();
-  assert.ok(ids.every((id) => loaded.items.some((x) => x.id === id)));
+  assert.ok(made.every((m) => loaded.pages.some((p) => p.id === m.meta.id)));
   const finds = calls.filter((c) => c.startsWith("GET") && c.includes("llmwikiPath"));
   const media = calls.filter((c) => c.includes("alt=media"));
+  const indexes = (await reader.store.list("state/index/")).length;
   assert.equal(finds.length, 1, `찾기는 manifest 하나뿐이어야 한다(없는 파일): ${finds.length}`);
-  assert.equal(media.length, loaded.items.length + loaded.sources.length, "업무 · 자료 파일마다 내려받기 1번");
+  assert.equal(media.length, indexes + loaded.sources.length, "색인 · 자료 파일마다 내려받기 1번 — 페이지 본문은 읽지 않는다");
 
   // 불러온 뒤 바깥(디스크)에서 고쳐도, 쓰기 직전에 새로 확인하므로 덮어쓰지 않는다
-  const one = loaded.items.find((x) => x.id === ids[0])!;
-  const file = join(server.root, names.root, names.appData, `${ids[0]}.json`);
-  editOnDisk(file, readFileSync(file, "utf8").replace("업무 0", "바깥에서 고침"));
-  const r = await reader.saveItem({ ...one, title: "앱에서 고침" }, NOW);
+  const one = made[0];
+  const doc = await reader.readDoc(loaded.pages.find((p) => p.id === one.meta.id)!);
+  const file = join(server.root, names.root, names.appData, `${one.meta.id}.json`);
+  editOnDisk(file, readFileSync(file, "utf8").replace("본문 0", "바깥에서 고침"));
+  const r = await reader.savePageDoc(editBody(doc!, "앱에서 고침", NOW), NOW);
   assert.equal(r.status, "conflict");
   assert.match(readFileSync(file, "utf8"), /바깥에서 고침/);
 });
 
-test("빠른 읽기 — 새 저장소가 폴더를 동시에 찾아도 한 번만 만들고, 업무 여러 개를 함께 읽어도 다 읽는다", async () => {
+test("빠른 읽기 — 새 저장소가 폴더를 동시에 찾아도 한 번만 만들고, 자료 여러 개 · 본문 여러 개를 함께 읽어도 다 읽는다", async () => {
   let calls = 0;
   const counted: DriveDeps = { ...deps, fetch: ((url, init) => (calls++, deps.fetch(url, init))) as Fetch };
   const names2 = { root: "동시 작업실", summaries: "요약2", appData: "데이터2" };
@@ -178,10 +176,17 @@ test("빠른 읽기 — 새 저장소가 폴더를 동시에 찾아도 한 번�
   assert.deepEqual(f1, f2);
   assert.ok(calls <= 6, `폴더 찾기 · 만들기는 한 번씩(${calls})`);
 
-  const repo = new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "");
-  for (let i = 0; i < 12; i++) assert.equal((await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: `병렬 ${i}` }, NOW), NOW)).status, "saved");
-  const s = await new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "").load();
-  assert.equal(s.items.filter((i) => i.title.startsWith("병렬 ")).length, 12);
+  const repo = new WorkRepo(new DriveFileStore(deps, names2), manifest());
+  for (let i = 0; i < 12; i++) assert.equal((await repo.saveSource(newSource({ workspaceId: "ws-personal", provider: "paste", title: `병렬 ${i}`, text: `병렬 ${i}` }, NOW), NOW)).status, "saved");
+  const metas: PageMeta[] = [];
+  for (let i = 0; i < 10; i++) metas.push((await newPage(repo, `병렬 쪽 ${i}`, `본문 ${i}`, "ws-personal")).meta);
+  // 폴더는 이름이 아니라 역할로 찾으므로 앞 시험의 것도 함께 보인다 — 이 시험이 쓴 것만 본다
+  const fresh = new WorkRepo(new DriveFileStore(deps, names2), manifest());
+  const s = await fresh.load();
+  assert.equal(s.sources.filter((x) => x.title.startsWith("병렬 ")).length, 12);
+  const mine = s.pages.filter((p) => metas.some((m) => m.id === p.id));
+  const bodies = await fresh.readBodies(mine);
+  assert.deepEqual(mine.map((p) => bodies.get(p.id)).sort(), metas.map((_, i) => `본문 ${i}`).sort());
 });
 
 test("두 곳이 번갈아 쓰기(앱 + MCP) — 남이 고친 매니페스트도 지금 버전으로 읽고, 충돌하면 최신본에 내 정리 제안만 얹는다(사본 없음)", async () => {
