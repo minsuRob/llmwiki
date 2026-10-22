@@ -18,7 +18,7 @@
 | 개인정보처리방침 | `https://llmwiki-minsu.web.app/privacy` | `aria-rn/public/privacy.html` |
 | 서비스 약관 | `https://llmwiki-minsu.web.app/terms` | `aria-rn/public/terms.html` |
 
-- 세 페이지는 로그인 없이 열리는 정적 HTML 이다(Expo 웹 빌드가 `public/` 을 그대로 복사, `firebase.json` 의 `cleanUrls` 로 `.html` 없이 열린다). 한국어 + 영어.
+- 세 페이지는 로그인 없이 열리는 정적 HTML 이다(Expo 웹 빌드가 `public/` 을 그대로 복사, `firebase.json` 의 rewrites 로 `/about` · `/privacy` · `/terms` 가 각 `.html` 을 연다. `cleanUrls` 는 쓰지 않는다 — Search Console 확인 파일 `google…html` 이 리다이렉트 없이 그대로 열려야 한다). 한국어 + 영어.
 - 방침에는 Google API 사용자 데이터 정책의 **제한적 사용(Limited Use)** 문장과, `drive.file` 로 무엇을 하는지 · 서버가 무엇을 보관하는지(암호화한 Drive 열쇠 · MCP 열쇠 해시) · AI 처리 · 삭제 방법을 적었다. 바꿀 때는 `docs/architecture.md` 와 맞춘다.
 - 앱 안: 로그인 화면 아래와 설정 → 계정 아래에 세 링크(`aria-rn/src/components/LegalLinks.tsx`). 로그인 화면 소개 문구도 지금 컨셉으로 바꿨다.
 - 문의 이메일은 동의 화면의 사용자 지원 이메일과 같은 `minsu.rob@gmail.com`.
