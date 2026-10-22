@@ -10,6 +10,7 @@ import { after, before, test } from "node:test";
 
 import { DriveFileStore, getMeta, readText, type DriveDeps, type Fetch } from "./drive.ts";
 import { applyRemoteMeta, createWorkItem, defaultManifest, linkSource, mergeTriage, newSource, proposeTriage, setSummary, setWorkStatus, staleSources, type Source, type WorkItem } from "./work.ts";
+import { createPage, mirrorTodo, pageMdText } from "./pages.ts";
 import { PATHS, WorkRepo } from "./workStore.ts";
 
 // @ts-expect-error — 순수 JS 개발 도구
@@ -210,4 +211,26 @@ test("두 곳이 번갈아 쓰기(앱 + MCP) — 남이 고친 매니페스트�
   // 다시 읽은 뒤에는 남이 쓴 것도 지금 버전으로 — 그냥 저장도 충돌하지 않는다
   const fresh = await mcp.load();
   assert.equal((await mcp.saveManifest(fresh.manifest, NOW2)).status, "saved");
+});
+
+test("로컬 Drive — 페이지 사본은 보이는 '페이지' 폴더에 '제목.md' 로, 제목이 바뀌면 이름도 · 같은 것은 다시 쓰지 않는다", async () => {
+  const repo = new WorkRepo(new DriveFileStore(deps, names), manifest());
+  const NOW3 = "2026-10-22T12:00:00.000Z";
+  const a = createPage([], { workspaceId: "ws-personal", title: "취준 종합", body: "# 1순위\n- 피트인" }, NOW3);
+  if (a.kind !== "ok") return assert.fail();
+  const mirrored: Record<string, { hash: string; name: string }> = {};
+  let todo = mirrorTodo(a.pages, mirrored, "제목 없음");
+  assert.deepEqual(todo.map((x) => [x.name, x.rename]), [["취준 종합.md", true]]);
+  assert.deepEqual(await repo.writePageMd(a.page.id, pageMdText(a.page, a.doc.body), todo[0].name), { ok: true });
+  mirrored[a.page.id] = { hash: a.page.bodyHash, name: todo[0].name };
+  const file = join(dir, "내 드라이브", "llmwiki 작업실", "페이지", "취준 종합.md");
+  assert.ok(existsSync(file), "보이는 폴더에 제목으로");
+  assert.match(readFileSync(file, "utf8"), /^# 취준 종합\n\n# 1순위\n- 피트인/);
+  assert.equal(mirrorTodo(a.pages, mirrored, "제목 없음").length, 0, "같으면 다시 쓰지 않는다");
+  const renamed = a.pages.map((p) => ({ ...p, title: "취준 — 종합본" }));
+  todo = mirrorTodo(renamed, mirrored, "제목 없음");
+  assert.deepEqual(todo.map((x) => [x.name, x.rename]), [["취준 — 종합본.md", true]]);
+  await repo.writePageMd(a.page.id, pageMdText(renamed[0], a.doc.body), todo[0].name);
+  assert.ok(existsSync(join(dir, "내 드라이브", "llmwiki 작업실", "페이지", "취준 — 종합본.md")));
+  assert.ok(!existsSync(file), "옛 이름 파일은 바뀐 이름으로(새로 만들지 않는다)");
 });

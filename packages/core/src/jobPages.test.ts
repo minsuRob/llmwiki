@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { jobToEntry } from "./jobPages.ts";
 import { fromGroupby, fromInthiswork } from "./jobs.ts";
-import { createPage, importPlan } from "./pages.ts";
+import { createPage, importPlan, splitMarkdownPages } from "./pages.ts";
 import { diffLines, diffStats } from "./textDiff.ts";
 
 test("그룹바이 공고 — 본문 없이 필드 목록 · 섹션 · 링크, props 로 거를 수 있다", () => {
@@ -79,4 +79,14 @@ test("줄 비교 — 같은 줄 · 지운 줄 · 더한 줄, 아주 큰 본문�
   assert.deepEqual(diffStats(d2), { added: 3000, removed: 3000 });
   assert.equal(d2[0].op, "same");
   assert.equal(d2.at(-1)?.text, "꼬리");
+});
+
+test("마크다운 붙여 넣기 — '# 제목' 마다 페이지 하나(코드 블록 속 '#' 은 그대로), 제목이 같으면 같은 바깥 id", () => {
+  const md = "# 피트인\n- 1순위\n```sh\n# 주석\n```\n# 그룹바이\n본문";
+  const e = splitMarkdownPages(md, "붙여 넣은 글");
+  assert.deepEqual(e.map((x) => x.title), ["피트인", "그룹바이"]);
+  assert.match(e[0].markdown, /# 주석/);
+  assert.equal(splitMarkdownPages("# 피트인\n다른 본문", "x")[0].externalId, e[0].externalId);
+  assert.deepEqual(splitMarkdownPages("제목 없는 글", "붙여 넣은 글").map((x) => x.title), ["붙여 넣은 글"]);
+  assert.deepEqual(splitMarkdownPages("  \n", "x"), []);
 });

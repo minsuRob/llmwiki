@@ -7,8 +7,9 @@
  * - 토큰은 기억에만 두고, 로그 · 파일에 남기지 않는다.
  *
  * 저장소 자리: 내 드라이브에 앱이 만든 보이는 폴더 하나(이름은 앱이 넘김) 아래
- *   업무 요약 폴더 — summaries/*.md (사람이 읽는다)
- *   앱 데이터 폴더 — state/* · raw/* · conflicts/* (앱이 관리한다)
+ *   페이지 폴더 — pagesmd/{id}.md 를 '제목.md' 로 (사람이 읽는 사본 — 앱이 쓰기만 하고 다시 읽지 않는다. 처음 쓸 때 만든다)
+ *   업무 요약 폴더 — summaries/*.md (옛 업무 요약 — 더는 쓰지 않는다)
+ *   앱 데이터 폴더 — state/* · raw/* · archive/* · conflicts/* (앱이 관리한다)
  * 파일은 appProperties(llmwikiPath · llmwikiDir)로 찾는다 — 이름이 바뀌어도 깨지지 않는다.
  *
  * 요청 수: list 가 받은 id · 버전을 기억해 두고 read 는 그것으로 바로 내려받는다(불러오기 = 목록 1 + 파일 수).
@@ -130,12 +131,15 @@ export interface DriveFolderNames {
   root: string;
   summaries: string;
   appData: string;
+  /** 사람이 읽는 페이지 사본 폴더 — 없으면 '페이지' */
+  pages?: string;
 }
 
 export class DriveFileStore implements FileStore {
   readonly kind = "drive" as const;
   private folders: Promise<{ root: string; summaries: string; appData: string }> | null = null;
   private folderIds: { root: string; summaries: string; appData: string } | null = null;
+  private pagesFolder: Promise<string> | null = null;
   /** 경로 → 마지막으로 본 id · 버전(list · find · write 가 채운다) */
   private known = new Map<string, { id: string; version: string }>();
   /** 방금 목록에서 본 경로 — 바로 이어지는 읽기 한 번만 찾기 없이 읽는다. 그 뒤엔 다시 찾아 지금 버전을 본다(다른 곳 · MCP 가 고쳤을 수 있다) */
@@ -175,6 +179,17 @@ export class DriveFileStore implements FileStore {
       throw e;
     });
     return this.folders;
+  }
+
+  /** 페이지 사본 폴더 — 처음 사본을 쓸 때만 찾거나 만든다(서버 · MCP 는 만들지 않게) */
+  private ensurePagesFolder(): Promise<string> {
+    this.pagesFolder ??= this.ensureFolders()
+      .then((f) => this.folder("pages", this.names.pages ?? "페이지", f.root))
+      .catch((e) => {
+        this.pagesFolder = null;
+        throw e;
+      });
+    return this.pagesFolder;
   }
 
   rootFolderUrl(): string | null {
@@ -240,10 +255,10 @@ export class DriveFileStore implements FileStore {
     return { text: await res.text(), version: f.version };
   }
 
-  async write(path: string, text: string, expected: string | null) {
+  async write(path: string, text: string, expected: string | null, opts: { name?: string; force?: boolean } = {}) {
     const f = await this.find(path);
-    // Drive v3 는 조건부 쓰기(If-Match)를 받지 않는다 — 바로 앞에서 버전을 맞춰 본다(한 사람 · 한 기기 쓰기 기준)
-    if ((f ? String(f.version) : null) !== expected) {
+    // Drive v3 는 조건부 쓰기(If-Match)를 받지 않는다 — 바로 앞에서 버전을 맞춰 본다(한 사람 · 한 기기 쓰기 기준). force: 쓰기만 하는 사본
+    if (!opts.force && (f ? String(f.version) : null) !== expected) {
       const remote = f ? await this.read(path) : null;
       throw new ConflictError(path, remote);
     }
@@ -251,11 +266,13 @@ export class DriveFileStore implements FileStore {
     let res;
     if (f) {
       res = await call(this.deps, `${upload(this.deps)}/${q(f.id)}?uploadType=media&fields=id,version`, { method: "PATCH", headers: { "Content-Type": mime }, body: text });
+      // 보이는 이름을 바꿀 때만(페이지 제목이 바뀌었을 때) 한 번 더
+      if (res.ok && opts.name) await call(this.deps, `${api(this.deps)}/${q(f.id)}?fields=id`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: opts.name }) });
     } else {
       const folders = await this.ensureFolders();
-      const parent = path.startsWith("summaries/") ? folders.summaries : folders.appData;
+      const parent = path.startsWith("pagesmd/") ? await this.ensurePagesFolder() : path.startsWith("summaries/") ? folders.summaries : folders.appData;
       const boundary = `llmwiki${Date.now().toString(36)}`;
-      const meta = { name: path.slice(path.lastIndexOf("/") + 1), parents: [parent], mimeType: mime, appProperties: { llmwikiPath: path, llmwikiDir: this.dirOf(path) } };
+      const meta = { name: opts.name ?? path.slice(path.lastIndexOf("/") + 1), parents: [parent], mimeType: mime, appProperties: { llmwikiPath: path, llmwikiDir: this.dirOf(path) } };
       const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n${text}\r\n--${boundary}--`;
       res = await call(this.deps, `${upload(this.deps)}?uploadType=multipart&fields=id,version`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body });
     }

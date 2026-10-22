@@ -17,7 +17,10 @@ import {
   childrenOf,
   createPage as createPageCore,
   editBody,
+  importPlan,
   mergeBodyProposals,
+  mirrorTodo,
+  pageMdText,
   migrateToPages,
   movePage as movePageCore,
   proposeBody,
@@ -31,6 +34,7 @@ import {
   undoDoc as undoDocCore,
   unlinkSourceFromPage,
   type BodyProposal,
+  type ImportEntry,
   type MigrateLabels,
   type PageDoc,
   type PageMeta,
@@ -145,6 +149,10 @@ interface WorkApi {
   /** 페이지 넘기기 — 이 페이지와 하위를 AI 묶음으로(기록은 매니페스트에) · 돌아온 결과를 본문 제안으로 */
   preparePage: (pageId: string, input: { tool: AiTool; scope: string }) => Promise<{ markdown: string; runId: string; count: number; droppedBodies: number; droppedLines: number } | null>;
   importPageText: (text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<PageResultImport | { kind: "save_failed" }>;
+  /** 가져오기 — {제목 · 마크다운 · 바깥 id} 목록을 부모 아래로(묶음으로 쓰고 색인은 마지막). 사람이 고친 페이지는 덮어쓰지 않는다 */
+  importPages: (workspaceId: string, parentId: string | null, entries: ImportEntry[]) => Promise<{ status: SaveState | "bad_parent"; created: number; updated: number; skipped: number; unchanged: number; packs: number }>;
+  /** 사람이 읽는 사본(Drive '페이지' 폴더) — 남은 수 */
+  mirrorLeft: number;
   /** 본문 제안 */
   proposalBody: (p: BodyProposal) => Promise<string | null>;
   acceptBody: (proposalId: string, opts?: { force?: boolean }) => Promise<AcceptOutcome>;
@@ -292,7 +300,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const makeDriveStore = useCallback(
     (u: string) => {
-      const remote = new DriveFileStore(driveDeps, { root: tRef.current("drive.folder.root"), summaries: tRef.current("drive.folder.summaries"), appData: tRef.current("drive.folder.appData") });
+      const remote = new DriveFileStore(driveDeps, { root: tRef.current("drive.folder.root"), summaries: tRef.current("drive.folder.summaries"), appData: tRef.current("drive.folder.appData"), pages: tRef.current("drive.folder.pages") });
       const mirror = new KvFileStore(kv, `llmwiki:work:${u}:drive-mirror`);
       return { remote, mirror, store: new MirroredStore(remote, mirror, () => driveDeps.token() != null) };
     },
@@ -827,6 +835,64 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     [getRepo, saveManifest],
   );
 
+  /* ───────── 가져오기 · 사람이 읽는 사본 ───────── */
+
+  const importPages = useCallback<WorkApi["importPages"]>(
+    async (ws, parentId, entries) => {
+      const none = { created: 0, updated: 0, skipped: 0, unchanged: 0, packs: 0 };
+      const repo = await getRepo();
+      if (!repo) return { status: "failed", ...none };
+      const plan = importPlan(stateRef.current.pages, ws, parentId, entries, nowIso());
+      if ("kind" in plan) return { status: "bad_parent", ...none };
+      const counts = { created: plan.create.length, updated: plan.update.length, skipped: plan.skipEdited.length + plan.skipTrashed, unchanged: plan.unchanged };
+      if (!plan.create.length && !plan.update.length) return { status: "saved", ...counts, packs: 0 };
+      return queue(`index:${ws}`, async () => {
+        mark(`index:${ws}`, "saving");
+        const r = await repo.applyImport(plan, stateRef.current.pages, nowIso());
+        if (r.status === "saved") putWsPages(ws, r.value);
+        else if (r.status === "conflict" && r.remote) putWsPages(ws, r.remote);
+        return { status: outcome(`index:${ws}`, r), ...counts, packs: r.packs ?? 0 };
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [getRepo, queue],
+  );
+
+  // 사람이 읽는 사본 — Drive 일 때만, 뒤에서 두 개씩. 어디까지 썼는지(지문 · 이름)는 기기에 적어 두고 이어서 돈다
+  const [mirrorLeft, setMirrorLeft] = useState(0);
+  const mirrorRunning = useRef(false);
+  useEffect(() => {
+    if (!uid || !ready || storage !== "drive" || drive.status !== "connected" || mirrorRunning.current) return;
+    mirrorRunning.current = true;
+    void (async () => {
+      const key = prefKey(uid, "mirrored");
+      const mirrored = JSON.parse((await AsyncStorage.getItem(key).catch(() => null)) ?? "{}") as Record<string, { hash: string; name: string }>;
+      try {
+        for (;;) {
+          const todo = mirrorTodo(stateRef.current.pages, mirrored, tRef.current("page.untitled"));
+          setMirrorLeft(todo.length);
+          const repo = repoRef.current;
+          if (!todo.length || !repo || !driveDeps.token()) break;
+          const batch = todo.slice(0, 2);
+          const done = await Promise.all(
+            batch.map(async ({ page, name, rename }) => {
+              const body = await repo.readBody(page).catch(() => null);
+              if (body == null) return false;
+              const r = await repo.writePageMd(page.id, pageMdText(page, body), rename ? name : undefined);
+              if (r.ok) mirrored[page.id] = { hash: page.bodyHash, name };
+              return r.ok;
+            }),
+          );
+          await AsyncStorage.setItem(key, JSON.stringify(mirrored)).catch(() => undefined);
+          if (!done.some(Boolean)) break;
+        }
+      } finally {
+        mirrorRunning.current = false;
+      }
+    })();
+    // 색인이 바뀔 때마다 다시 본다(이미 돌고 있으면 그 판이 이어서 본다)
+  }, [uid, ready, storage, drive.status, state.pages, driveDeps]);
+
   /* ───────── 본문 제안 ───────── */
 
   const preparePage = useCallback<WorkApi["preparePage"]>(
@@ -1122,6 +1188,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       saveManifest,
       preparePage,
       importPageText,
+      importPages,
+      mirrorLeft,
       proposalBody,
       acceptBody,
       rejectBody,
@@ -1138,7 +1206,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       migrateScraps,
       revertMigration,
     }),
-    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
+    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, importPages, mirrorLeft, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

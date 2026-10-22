@@ -681,6 +681,28 @@ export function importPlan(pages: PageMeta[], workspaceId: string, parentId: str
   return plan;
 }
 
+/**
+ * 붙여 넣은 · 올린 마크다운을 페이지 여럿으로 — 맨 위 단계 '# 제목' 줄마다 하나(코드 블록 안은 빼고).
+ * 바깥 id 는 제목 지문 — 같은 제목을 다시 가져오면 같은 페이지로 맞춘다. '# ' 가 없으면 통째로 하나(fallbackTitle).
+ */
+export function splitMarkdownPages(md: string, fallbackTitle: string): ImportEntry[] {
+  const out: ImportEntry[] = [];
+  let cur: { title: string; lines: string[] } | null = null;
+  let inCode = false;
+  const pre: string[] = [];
+  for (const line of md.replace(/\r\n?/g, "\n").split("\n")) {
+    if (/^```/.test(line)) inCode = !inCode;
+    const h = !inCode ? /^# (.+)$/.exec(line) : null;
+    if (h) {
+      if (cur) out.push({ title: cur.title, markdown: cur.lines.join("\n"), externalId: `md:${hash(cur.title)}` });
+      cur = { title: h[1].trim(), lines: [] };
+    } else (cur ? cur.lines : pre).push(line);
+  }
+  if (cur) out.push({ title: cur.title, markdown: cur.lines.join("\n"), externalId: `md:${hash(cur.title)}` });
+  if (!out.length && normalizeBody(pre.join("\n"))) out.push({ title: fallbackTitle, markdown: pre.join("\n"), externalId: `md:${hash(fallbackTitle)}` });
+  return out;
+}
+
 /** 묶음 크기 — Drive 요청 수를 줄이되 파일 하나가 너무 커지지 않게 */
 export const PACK_MAX_PAGES = 60;
 export const PACK_MAX_CHARS = 1_000_000;
@@ -842,6 +864,25 @@ export function migrateToPages(items: WorkItem[], existing: PageMeta[], workspac
   }
   if (todo.length) out.record = { id: `pages-v3-${newId()}`, kind: "pages_v3", at: nowIso, sourceIds: [], pageIds: todo.map((i) => i.id), reverted: false };
   return out;
+}
+
+/* ───────────────────────── 사람이 읽는 사본(Drive '페이지' 폴더) ───────────────────────── */
+
+/** 사본 파일 이름 — 제목.md(파일 이름에 못 쓰는 글자는 바꾼다) */
+export function pageMdName(p: Pick<PageMeta, "title">, untitled: string): string {
+  const t = (p.title.trim() || untitled).replace(/[\\/:*?"<>|\n\r\t]/g, "_").slice(0, 120);
+  return `${t}.md`;
+}
+
+export const pageMdText = (p: Pick<PageMeta, "title">, body: string) => `# ${p.title}\n\n${body}\n`;
+
+/** 사본을 새로 써야 할 페이지 — 기기에 적어 둔 것(id → 지문 · 이름)과 지금 본문 지문 · 이름이 다른 것. 이어서 돌 수 있게 순수 함수로 */
+export function mirrorTodo(pages: PageMeta[], mirrored: Record<string, { hash: string; name: string }>, untitled: string): { page: PageMeta; name: string; rename: boolean }[] {
+  return pages
+    .filter((p) => !p.trashedAt)
+    .map((p) => ({ page: p, name: pageMdName(p, untitled), seen: mirrored[p.id] }))
+    .filter((x) => !x.seen || x.seen.hash !== x.page.bodyHash || x.seen.name !== x.name)
+    .map((x) => ({ page: x.page, name: x.name, rename: !x.seen || x.seen.name !== x.name }));
 }
 
 /* ───────────────────────── 파일 이행(읽을 때) ───────────────────────── */

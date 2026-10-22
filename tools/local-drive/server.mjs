@@ -253,6 +253,15 @@ export function startLocalDrive({ dir, port = 8790, token = "local-dev-token", s
           f.trashed = true;
         }
         if (patch.appProperties) f.appProperties = { ...f.appProperties, ...patch.appProperties };
+        if (typeof patch.name === "string" && patch.name && !f.trashed && patch.name !== f.name) {
+          const name = patch.name.replace(/[\\/]/g, "_");
+          const rel = f.rel.includes("/") ? `${f.rel.slice(0, f.rel.lastIndexOf("/"))}/${name}` : name;
+          if (!existsSync(join(ROOT, rel))) {
+            renameSync(join(ROOT, f.rel), join(ROOT, rel));
+            f.rel = rel;
+            f.name = name;
+          }
+        }
         f.version += 1;
         save();
         return send(200, view(f));

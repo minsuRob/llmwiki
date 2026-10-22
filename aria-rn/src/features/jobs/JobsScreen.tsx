@@ -4,6 +4,7 @@
  */
 import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 import { ActivityIndicator, FlatList, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { JOB_SOURCE_NAMES, compareJobs, isExpired, type Job, type JobSource } from "../../../../packages/core/src/jobs.ts";
@@ -12,6 +13,7 @@ import { Btn, Tag } from "../../components/ui";
 import { errorText } from "../../firebase/api";
 import { db } from "../../firebase/client";
 import { useData } from "../../firebase/data";
+import { ImportPagesSheet } from "../work/ImportPagesSheet";
 
 type Kind = "all" | "dev" | "nondev";
 
@@ -139,6 +141,7 @@ export default function JobsScreen() {
   const [aiOnly, setAiOnly] = useState(false);
   const [dueOnly, setDueOnly] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const today = todayStr();
 
   const shown = useMemo(() => {
@@ -179,9 +182,23 @@ export default function JobsScreen() {
         <Chip c={c} label="AI 직무" on={aiOnly} onPress={() => setAiOnly((v) => !v)} />
         <Chip c={c} label="마감일 있음" on={dueOnly} onPress={() => setDueOnly((v) => !v)} />
       </ScrollView>
-      <Text style={{ fontSize: 12, color: c.muted }}>
-        {jobs === null ? "불러오는 중…" : `${shown.length}건 / 전체 ${jobs.length}건 · 마감 지난 공고는 넣지 않아요`}
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={{ flex: 1, fontSize: 12, color: c.muted }}>
+          {jobs === null ? "불러오는 중…" : `${shown.length}건 / 전체 ${jobs.length}건 · 마감 지난 공고는 넣지 않아요`}
+        </Text>
+        {jobs?.length && uid ? <Btn c={c} small primary label="페이지로 가져오기" onPress={() => setImporting(true)} /> : null}
+      </View>
+      {importing && jobs && uid ? (
+        <ImportPagesSheet
+          c={c}
+          source={{ kind: "jobs", jobs, uid }}
+          onClose={() => setImporting(false)}
+          onDone={(id) => {
+            setImporting(false);
+            router.push({ pathname: "/work/[id]", params: { id } });
+          }}
+        />
+      ) : null}
       {error ? <Text style={{ fontSize: 13, color: c.danger }}>{error}</Text> : null}
     </View>
   );

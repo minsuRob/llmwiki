@@ -17,6 +17,8 @@ import { PageHandoffPanel } from "./PageHandoffPanel";
 import { pageLabel } from "./PageTree";
 import { Fold, msgText, Muted, Pill, when } from "./parts";
 import { DesktopRunLines } from "./DesktopRunLines";
+import { ExpandedView } from "./ExpandedView";
+import { ImportPagesSheet } from "./ImportPagesSheet";
 import { ProposalStrip } from "./ProposalCompare";
 import { SourcePicker } from "./SourcePicker";
 import { useWork, type SaveState } from "./WorkContext";
@@ -91,6 +93,8 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
   const [epoch, setEpoch] = useState(0);
   const [allKids, setAllKids] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [importing, setImporting] = useState(false);
   const page = pageOf(state.pages, id);
   const doc = docs[id];
   useEffect(() => {
@@ -159,17 +163,8 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
       )}
 
       <Fold c={c} title={t("page.children", { count: kids.length })} count={kids.length} initial={kids.length > 0 && kids.length <= SHOW_CHILDREN}>
-        {(allKids ? kids : kids.slice(0, SHOW_CHILDREN)).map((k) => (
-          <Pressable key={k.id} onPress={() => onSelect(k.id)} accessibilityRole="link" style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}>
-            <Ionicons name="document-text-outline" size={14} color={c.muted} />
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, color: k.title ? c.text : c.muted }}>
-              {pageLabel(k, t("page.untitled"))}
-            </Text>
-            {k.props?.dueText ? <Text style={{ fontSize: 11, color: c.muted }}>{k.props.dueText}</Text> : null}
-          </Pressable>
-        ))}
-        {kids.length > SHOW_CHILDREN && !allKids ? <Btn c={c} small label={t("page.more", { count: kids.length - SHOW_CHILDREN })} onPress={() => setAllKids(true)} /> : null}
-        <View style={{ flexDirection: "row" }}>
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+          {kids.length ? <Btn c={c} small primary={expanded} label={expanded ? t("expanded.close") : t("expanded.open")} onPress={() => setExpanded(!expanded)} /> : null}
           <Btn
             c={c}
             small
@@ -179,8 +174,26 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
               if (p) onSelect(p.id);
             }}
           />
+          <Btn c={c} small label={t("importPages.menu")} onPress={() => setImporting(true)} />
         </View>
+        {expanded ? (
+          <ExpandedView c={c} page={page} onSelect={onSelect} />
+        ) : (
+          <>
+            {(allKids ? kids : kids.slice(0, SHOW_CHILDREN)).map((k) => (
+              <Pressable key={k.id} onPress={() => onSelect(k.id)} accessibilityRole="link" style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 }}>
+                <Ionicons name="document-text-outline" size={14} color={c.muted} />
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, color: k.title ? c.text : c.muted }}>
+                  {pageLabel(k, t("page.untitled"))}
+                </Text>
+                {k.props?.dueText ? <Text style={{ fontSize: 11, color: c.muted }}>{k.props.dueText}</Text> : null}
+              </Pressable>
+            ))}
+            {kids.length > SHOW_CHILDREN && !allKids ? <Btn c={c} small label={t("page.more", { count: kids.length - SHOW_CHILDREN })} onPress={() => setAllKids(true)} /> : null}
+          </>
+        )}
       </Fold>
+      {importing ? <ImportPagesSheet c={c} source={{ kind: "markdown", workspaceId: page.workspaceId, parentId: id }} onClose={() => setImporting(false)} /> : null}
 
       {doc ? (
         <Fold c={c} title={t("page.sources", { count: sources.length })} count={sources.length}>

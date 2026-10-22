@@ -66,8 +66,11 @@ export interface FileStore {
   readonly kind: "memory" | "device" | "drive";
   list(prefix: string): Promise<string[]>;
   read(path: string): Promise<{ text: string; version: string } | null>;
-  /** expected — 내가 본 버전. null 이면 아직 없어야 한다. 맞지 않으면 ConflictError */
-  write(path: string, text: string, expected: string | null): Promise<{ version: string }>;
+  /**
+   * expected — 내가 본 버전. null 이면 아직 없어야 한다. 맞지 않으면 ConflictError.
+   * opts.force: 버전을 보지 않고 덮어쓴다(쓰기만 하는 사람용 사본) · opts.name: 보이는 파일 이름(Drive)
+   */
+  write(path: string, text: string, expected: string | null, opts?: { name?: string; force?: boolean }): Promise<{ version: string }>;
   /** 지운다(Drive 는 휴지통으로). 이행을 되돌릴 때만 쓴다 */
   remove(path: string): Promise<void>;
 }
@@ -87,14 +90,17 @@ export class MemoryFileStore implements FileStore {
     const f = this.files.get(path);
     return f ? { text: f.text, version: String(f.version) } : null;
   }
-  async write(path: string, text: string, expected: string | null) {
+  /** 보이는 이름(Drive 의 name) — 시험이 본다 */
+  names = new Map<string, string>();
+  async write(path: string, text: string, expected: string | null, opts: { name?: string; force?: boolean } = {}) {
     if (this.failWrites > 0) {
       this.failWrites--;
       throw new StoreError("offline", "write failed");
     }
     const f = this.files.get(path);
     const cur = f ? String(f.version) : null;
-    if (cur !== expected) throw new ConflictError(path, f ? { text: f.text, version: cur as string } : null);
+    if (!opts.force && cur !== expected) throw new ConflictError(path, f ? { text: f.text, version: cur as string } : null);
+    if (opts.name) this.names.set(path, opts.name);
     const version = (f?.version ?? 0) + 1;
     this.files.set(path, { text, version });
     return { version: String(version) };
@@ -140,9 +146,9 @@ export class KvFileStore implements FileStore {
     const f = JSON.parse(raw) as { t: string; v: number };
     return { text: f.t, version: String(f.v) };
   }
-  async write(path: string, text: string, expected: string | null) {
+  async write(path: string, text: string, expected: string | null, opts: { force?: boolean } = {}) {
     const cur = await this.read(path);
-    if ((cur?.version ?? null) !== expected) throw new ConflictError(path, cur);
+    if (!opts.force && (cur?.version ?? null) !== expected) throw new ConflictError(path, cur);
     const v = Number(cur?.version ?? 0) + 1;
     try {
       await this.kv.setItem(this.key(path), JSON.stringify({ t: text, v }));
@@ -172,7 +178,7 @@ export class MirroredStore implements FileStore {
   private online: () => boolean;
   /** 기기 사본을 두지 않을 경로 — 큰 가져오기 묶음이 기기 저장소(웹 localStorage 몇 MB)를 채우지 않게 */
   private skip: (path: string) => boolean;
-  constructor(remote: FileStore, mirror: KvFileStore, online: () => boolean, skip: (path: string) => boolean = (p) => p.startsWith("state/packs/")) {
+  constructor(remote: FileStore, mirror: KvFileStore, online: () => boolean, skip: (path: string) => boolean = (p) => p.startsWith("state/packs/") || p.startsWith("pagesmd/")) {
     this.remote = remote;
     this.mirror = mirror;
     this.online = online;
@@ -187,9 +193,9 @@ export class MirroredStore implements FileStore {
     if (f && !this.skip(path)) await this.mirror.put(path, f.text, f.version).catch(() => undefined);
     return f;
   }
-  async write(path: string, text: string, expected: string | null) {
+  async write(path: string, text: string, expected: string | null, opts?: { name?: string; force?: boolean }) {
     if (!this.online()) throw new StoreError("auth_expired");
-    const r = await this.remote.write(path, text, expected);
+    const r = await this.remote.write(path, text, expected, opts);
     if (!this.skip(path)) await this.mirror.put(path, text, r.version).catch(() => undefined);
     return r;
   }
@@ -233,6 +239,8 @@ export const PATHS = {
   page: (id: string) => `state/pages/${id}.json`,
   pack: (packId: string) => `state/packs/${packId}.json`,
   archiveV2: (id: string) => `archive/v2/${id}.json`,
+  /** 사람이 읽는 페이지 사본(Drive '페이지' 폴더에 '제목.md' 로) — 쓰기만 하고 다시 읽지 않는다 */
+  pageMd: (id: string) => `pagesmd/${id}.md`,
   conflict: (path: string, at: string) => `conflicts/${at.replace(/[:.]/g, "-")}__${path.replace(/\//g, "~")}`,
 };
 
@@ -553,6 +561,16 @@ export class WorkRepo {
     }
     const r = await this.saveIndexWith(plan.workspaceId, cur, (pages) => applyImportToIndex(pages, plan, (id) => refOf.get(id) ?? "file"), nowIso);
     return { ...r, packs: packs.length };
+  }
+
+  /** 사람이 읽는 사본 쓰기 — 버전을 보지 않고 덮어쓴다. name 은 처음 · 제목이 바뀌었을 때만 넘긴다 */
+  async writePageMd(pageId: string, text: string, name?: string): Promise<{ ok: true } | { ok: false; code: StoreErrorCode }> {
+    try {
+      await this.store.write(PATHS.pageMd(pageId), text, null, { force: true, ...(name ? { name } : {}) });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, code: e instanceof StoreError ? e.code : "unknown" };
+    }
   }
 
   /** 이행 — 문서가 이미 있으면(앞선 이행이 중간에 멈춤) 그것을 쓰고, 없을 때만 새로 쓴다(충돌 사본을 만들지 않는다) */
