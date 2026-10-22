@@ -1,1 +1,1 @@
-export { default } from "../../features/work/WorkListScreen";
+export { default } from "../../features/work/PagesScreen";

@@ -1,5 +1,5 @@
 /**
- * 데스크톱 바로 실행 — 셸이 실행자를 돌리고, 끝난 결과를 '작업 결과 가져오기'와 같은 길(importText)로 자동으로 넣는다.
+ * 데스크톱 바로 실행 — 셸이 실행자를 돌리고, 끝난 결과를 손으로 붙여 넣을 때와 같은 길(정리 결과 · 페이지 결과 가져오기)로 자동으로 넣는다.
  * 진행 상태는 메모리에만 둔다(업무 파일에 쓰지 않는다 — AiRun 은 prepare 가 만든 그대로).
  * 앱을 열 때 셸이 보관한 결과(pendingResults)를 먼저 가져온다 — 새로고침 · 웹 배포 중에 끝난 결과를 잃지 않게.
  * 가져오기를 마친 결과만 ack(셸 보관본 삭제). 저장에 실패하면 ack 하지 않고 다음에 다시.
@@ -42,15 +42,13 @@ const NONE: DesktopApi = { available: false, caps: null, runs: {}, start: async 
 
 export function DesktopRunsProvider({ children }: { children: React.ReactNode }) {
   const bridge = useMemo(() => desktop(), []);
-  const { ready, importText, importTriageText } = useWork();
+  const { ready, importTriageText } = useWork();
   const [caps, setCaps] = useState<DesktopCapabilities | null>(null);
   const [runs, setRuns] = useState<Record<string, DesktopRun>>({});
-  const importRef = useRef(importText);
   const triageRef = useRef(importTriageText);
   useEffect(() => {
-    importRef.current = importText;
     triageRef.current = importTriageText;
-  }, [importText, importTriageText]);
+  }, [importTriageText]);
   /** 같은 결과를 두 번 가져오지 않게(이벤트와 pending 이 겹칠 때) */
   const taking = useRef(new Set<string>());
 
@@ -80,14 +78,8 @@ export function DesktopRunsProvider({ children }: { children: React.ReactNode })
           await bridge.ack(r.runId);
           return;
         }
-        const res = await importRef.current(r.itemId, r.text, { runId: r.runId, tool: r.executor as AiTool });
-        if (res.kind === "save_failed") {
-          patch(r.runId, { status: "save_failed" });
-          return; // ack 하지 않는다 — 다음에 다시
-        }
-        if (res.kind === "duplicate") patch(r.runId, { status: "duplicate" });
-        else patch(r.runId, { status: "imported", counts: res.counts, rawOnly: res.parsed.structured === "none" });
-        await bridge.ack(r.runId);
+        // 페이지 결과는 아직 들이지 않는다 — ack 하지 않고 셸에 남겨 둔다(다음 판에서 본문 제안으로)
+        patch(r.runId, { status: "save_failed" });
       } finally {
         taking.current.delete(r.runId);
       }

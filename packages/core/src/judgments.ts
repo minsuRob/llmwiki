@@ -1,102 +1,101 @@
 /**
- * 판단 기록 — AI 가 낸 제안 · 결정 하나와 그에 대한 사람의 판단을 한 행으로. 순수 함수(테스트: judgments.test.ts).
+ * 판단 기록 — AI 가 낸 제안 하나와 그에 대한 사람의 판단을 한 행으로. 순수 함수(테스트: judgments.test.ts).
  *
- * 따로 저장하지 않는다. 업무 파일(Drive)에 이미 있는 것 — 제안 · 결정 · 실행 기록(실행자 · 모델 · 경고) ·
- * 사람의 수락 · 거절 · 확정과 그 시각 — 에서 그때그때 계산한다. 그래서 두 벌이 어긋나거나 저장이 늘지 않는다.
- * 되돌리기(undo)는 업무를 이전 모습으로 돌리므로, 기록도 '지금 상태' 기준이다(되돌린 판단은 다시 '대기').
+ * 따로 저장하지 않는다. 매니페스트에 이미 있는 것 — 정리 제안(triage) · 페이지 본문 제안(bodyProposals),
+ * 그 실행자 · 경고 · 사람의 받기 · 빼기와 그 시각 — 에서 그때그때 계산한다. 그래서 두 벌이 어긋나거나 저장이 늘지 않는다.
  *
  * 쓰임: 실행자별 채택률(Gemma 요약을 사람이 얼마나 받아들였나), 주입 · 근거 경고의 오탐 확인, 나중의 평가 · 학습 자료.
  * 원칙(docs/architecture.md): 비공개 주제(옛 회사 작업실)는 기본으로 빼고, 학습 · few-shot 동의는 기본 꺼짐(consent false).
- * 자료 본문은 넣지 않는다 — 자료 id · 버전(내용 지문)만.
+ * 본문은 넣지 않는다 — 자료 id · 버전(내용 지문) · 본문 지문만.
  */
-import type { AiTool, WorkItem, WorkState } from "./work.ts";
+import type { AiTool, Source, WorkManifest } from "./work.ts";
 
-export type JudgmentTask = "task" | "due_change" | "output_latest" | "cross_link" | "decision";
+/** 정리 제안 셋 + 본문 제안(옛 new_work 기록은 그대로 둔다) */
+export type JudgmentTask = "file_source" | "new_page" | "new_work" | "concept_link" | "body";
 export type ReviewAction = "approved" | "rejected" | "pending";
 
 export interface JudgmentRecord {
   id: string;
   /** AI 가 낸 시각 */
   createdAt: string;
-  workItemId: string;
+  /** 본문 제안의 페이지 · 정리 제안이 이을 페이지(없으면 null) */
+  pageId: string | null;
   workspaceId: string;
-  /** 비공개 주제의 업무인가 */
+  /** 비공개 주제의 것인가 */
   privateWorkspace: boolean;
   task: JudgmentTask;
   runId: string | null;
   executor: AiTool | null;
-  model: string | null;
-  latencyMs: number | null;
+  /** 본문 제안이 근거로 한 본문 지문 */
   contextVersion: string | null;
   /** 근거 자료(id · 그때 버전) — 본문은 넣지 않는다 */
   sourceRefs: { sourceId: string; version: string | null }[];
-  /** AI 가 댄 근거 줄("S1:12") */
+  /** AI 가 댄 근거 줄("S1:12" · "P3") */
   refs: string[];
-  output: { text: string; due?: string | null; reason?: string };
-  /** 코드가 붙인 경고 — 제안 경고 + 그 결과의 경고 */
+  /** 정리 제안: 제목 · 개념 · 메모 / 본문 제안: 메모와 새 본문 지문 */
+  output: { text: string; bodyHash?: string };
+  /** 코드가 붙인 경고 */
   flags: string[];
-  review: { action: ReviewAction; at: string | null };
+  review: { action: ReviewAction; at: string | null; forced?: boolean };
   consent: { train: boolean; fewShot: boolean };
   usage: "none";
 }
 
 export interface JudgmentOptions {
-  /** 비공개 주제 업무도 넣을까(기본 아니오) */
+  /** 비공개 주제 것도 넣을까(기본 아니오) */
   includePrivate?: boolean;
 }
 
-export function deriveJudgments(state: WorkState, opts: JudgmentOptions = {}): JudgmentRecord[] {
+const action = (status: "open" | "accepted" | "rejected"): ReviewAction => (status === "accepted" ? "approved" : status === "rejected" ? "rejected" : "pending");
+
+export function deriveJudgments(state: { manifest: WorkManifest; sources?: Source[] }, opts: JudgmentOptions = {}): JudgmentRecord[] {
   const privateOf = new Map(state.manifest.workspaces.map((w) => [w.id, w.private]));
+  const version = new Map((state.sources ?? []).map((s) => [s.id, s.remoteVersion ?? null]));
   const out: JudgmentRecord[] = [];
-  for (const item of state.items) {
-    const priv = privateOf.get(item.workspaceId) ?? false;
+  const base = { consent: { train: false, fewShot: false }, usage: "none" as const };
+  for (const p of state.manifest.triage) {
+    const priv = privateOf.get(p.workspaceId) ?? false;
     if (priv && !opts.includePrivate) continue;
-    const runOf = (id?: string | null) => (id ? item.runs.find((r) => r.id === id) : undefined);
-    const base = (runId: string | null | undefined) => {
-      const run = runOf(runId);
-      return {
-        workItemId: item.id,
-        workspaceId: item.workspaceId,
-        privateWorkspace: priv,
-        runId: run?.id ?? runId ?? null,
-        executor: run?.tool ?? null,
-        model: run?.model ?? null,
-        latencyMs: run?.latencyMs ?? null,
-        contextVersion: run?.contextVersion || null,
-        sourceRefs: (run?.inputSourceIds ?? []).map((id) => ({ sourceId: id, version: run?.inputSourceVersions[id] ?? null })),
-        runFlags: (run?.flags ?? []) as string[],
-        consent: { train: false, fewShot: false },
-        usage: "none" as const,
-      };
-    };
-    for (const p of item.proposals) {
-      const { runFlags, ...b } = base(p.runId);
-      out.push({
-        ...b,
-        id: `${item.id}:${p.id}`,
-        createdAt: p.createdAt,
-        task: p.kind,
-        refs: p.refs ?? [],
-        output: { text: p.title ?? "", ...(p.kind === "task" || p.kind === "due_change" ? { due: p.due ?? null } : {}) },
-        flags: [...(p.flags ?? []), ...runFlags],
-        review: { action: p.status === "accepted" ? "approved" : p.status === "rejected" ? "rejected" : "pending", at: p.decidedAt ?? null },
-      });
-    }
-    for (const d of item.decisions) {
-      if (d.origin !== "ai") continue; // 사람이 직접 남긴 결정은 AI 판단이 아니다
-      const { runFlags, ...b } = base(d.runId);
-      out.push({
-        ...b,
-        id: `${item.id}:${d.id}`,
-        createdAt: d.createdAt,
-        task: "decision",
-        refs: d.refs ?? [],
-        output: { text: d.text, reason: d.reason },
-        flags: runFlags,
-        // 확정했다가 나중 결정으로 대체된 것도 그때는 받아들인 것이다
-        review: { action: d.status === "confirmed" || d.status === "superseded" ? "approved" : d.status === "rejected" ? "rejected" : "pending", at: d.decidedAt ?? null },
-      });
-    }
+    out.push({
+      ...base,
+      id: `triage:${p.id}`,
+      createdAt: p.createdAt,
+      pageId: p.itemId ?? null,
+      workspaceId: p.workspaceId,
+      privateWorkspace: priv,
+      task: p.kind,
+      runId: p.runId ?? null,
+      executor: p.tool ?? null,
+      contextVersion: null,
+      sourceRefs: p.sourceIds.map((id) => ({ sourceId: id, version: version.get(id) ?? null })),
+      refs: p.refs ?? [],
+      output: { text: [p.title, p.concept, p.note].filter(Boolean).join(" — ") },
+      flags: p.flags ?? [],
+      review: { action: action(p.status), at: p.decidedAt ?? null },
+    });
+  }
+  for (const p of state.manifest.bodyProposals ?? []) {
+    // 이행 제안은 AI 판단이 아니다(옛 기록을 옮긴 것)
+    if (p.origin !== "ai") continue;
+    const priv = privateOf.get(p.workspaceId) ?? false;
+    if (priv && !opts.includePrivate) continue;
+    out.push({
+      ...base,
+      id: `body:${p.id}`,
+      createdAt: p.createdAt,
+      pageId: p.pageId,
+      workspaceId: p.workspaceId,
+      privateWorkspace: priv,
+      task: "body",
+      runId: p.runId ?? null,
+      executor: p.tool,
+      contextVersion: p.baseHash,
+      sourceRefs: [],
+      refs: p.refs ?? [],
+      output: { text: p.note ?? "", bodyHash: p.rawHash },
+      flags: p.flags ?? [],
+      review: { action: action(p.status), at: p.decidedAt ?? null, ...(p.outcome === "forced" ? { forced: true } : {}) },
+    });
   }
   return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
@@ -138,9 +137,4 @@ export function judgmentStats(rows: JudgmentRecord[]): { all: JudgmentStats; byE
 /** 한 줄에 하나 */
 export function toJsonl(rows: JudgmentRecord[]): string {
   return rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "");
-}
-
-/** 업무 하나만 볼 때 */
-export function judgmentsOf(item: WorkItem, state: WorkState): JudgmentRecord[] {
-  return deriveJudgments({ ...state, items: [item] }, { includePrivate: true });
 }

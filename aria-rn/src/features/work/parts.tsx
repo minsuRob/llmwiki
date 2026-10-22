@@ -1,16 +1,15 @@
 /**
- * 작업실 화면 조각 — 주제 고르기(머리 드롭다운 · 칩, ＋ 새 주제 · 길게 눌러 고치기) · 접는 칸 · 입력칸 · 저장/동기화/AI 정리 상태 · 바뀐 것 카드.
+ * 작업실 화면 조각 — 주제 고르기(머리 드롭다운 · 칩, ＋ 새 주제 · 길게 눌러 고치기) · 접는 칸 · 입력칸 · 꼬리표.
  */
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import { Modal, Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
 
-import { pendingReview, staleSources, type ChangeEntry, type Msg, type WorkItem, type Workspace } from "../../../../packages/core/src/work.ts";
+import type { Msg, Workspace } from "../../../../packages/core/src/work.ts";
 import type { Palette } from "../../components/theme";
-import { Btn } from "../../components/ui";
 import { useT, type T } from "../../i18n";
 import { TopicSheet, topicIcon } from "./TopicSheet";
-import { useWork, type SaveState } from "./WorkContext";
+import { useWork } from "./WorkContext";
 
 /** 저장된 시각(ISO, UTC) → 이 기기 시간대의 "YYYY-MM-DD HH:mm" */
 export function when(iso?: string | null): string {
@@ -21,11 +20,10 @@ export function when(iso?: string | null): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** core 가 남긴 문구 키 → 문구. 값이 상태 같은 키면 그것도 번역한다 */
+/** core 가 남긴 문구 키 → 문구. 실행자 같은 값은 그것도 번역한다 */
 export function msgText(t: T, m: Msg): string {
   const p = { ...(m.params ?? {}) };
-  if (m.key === "change.status" && typeof p.status === "string") p.status = t(`work.status.${p.status}`);
-  if (m.key === "change.outputStatus" && typeof p.status === "string") p.status = t(`output.status.${p.status}`);
+  if (typeof p.tool === "string") p.tool = t(`tool.${p.tool}`);
   return t(m.key, p);
 }
 
@@ -200,59 +198,5 @@ export function Pill({ c, label, tone, icon }: { c: Palette; label: string; tone
       {icon ? <Ionicons name={icon} size={11} color={color} /> : null}
       <Text style={{ fontSize: 11, fontWeight: "600", color }}>{label}</Text>
     </View>
-  );
-}
-
-const SAVE_TONE: Record<SaveState, "ok" | "danger" | "muted"> = { saving: "muted", saved: "ok", failed: "danger", conflict: "danger" };
-
-/** 저장 · 동기화 · AI 정리 — 셋을 따로 보여 준다 */
-export function StatusStrip({ c, item }: { c: Palette; item: WorkItem }) {
-  const t = useT();
-  const { saves, storage, drive, state, retry } = useWork();
-  const save = saves[item.id];
-  const saveLabel = save ? t(`status.save.${save.state}`) : t("status.save.loaded");
-  const sync =
-    storage === "device" ? { label: t("status.sync.device"), tone: "muted" as const, icon: "phone-portrait-outline" as const } : drive.status === "connected" ? { label: t(drive.local ? "status.sync.localDrive" : "status.sync.drive"), tone: "ok" as const, icon: "cloud-done-outline" as const } : { label: t("status.sync.driveOffline"), tone: "danger" as const, icon: "cloud-offline-outline" as const };
-  const stale = staleSources(item, state.sources);
-  const lastRun = [...item.runs].sort((a, b) => (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt))[0];
-  const ai = stale.length
-    ? { label: t("status.ai.stale", { count: stale.length }), tone: "danger" as const }
-    : !lastRun
-      ? { label: t("status.ai.none"), tone: "muted" as const }
-      : lastRun.status === "prepared"
-        ? { label: t("status.ai.waiting"), tone: "accent" as const }
-        : lastRun.status === "parse_failed"
-          ? { label: t("status.ai.rawOnly"), tone: "danger" as const }
-          : { label: t("status.ai.done"), tone: "ok" as const };
-  return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-      <Pill c={c} icon="save-outline" label={saveLabel} tone={save ? SAVE_TONE[save.state] : "muted"} />
-      <Pill c={c} icon={sync.icon} label={sync.label} tone={sync.tone} />
-      <Pill c={c} icon="sparkles-outline" label={ai.label} tone={ai.tone} />
-      {save?.state === "failed" ? <Btn c={c} small label={t("status.retry")} onPress={() => void retry(item.id)} /> : null}
-    </View>
-  );
-}
-
-/** 마지막으로 바뀐 것 — 확인이 필요한 것이 있으면 함께, [되돌리기] */
-export function ChangeCard({ c, item, change }: { c: Palette; item: WorkItem; change: ChangeEntry }) {
-  const t = useT();
-  const { undo } = useWork();
-  const latestOpen = item.changes.find((x) => !x.undone)?.id === change.id;
-  const review = pendingReview(item);
-  return (
-    <Card c={c} tone={change.attention?.length ? "attention" : undefined}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Ionicons name={change.undone ? "arrow-undo-outline" : "checkmark-circle-outline"} size={18} color={change.undone ? c.muted : c.ok} />
-        <Text style={{ flex: 1, fontSize: 14, color: change.undone ? c.muted : c.text, textDecorationLine: change.undone ? "line-through" : "none" }}>{msgText(t, change.msg)}</Text>
-        {latestOpen ? <Btn c={c} small label={t("common.undo")} onPress={() => void undo(item.id, change.id)} /> : null}
-      </View>
-      {(change.attention ?? []).map((a, i) => (
-        <Text key={i} style={{ fontSize: 13, color: c.danger }}>
-          {msgText(t, a)}
-        </Text>
-      ))}
-      {!change.undone && (change.attention?.length || review.proposals.length) ? <Muted c={c}>{t("change.reviewBelow")}</Muted> : null}
-    </Card>
   );
 }

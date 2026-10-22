@@ -9,11 +9,11 @@
  * - 같은 결과를 두 번 가져와도 한 번만 들어간다(원문 해시).
  * - 화면에 보일 고정 문구는 여기 두지 않는다 — 문구 키(msg)와 값만 남기고 앱이 번역 파일로 그린다.
  */
-import type { BodyProposal } from "./pages.ts";
+import { createPage, linkSourceToPage, pageOf, syncMeta, type BodyProposal, type PageDoc, type PageMeta } from "./pages.ts";
 import { newId, type Task } from "./types.ts";
 
-/** 2: 영역(Area) 층을 없앴다 — 범주 바로 아래가 업무 */
-export const WORK_SCHEMA_VERSION = 2;
+/** 2: 영역(Area) 층을 없앴다 — 범주 바로 아래가 업무 · 3: 업무 → 페이지 트리(pages.ts), 정리 제안 new_work → new_page */
+export const WORK_SCHEMA_VERSION = 3;
 
 /* ───────────────────────── 모델 ───────────────────────── */
 
@@ -236,8 +236,8 @@ export interface SourceOrigin {
   tool?: AiTool | null;
 }
 
-/** 받은 것 정리 제안 — Claude 가 내고 사람이 받아들인다. 범주를 넘지 않는다 */
-export type TriageKind = "file_source" | "new_work" | "concept_link";
+/** 받은 것 정리 제안 — Claude 가 내고 사람이 받아들인다. 범주를 넘지 않는다. new_work 는 옛 기록(읽을 때 열린 것은 new_page 로) */
+export type TriageKind = "file_source" | "new_page" | "concept_link" | "new_work";
 export type TriageFlag = "no_evidence" | "injection_suspect" | "bad_refs";
 
 export interface TriageProposal {
@@ -248,10 +248,12 @@ export interface TriageProposal {
   workspaceId: string;
   /** 대상 조각(new_work 는 여럿일 수 있다) */
   sourceIds: string[];
-  /** file_source: 이을 업무 */
+  /** file_source: 이을 페이지(옛 업무 id 와 같다 — 이행이 id 를 지킨다) */
   itemId?: string | null;
-  /** new_work: 새 업무 제목 · 목표 */
+  /** new_page: 새 페이지 제목 · 부모(같은 범주) */
   title?: string;
+  parentId?: string | null;
+  /** 옛 new_work 의 목표(지금은 note 로) */
   goal?: string;
   /** concept_link: 개념 이름 */
   concept?: string;
@@ -318,25 +320,17 @@ export interface WorkState {
   sources: Source[];
 }
 
+/** 받은 것 · 정리 제안이 보는 상태(스키마 3) — 페이지는 색인만 */
+export interface TriageState {
+  manifest: WorkManifest;
+  sources: Source[];
+  pages: PageMeta[];
+}
+
 /* ───────────────────────── 도우미 ───────────────────────── */
 
-/** 짧고 안정적인 해시(FNV-1a 두 갈래) — 같은 글은 늘 같은 값 */
-export function hashText(text: string): string {
-  let h1 = 0x811c9dc5;
-  let h2 = 0x01000193 ^ text.length;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
-    h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
-    h2 ^= h2 >>> 13;
-  }
-  return h1.toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
-}
-
-/** 붙여 넣기마다 줄바꿈 · 앞뒤 빈칸이 달라도 같은 결과로 본다 */
-export function normalizeResult(text: string): string {
-  return text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trimEnd()).join("\n").trim();
-}
+export { hashText, normalizeResult } from "./hash.ts";
+import { hashText } from "./hash.ts";
 
 const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -395,10 +389,10 @@ export function editWorkspace(m: WorkManifest, id: string, patch: Partial<Pick<W
   return { ...m, workspaces: m.workspaces.map((w) => (w.id === id ? { ...w, ...patch, ...(patch.name !== undefined ? { name: patch.name.trim() } : {}) } : w)) };
 }
 
-/** 지울 수 있나 — 마지막 하나가 아니고, 업무 · 자료가 남아 있지 않을 때만(데이터를 잃지 않게) */
-export function canRemoveWorkspace(state: WorkState, id: string): "ok" | "last" | "in_use" {
+/** 지울 수 있나 — 마지막 하나가 아니고, 페이지(휴지통 포함) · 자료가 남아 있지 않을 때만(데이터를 잃지 않게) */
+export function canRemoveWorkspace(state: Pick<TriageState, "manifest" | "pages" | "sources">, id: string): "ok" | "last" | "in_use" {
   if (state.manifest.workspaces.length <= 1) return "last";
-  if (state.items.some((i) => i.workspaceId === id) || state.sources.some((s) => s.workspaceId === id)) return "in_use";
+  if (state.pages.some((p) => p.workspaceId === id) || state.sources.some((s) => s.workspaceId === id)) return "in_use";
   return "ok";
 }
 
@@ -672,7 +666,7 @@ export function latestOutput(item: WorkItem): Output | null {
 export const sourceTriage = (s: Source): SourceTriage => s.triage ?? "filed";
 
 /** 정리 대기 조각(이 범주) — 최신 위 */
-export function inboxSources(state: WorkState, workspaceId: string): Source[] {
+export function inboxSources(state: Pick<TriageState, "sources">, workspaceId: string): Source[] {
   return state.sources.filter((s) => s.workspaceId === workspaceId && sourceTriage(s) === "inbox").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -702,7 +696,7 @@ export function restoreSource(s: Source, nowIso: string): Source {
 
 /**
  * 조각을 다른 범주로 — 사람만(잘못 던졌을 때 칩 한 번). 범주가 바뀌면 그 조각에 걸린 열린 제안은 맞지 않으니 닫는다.
- * 이미 이어 둔 업무와의 연결은 그대로 둔다(자료는 한 벌).
+ * 이미 이어 둔 페이지와의 연결은 그대로 둔다(자료는 한 벌).
  */
 export function moveSource(manifest: WorkManifest, s: Source, workspaceId: string, nowIso: string): { manifest: WorkManifest; source: Source } {
   if (s.workspaceId === workspaceId) return { manifest, source: s };
@@ -710,11 +704,14 @@ export function moveSource(manifest: WorkManifest, s: Source, workspaceId: strin
   return { manifest: { ...manifest, triage }, source: touch(s, { workspaceId }, nowIso) };
 }
 
-/** 손으로 잇기 — 제안 없이 사람이 바로 업무에 엮는다 */
-export function fileSource(item: WorkItem, s: Source, nowIso: string, opts: { confirmCross?: boolean } = {}): { kind: "filed"; item: WorkItem; source: Source } | { kind: "needs_confirm" } {
-  const r = linkSource(item, s, nowIso, opts);
-  if (r.kind === "needs_confirm") return { kind: "needs_confirm" };
-  return { kind: "filed", item: r.item, source: sourceTriage(s) === "filed" ? s : touch(s, { triage: "filed" }, nowIso) };
+/**
+ * 손으로 잇기 — 제안 없이 사람이 바로 페이지에 엮는다. 다른 범주 페이지는 확인(confirmCross)을 받고서만.
+ * doc 은 그 페이지 문서(묶음 속이면 rev 0 문서 — 저장하면 제 파일이 생긴다)
+ */
+export function fileSource(meta: PageMeta, doc: PageDoc, s: Source, nowIso: string, opts: { confirmCross?: boolean } = {}): { kind: "filed"; meta: PageMeta; doc: PageDoc; source: Source } | { kind: "needs_confirm" } {
+  if (s.workspaceId !== meta.workspaceId && !opts.confirmCross) return { kind: "needs_confirm" };
+  const next = linkSourceToPage(doc, s.id, s.title, nowIso);
+  return { kind: "filed", doc: next, meta: syncMeta(meta, next, nowIso), source: sourceTriage(s) === "filed" ? s : touch(s, { triage: "filed" }, nowIso) };
 }
 
 /** Claude 가 낸 정리 제안(검사 전) */
@@ -724,6 +721,7 @@ export interface TriageInput {
   sourceIds: string[];
   itemId?: string | null;
   title?: string;
+  parentId?: string | null;
   goal?: string;
   concept?: string;
   note?: string;
@@ -742,16 +740,21 @@ function pruneTriage(list: TriageProposal[]): TriageProposal[] {
   return list.filter((p) => p.status === "open" || keep.has(p.id));
 }
 
-const triageKey = (p: Pick<TriageProposal, "kind" | "sourceIds" | "itemId" | "title" | "concept">) =>
-  [p.kind, [...p.sourceIds].sort().join(","), p.itemId ?? "", norm(p.title ?? ""), norm(p.concept ?? "")].join("|");
+const triageKey = (p: Pick<TriageProposal, "kind" | "sourceIds" | "itemId" | "title" | "concept" | "parentId">) =>
+  [p.kind, [...p.sourceIds].sort().join(","), p.itemId ?? "", norm(p.title ?? ""), norm(p.concept ?? ""), p.parentId ?? ""].join("|");
+
+const livePage = (pages: PageMeta[], id: string | null | undefined) => {
+  const p = pageOf(pages, id);
+  return p && !p.trashedAt ? p : undefined;
+};
 
 /**
  * 정리 제안을 들인다 — 앱의 결과 가져오기와 MCP 가 같은 함수를 부른다.
- * 규칙: 조각은 모두 있어야 하고 한 범주여야 하며, 이을 업무도 같은 범주여야 한다(Claude 는 범주를 넘지 않는다).
- * 근거(refs)가 없으면 들이되 표시한다. 같은 열린 제안은 한 번만.
+ * 규칙: 조각은 모두 있어야 하고 한 범주여야 하며, 이을 페이지 · 새 페이지의 부모도 같은 범주여야 한다(Claude 는 범주를 넘지 않는다).
+ * 옛 new_work 는 new_page 로(목표는 note 로). 근거(refs)가 없으면 들이되 표시한다. 같은 열린 제안은 한 번만.
  */
 export function proposeTriage(
-  state: WorkState,
+  state: TriageState,
   inputs: TriageInput[],
   nowIso: string,
   meta: { runId?: string | null; tool?: AiTool | null } = {},
@@ -759,7 +762,8 @@ export function proposeTriage(
   const added: TriageProposal[] = [];
   const skipped: { index: number; reason: TriageSkip }[] = [];
   const open = new Set(state.manifest.triage.filter((p) => p.status === "open").map(triageKey));
-  inputs.forEach((x, index) => {
+  inputs.forEach((raw, index) => {
+    const x: TriageInput = raw.kind === "new_work" ? { ...raw, kind: "new_page", note: [raw.note, raw.goal].filter((v) => v?.trim()).join(" — ") || undefined } : raw;
     const ids = [...new Set((x.sourceIds ?? []).filter(Boolean))];
     if (!ids.length) return skipped.push({ index, reason: "no_source" });
     const srcs = ids.map((id) => state.sources.find((s) => s.id === id));
@@ -768,14 +772,21 @@ export function proposeTriage(
     if (srcs.some((s) => (s as Source).workspaceId !== ws)) return skipped.push({ index, reason: "cross_workspace" });
     let itemId: string | null = null;
     if (x.kind === "file_source") {
-      const item = state.items.find((i) => i.id === x.itemId);
-      if (!item) return skipped.push({ index, reason: "unknown_item" });
-      if (item.workspaceId !== ws) return skipped.push({ index, reason: "cross_workspace" });
-      itemId = item.id;
+      const page = livePage(state.pages, x.itemId);
+      if (!page) return skipped.push({ index, reason: "unknown_item" });
+      if (page.workspaceId !== ws) return skipped.push({ index, reason: "cross_workspace" });
+      itemId = page.id;
+    }
+    let parentId: string | null = null;
+    if (x.kind === "new_page" && x.parentId) {
+      const parent = livePage(state.pages, x.parentId);
+      if (!parent) return skipped.push({ index, reason: "unknown_item" });
+      if (parent.workspaceId !== ws) return skipped.push({ index, reason: "cross_workspace" });
+      parentId = parent.id;
     }
     const title = (x.title ?? "").trim().slice(0, 200);
     const concept = (x.concept ?? "").trim().slice(0, 80);
-    if (x.kind === "new_work" && !title) return skipped.push({ index, reason: "missing_field" });
+    if (x.kind === "new_page" && !title) return skipped.push({ index, reason: "missing_field" });
     if (x.kind === "concept_link" && !concept) return skipped.push({ index, reason: "missing_field" });
     const refs = (x.refs ?? []).filter((r) => typeof r === "string" && r.trim()).slice(0, 20);
     const p: TriageProposal = {
@@ -785,7 +796,7 @@ export function proposeTriage(
       workspaceId: ws,
       sourceIds: ids,
       ...(itemId ? { itemId } : {}),
-      ...(x.kind === "new_work" ? { title, goal: (x.goal ?? "").trim().slice(0, 1000) } : {}),
+      ...(x.kind === "new_page" ? { title, ...(parentId ? { parentId } : {}) } : {}),
       ...(x.kind === "concept_link" ? { concept } : {}),
       ...(x.note ? { note: x.note.trim().slice(0, 500) } : {}),
       refs,
@@ -806,58 +817,64 @@ export function proposeTriage(
 }
 
 export type TriageAccept =
-  | { kind: "ok"; manifest: WorkManifest; items: WorkItem[]; sources: Source[]; createdItemId?: string }
-  /** 제안이 없거나 이미 정했거나, 조각 · 업무가 사라졌다 */
+  /** pages: 바뀐 뒤 전체 색인(새 페이지 · 자료 사본) · doc: 저장할 페이지 문서 */
+  | { kind: "ok"; manifest: WorkManifest; sources: Source[]; pages?: PageMeta[]; doc?: PageDoc; createdPageId?: string }
+  /** 제안이 없거나 이미 정했거나, 조각 · 페이지가 사라졌다 */
   | { kind: "gone" }
   /** 사람이 고른 다른 곳이 다른 범주 — 확인 뒤 다시 */
-  | { kind: "needs_confirm" };
+  | { kind: "needs_confirm" }
+  /** 이을 페이지의 문서가 필요하다 — 읽어서 opts.doc 으로 다시 */
+  | { kind: "needs_doc"; pageId: string };
 
 /**
- * 정리 제안을 받아들인다 — 사람만. 바뀐 업무 · 조각 · 매니페스트를 돌려주고, 저장은 부르는 쪽이 한다.
- * opts.itemId: [다른 곳] — 제안 대신 사람이 고른 업무에 잇는다. opts.title: 새 업무 제목을 고쳐서.
+ * 정리 제안을 받아들인다 — 사람만. 바뀐 색인 · 문서 · 조각 · 매니페스트를 돌려주고, 저장은 부르는 쪽이 한다.
+ * opts.pageId: [다른 곳] — 제안 대신 사람이 고른 페이지에 잇는다. opts.title: 새 페이지 제목을 고쳐서. opts.doc: 이을 페이지 문서.
  */
-export function acceptTriage(state: WorkState, proposalId: string, nowIso: string, opts: { itemId?: string; title?: string; confirmCross?: boolean } = {}): TriageAccept {
+export function acceptTriage(state: TriageState, proposalId: string, nowIso: string, opts: { pageId?: string; title?: string; confirmCross?: boolean; doc?: PageDoc | null } = {}): TriageAccept {
   const p = state.manifest.triage.find((x) => x.id === proposalId);
   if (!p || p.status !== "open") return { kind: "gone" };
   const srcs = p.sourceIds.map((id) => state.sources.find((s) => s.id === id));
   if (srcs.some((s) => !s)) return { kind: "gone" };
   const sources = srcs as Source[];
-  const items: WorkItem[] = [];
-  let createdItemId: string | undefined;
-  let outSources: Source[];
+  const decided = () => ({ ...state.manifest, triage: pruneTriage(state.manifest.triage.map((x) => (x.id === proposalId ? { ...x, status: "accepted" as const, decidedAt: nowIso } : x))) });
 
-  if (p.kind === "concept_link" && !opts.itemId) {
+  if (p.kind === "concept_link" && !opts.pageId) {
     const concept = p.concept as string;
-    outSources = sources.map((s) => {
+    const outSources = sources.map((s) => {
       const has = (s.concepts ?? []).some((c) => norm(c) === norm(concept));
       return touch(s, { triage: "filed", concepts: has ? (s.concepts ?? []) : [...(s.concepts ?? []), concept] }, nowIso);
     });
-  } else {
-    let item: WorkItem | undefined;
-    if (opts.itemId) {
-      item = state.items.find((i) => i.id === opts.itemId);
-      if (!item) return { kind: "gone" };
-      if (item.workspaceId !== p.workspaceId && !opts.confirmCross) return { kind: "needs_confirm" };
-    } else if (p.kind === "file_source") {
-      item = state.items.find((i) => i.id === p.itemId);
-      if (!item) return { kind: "gone" };
-    } else {
-      item = createWorkItem({ workspaceId: p.workspaceId, title: (opts.title ?? p.title ?? "").trim() || sources[0].title, goal: p.goal }, nowIso);
-      createdItemId = item.id;
-    }
-    for (const s of sources) {
-      const r = linkSource(item, s, nowIso, { confirmCross: true });
-      if (r.kind !== "needs_confirm") item = r.item;
-    }
-    items.push(item);
-    outSources = sources.map((s) => (sourceTriage(s) === "filed" ? s : touch(s, { triage: "filed" }, nowIso)));
+    return { kind: "ok", manifest: decided(), sources: outSources };
   }
-  const triage = state.manifest.triage.map((x) => (x.id === proposalId ? { ...x, status: "accepted" as const, decidedAt: nowIso } : x));
-  return { kind: "ok", manifest: { ...state.manifest, triage: pruneTriage(triage) }, items, sources: outSources, ...(createdItemId ? { createdItemId } : {}) };
+
+  let pages = state.pages;
+  let meta: PageMeta | undefined;
+  let doc: PageDoc | null | undefined = opts.doc;
+  let createdPageId: string | undefined;
+  if (opts.pageId || p.kind === "file_source") {
+    meta = livePage(pages, opts.pageId ?? p.itemId);
+    if (!meta) return { kind: "gone" };
+    if (opts.pageId && meta.workspaceId !== p.workspaceId && !opts.confirmCross) return { kind: "needs_confirm" };
+    if (!doc || doc.id !== meta.id) return { kind: "needs_doc", pageId: meta.id };
+  } else {
+    const parent = livePage(pages, p.parentId);
+    const r = createPage(pages, { workspaceId: p.workspaceId, parentId: parent && parent.workspaceId === p.workspaceId ? parent.id : null, title: (opts.title ?? p.title ?? "").trim() || sources[0].title }, nowIso);
+    if (r.kind !== "ok") return { kind: "gone" };
+    pages = r.pages;
+    meta = r.page;
+    doc = r.doc;
+    createdPageId = r.page.id;
+  }
+  let next = doc as PageDoc;
+  for (const s of sources) next = linkSourceToPage(next, s.id, s.title, nowIso);
+  const synced = syncMeta(meta, next, nowIso);
+  pages = pages.map((x) => (x.id === synced.id ? synced : x));
+  const outSources = sources.map((s) => (sourceTriage(s) === "filed" ? s : touch(s, { triage: "filed" }, nowIso)));
+  return { kind: "ok", manifest: decided(), sources: outSources, pages, doc: next, ...(createdPageId ? { createdPageId } : {}) };
 }
 
 /**
- * 정리 제안 · 묶음 기록을 다른 쪽 최신 매니페스트에 합친다(같은 id 는 정한 쪽 · 끝난 쪽이 이긴다).
+ * 정리 제안 · 묶음 기록 · 본문 제안을 다른 쪽 최신 매니페스트에 합친다(같은 id 는 정한 쪽 · 끝난 쪽이 이긴다).
  * 앱과 MCP 가 같은 매니페스트를 번갈아 쓸 때 — 내가 바꾼 것만 얹고 상대가 더한 것은 남긴다.
  */
 export function mergeTriage(cur: WorkManifest, mine: WorkManifest): WorkManifest {
@@ -1107,6 +1124,11 @@ export function upgradeManifest(raw: Record<string, unknown> | null, fallback: W
   m.migrations ??= [];
   m.triage ??= [];
   m.triageRuns ??= [];
+  m.bodyProposals ??= [];
+  // 3: 열린 new_work(옛 MCP · 옛 묶음) → new_page. 목표는 note 로만 남긴다
+  m.triage = m.triage.map((p) =>
+    p.kind === "new_work" && p.status === "open" ? { ...p, kind: "new_page" as const, note: [p.note, p.goal].filter((v) => v?.trim()).join(" — ") || undefined, goal: undefined } : p,
+  );
   // 기존 사용자의 범주는 그대로 — 새 기본 범주(개발 · 독서)를 억지로 더하지 않는다. 영역(areas)은 지운다
   m.workspaces = (m.workspaces ?? fallback.workspaces).map((w) => {
     const { areas: _areas, ...rest } = w as Workspace & { areas?: unknown };

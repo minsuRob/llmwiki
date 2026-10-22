@@ -1,6 +1,6 @@
 /**
- * 판단 기록 — AI 가 낸 제안 · 결정을 사람이 얼마나 받아들였나(실행자별), JSONL 로 내보내기.
- * 기록은 따로 저장하지 않고 업무 파일에서 계산한다(packages/core/src/judgments.ts). 회사 작업실은 기본으로 뺀다.
+ * 판단 기록 — AI 가 낸 정리 제안 · 본문 제안을 사람이 얼마나 받아들였나(실행자별), JSONL 로 내보내기.
+ * 기록은 따로 저장하지 않고 매니페스트에서 계산한다(packages/core/src/judgments.ts). 비공개 주제는 기본으로 뺀다.
  */
 import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -31,7 +31,7 @@ export function JudgmentsCard({ c }: { c: Palette }) {
   const { state } = useWork();
   const [company, setCompany] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const rows = useMemo(() => deriveJudgments(state, { includePrivate: company }), [state, company]);
+  const rows = useMemo(() => deriveJudgments({ manifest: state.manifest, sources: state.sources }, { includePrivate: company }), [state, company]);
   const stats = useMemo(() => judgmentStats(rows), [rows]);
   const order = ["gemma", "claude", "codex", "other", "unknown"].filter((k) => stats.byExecutor[k]);
 

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * llmwiki MCP — Claude Code · Codex 가 대화 중에 '받은 것'에 조각을 남기고, 업무를 읽고, 정리 제안을 낸다(stdio, 의존성 없음).
+ * llmwiki MCP — Claude Code · Codex 가 대화 중에 '받은 것'에 조각을 남기고, 페이지 트리를 읽고, 정리 제안을 낸다(stdio, 의존성 없음).
  * 설계: docs/inbox-today.md "Claude 가 읽고 쓰는 길". 원칙: docs/architecture.md
  *
  * - 쓰기는 둘뿐이다: 조각 남기기(정리 대기로) · 정리 제안. 확정 · 삭제 · 상태 전환 · 범주 만들기 도구는 없다.
- * - 규칙은 앱과 같은 core 함수를 부른다(newSource · prepareTriage · importTriage) — 검사도 같다.
+ * - 규칙은 앱과 같은 core 함수를 부른다(newSource · prepareTriage · importTriage · pages.ts) — 검사도 같다.
+ * - 호출마다 매니페스트 · 색인 · 자료만 읽는다. 본문은 그 페이지를 읽을 때만. 색인이 아직 없으면(앱이 이행 전) 옛 업무 파일을
+ *   메모리에서만 페이지 모양으로 바꿔 보인다(쓰지 않는다 — 이행은 앱이 한다).
  * - 비공개 범주(회사 등)에는 남기기만 된다. 읽기 · 제안은 --include-private 로 켰을 때만.
  * - 저장소는 사용자 Drive 의 'llmwiki 작업실'(Drive REST 를 그대로). 개발 · 검증은 로컬 Drive(tools/local-drive).
  * - 로그(stderr)에는 도구 이름 · 결과 종류만. 조각 · 업무 내용과 토큰은 남기지 않는다.
@@ -24,7 +26,8 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 import { DriveFileStore } from "../../packages/core/src/drive.ts";
-import { defaultManifest, findSameSource, mergeTriage, nextActions, newSource } from "../../packages/core/src/work.ts";
+import { childrenOf, flattenTree, migrateToPages, openBodyProposals, pageOf } from "../../packages/core/src/pages.ts";
+import { defaultManifest, findSameSource, mergeTriage, newSource } from "../../packages/core/src/work.ts";
 import { importTriage, prepareTriage } from "../../packages/core/src/workTriage.ts";
 import { WorkRepo } from "../../packages/core/src/workStore.ts";
 
@@ -112,6 +115,33 @@ const repo = new WorkRepo(store, fallback);
 
 const nowIso = () => new Date().toISOString();
 const triageLabels = ko.triagePack;
+const migrateLabels = {
+  ...Object.fromEntries(["goal", "doneCriteria", "summary", "decisions", "actions", "outputs", "latest", "statusLine", "dueSuffix", "aiSection", "aiSummary", "proposedDecisions", "openProposals", "unverified"].map((k) => [k, ko.migrate[k]])),
+  status: ko.migrate.status,
+  importance: ko.importance,
+  proposalKind: ko.migrate.kind,
+  migrationNote: ko.migrate.note,
+};
+
+/**
+ * 매니페스트 · 색인 · 자료(본문은 읽지 않는다). 색인이 하나도 없으면 옛 업무 파일을 메모리에서만 페이지로 —
+ * 그때 본문은 virtual 에 있다(앱이 처음 열 때 실제로 옮긴다).
+ */
+async function loadState() {
+  const r = await repo.loadPages();
+  const state = { manifest: r.manifest, pages: r.pages, sources: r.sources, virtual: new Map() };
+  if (r.hasIndex) return state;
+  const ids = await repo.listItemIds().catch(() => []);
+  if (!ids.length) return state;
+  const m = migrateToPages(await repo.readItems(ids), [], r.manifest.workspaces, migrateLabels, nowIso());
+  for (const d of m.docs) state.virtual.set(d.id, d.body);
+  state.pages = m.pages;
+  return state;
+}
+
+async function bodyOf(state, meta) {
+  return state.virtual.get(meta.id) ?? (await repo.readBody(meta));
+}
 
 class UserError extends Error {}
 
@@ -125,7 +155,7 @@ function pickWorkspace(state, key, { forRead }) {
 
 /** 매니페스트 저장 — 지금 것을 읽어 만들고, 그사이 앱이 고쳤으면 그 최신본에 내 정리 제안 · 기록만 얹는다 */
 async function saveManifestWith(make) {
-  const state = await repo.load();
+  const state = await loadState();
   const out = make(state);
   if (!out) return { out: null };
   const r = await repo.saveManifestWith(state.manifest, (cur) => mergeTriage(cur, out.manifest), nowIso());
@@ -157,14 +187,23 @@ const TOOLS = [
     },
   },
   {
+    name: "llmwiki_pages",
+    description: "한 범주의 페이지 트리 — 제목 · id · 하위 페이지 수 · 본문 길이 · 열린 본문 제안. under 로 한 페이지 아래만, depth 로 깊이를 줄인다.",
+    inputSchema: {
+      type: "object",
+      properties: { workspace: { type: "string" }, under: { type: "string", description: "이 페이지 id 아래만" }, depth: { type: "number", description: "몇 단계까지(기본 3)" } },
+      required: ["workspace"],
+    },
+  },
+  {
     name: "llmwiki_work",
-    description: "한 범주의 업무 목록 — 제목 · 상태 · 목표 · 다음 행동 · 이어 둔 조각 수.",
+    description: "llmwiki_pages 의 옛 이름(한 판 동안만 남긴다). 업무는 페이지가 됐다.",
     inputSchema: { type: "object", properties: { workspace: { type: "string" } }, required: ["workspace"] },
   },
   {
     name: "llmwiki_read",
-    description: "업무 하나의 맥락 — 목표 · 완료 조건 · 현재 상황 · 확정된 결정 · 다음 행동 · 이어 둔 조각(글 조각은 본문까지).",
-    inputSchema: { type: "object", properties: { item: { type: "string", description: "업무 id(llmwiki_work)" } }, required: ["item"] },
+    description: "페이지 하나 — 경로 · 본문(마크다운) · 하위 페이지 제목 · 이어 둔 조각(글 조각은 본문까지).",
+    inputSchema: { type: "object", properties: { page: { type: "string", description: "페이지 id(llmwiki_pages)" }, item: { type: "string", description: "옛 이름(page 와 같다)" } } },
   },
   {
     name: "llmwiki_inbox",
@@ -175,7 +214,7 @@ const TOOLS = [
   {
     name: "llmwiki_propose",
     description:
-      "llmwiki_inbox 묶음에 대한 정리 제안을 낸다. 사용자가 앱에서 하나씩 받거나 뺀다 — 여기서 확정되지 않는다. kind: file_source(기존 업무 W# 에 잇기) · new_work(새 업무 title · goal) · concept_link(개념 concept). sources 는 S# 이름, refs 는 근거 줄(S1:2).",
+      "llmwiki_inbox 묶음에 대한 정리 제안을 낸다. 사용자가 앱에서 하나씩 받거나 뺀다 — 여기서 확정되지 않는다. kind: file_source(기존 페이지 page: P# 에 잇기) · new_page(새 페이지 title, 부모가 있으면 parent: P#) · concept_link(개념 concept). sources 는 S# 이름, refs 는 근거 줄(S1:2).",
     inputSchema: {
       type: "object",
       properties: {
@@ -186,11 +225,11 @@ const TOOLS = [
           items: {
             type: "object",
             properties: {
-              kind: { type: "string", enum: ["file_source", "new_work", "concept_link"] },
+              kind: { type: "string", enum: ["file_source", "new_page", "concept_link"] },
               sources: { type: "array", items: { type: "string" } },
-              work: { type: "string" },
+              page: { type: "string" },
+              parent: { type: "string" },
               title: { type: "string" },
-              goal: { type: "string" },
               concept: { type: "string" },
               note: { type: "string" },
               refs: { type: "array", items: { type: "string" } },
@@ -205,21 +244,21 @@ const TOOLS = [
 ];
 
 const toolOf = (v) => (TOOLS_OK.has(v) ? v : "claude");
-const SKIP = { no_source: "조각 없음", unknown_source: "없는 조각", cross_workspace: "범주를 넘음", unknown_item: "없는 업무", missing_field: "빈 칸", duplicate: "이미 있는 제안" };
+const SKIP = { no_source: "조각 없음", unknown_source: "없는 조각", cross_workspace: "범주를 넘음", unknown_item: "없는 페이지", missing_field: "빈 칸", duplicate: "이미 있는 제안" };
 const WARN = { no_block: "형식을 읽지 못함", forbidden_fields: "확정 · 완료 필드는 무시함", run_mismatch: "다른 묶음의 run", injection: "지시문으로 보이는 말이 있음" };
 
 async function call(name, a) {
   await freshToken();
   switch (name) {
     case "llmwiki_workspaces": {
-      const state = await repo.load();
+      const state = await loadState();
       return state.manifest.workspaces.map((w) => `- ${w.name} (id: ${w.id})${w.private ? " · 비공개 — 남기기만" : ""}`).join("\n");
     }
     case "llmwiki_capture": {
       const text = String(a.text ?? "").trim();
       if (!text) throw new UserError("text 가 비었어요.");
       if (text.length > MAX_TEXT) throw new UserError(`${MAX_TEXT}자를 넘어요. 나눠서 남겨 주세요.`);
-      const state = await repo.load();
+      const state = await loadState();
       const w = pickWorkspace(state, a.workspace, { forRead: false });
       const isUrl = /^https?:\/\/\S+$/.test(text);
       const meta = { workspaceId: w.id, triage: "inbox", origin: { via: "mcp", tool: toolOf(a.tool) } };
@@ -229,39 +268,42 @@ async function call(name, a) {
       if (r.status !== "saved") throw new Error(`저장하지 못했어요(${r.status === "failed" ? r.code : r.status})`);
       return `"${w.name}" 받은 것에 남겼어요(정리 대기). 사용자에게 "${w.name}에 남겼어요" 라고 알려 주세요.`;
     }
-    case "llmwiki_work": {
-      const state = await repo.load();
+    case "llmwiki_work":
+    case "llmwiki_pages": {
+      const state = await loadState();
       const w = pickWorkspace(state, a.workspace, { forRead: true });
-      const items = state.items.filter((i) => i.workspaceId === w.id && i.status !== "archived");
-      if (!items.length) return `"${w.name}" 에 업무가 없어요.`;
-      return items
-        .map((i) => {
-          const next = nextActions(i)[0];
-          return `- ${i.title} (id: ${i.id}) · ${i.status}${i.goal ? `\n  목표: ${i.goal}` : ""}${next ? `\n  다음: ${next.title}${next.due ? ` (${next.due})` : ""}` : ""}\n  조각 ${i.sourceIds.length}개`;
-        })
-        .join("\n");
+      const under = a.under ? pageOf(state.pages, String(a.under)) : null;
+      if (a.under && (!under || under.workspaceId !== w.id)) throw new UserError("그런 페이지가 이 범주에 없어요. llmwiki_pages 로 id 를 확인해 주세요.");
+      const depth = Math.max(1, Math.min(8, Number(a.depth) || 3));
+      const rows = flattenTree(state.pages, w.id, { under: under?.id ?? null, depth });
+      if (!rows.length) return under ? `"${under.title}" 아래에 페이지가 없어요.` : `"${w.name}" 에 페이지가 없어요.`;
+      const open = new Set(openBodyProposals(state.manifest).map((p) => p.pageId));
+      const MAX = 400;
+      const lines = rows.slice(0, MAX).map(({ page, depth: d, childCount }) => `${"  ".repeat(d)}- ${page.icon ? `${page.icon} ` : ""}${page.title || "(제목 없음)"} (id: ${page.id}) · 본문 ${page.bodyLen}자${childCount ? ` · 하위 ${childCount}` : ""}${open.has(page.id) ? " · 본문 제안 대기" : ""}`);
+      if (rows.length > MAX) lines.push(`… ${rows.length - MAX}개 더(under · depth 로 좁혀 주세요)`);
+      return lines.join("\n");
     }
     case "llmwiki_read": {
-      const state = await repo.load();
-      const item = state.items.find((i) => i.id === a.item);
-      if (!item) throw new UserError("그런 업무가 없어요. llmwiki_work 로 id 를 확인해 주세요.");
-      pickWorkspace(state, item.workspaceId, { forRead: true });
-      const out = [`# ${item.title}`, `상태: ${item.status} · 중요도: ${item.importance}${item.due ? ` · 마감 ${item.due}` : ""}`, "", "## 목표", item.goal || "-"];
-      if (item.doneCriteria.length) out.push("", "## 완료 조건", ...item.doneCriteria.map((c) => `- ${c}`));
-      out.push("", "## 현재 상황", item.summary?.text ?? "-");
-      const decided = item.decisions.filter((d) => d.status === "confirmed");
-      if (decided.length) out.push("", "## 확정된 결정", ...decided.map((d) => `- ${d.text}${d.reason ? ` — ${d.reason}` : ""}`));
-      const open = item.actions.filter((x) => !x.done);
-      if (open.length) out.push("", "## 다음 행동", ...open.map((x) => `- ${x.title}${x.due ? ` (${x.due})` : ""}`));
-      const srcs = state.sources.filter((s) => item.sourceIds.includes(s.id));
+      const state = await loadState();
+      const id = String(a.page ?? a.item ?? "");
+      const page = pageOf(state.pages, id);
+      if (!page || page.trashedAt) throw new UserError("그런 페이지가 없어요. llmwiki_pages 로 id 를 확인해 주세요.");
+      pickWorkspace(state, page.workspaceId, { forRead: true });
+      const path = [];
+      for (let p = pageOf(state.pages, page.parentId); p; p = pageOf(state.pages, p.parentId)) path.unshift(p.title);
+      const body = await bodyOf(state, page);
+      const out = [`# ${page.title}`, `경로: ${[...path, page.title].join(" / ")} · id: ${page.id} · 고친 때 ${page.updatedAt}`, "", body ?? "(본문을 읽지 못했어요)"];
+      const kids = childrenOf(state.pages, page.workspaceId, page.id);
+      if (kids.length) out.push("", `## 하위 페이지 ${kids.length}개`, ...kids.slice(0, 200).map((k) => `- ${k.title} (id: ${k.id})`), ...(kids.length > 200 ? [`… ${kids.length - 200}개 더`] : []));
+      const srcs = state.sources.filter((s) => page.sourceIds?.includes(s.id));
       let budget = MAX_TEXT;
       if (srcs.length) out.push("", "## 이어 둔 조각");
       for (const s of srcs) {
         out.push(`### ${s.title}${s.url ? ` <${s.url}>` : ""}`);
         if (s.text && budget > 0) {
-          const body = s.text.slice(0, Math.min(4000, budget));
-          budget -= body.length;
-          out.push("```text", body, "```");
+          const t = s.text.slice(0, Math.min(4000, budget));
+          budget -= t.length;
+          out.push("```text", t, "```");
         }
       }
       return out.join("\n");

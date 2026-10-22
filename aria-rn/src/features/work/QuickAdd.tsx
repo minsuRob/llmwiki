@@ -1,5 +1,5 @@
 /**
- * 공통 입력 — 오늘 밖의 화면에서 + 단추로 조각을 던진다. 업무 상세에 있으면 그 업무에 바로 잇고, 그 밖에서는 받은 것(정리 대기)으로.
+ * 공통 입력 — 오늘 밖의 화면에서 + 단추로 조각을 던진다. 페이지에 있으면 그 페이지에 바로 잇고, 그 밖에서는 받은 것(정리 대기)으로.
  * AI 를 부르지 않는다 — 저장만 하고, 정리는 나중에.
  */
 import { Ionicons } from "@expo/vector-icons";
@@ -24,9 +24,9 @@ export function QuickAdd() {
   const [busy, setBusy] = useState(false);
   // 편집기에서는 글 위를 가리니, 오늘 화면에는 입력란이 늘 있으니 숨긴다
   if (!ready || path === "/editor" || path === "/") return null;
-  // 업무 상세에 있으면 그 업무에 바로 잇는다(묻지 않는다) — 그 밖에서는 받은 것(정리 대기)으로
+  // 페이지에 있으면 그 페이지에 바로 잇는다(묻지 않는다) — 그 밖에서는 받은 것(정리 대기)으로
   const here = /^\/work\/([^/]+)$/.exec(path)?.[1] ?? null;
-  const item = here ? state.items.find((i) => i.id === here && i.workspaceId === workspaceId) : null;
+  const item = here ? state.pages.find((p) => p.id === here && p.workspaceId === workspaceId && !p.trashedAt) : null;
 
   const show = () => {
     setNote(null);

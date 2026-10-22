@@ -170,10 +170,13 @@ export class MirroredStore implements FileStore {
   private remote: FileStore;
   private mirror: KvFileStore;
   private online: () => boolean;
-  constructor(remote: FileStore, mirror: KvFileStore, online: () => boolean) {
+  /** 기기 사본을 두지 않을 경로 — 큰 가져오기 묶음이 기기 저장소(웹 localStorage 몇 MB)를 채우지 않게 */
+  private skip: (path: string) => boolean;
+  constructor(remote: FileStore, mirror: KvFileStore, online: () => boolean, skip: (path: string) => boolean = (p) => p.startsWith("state/packs/")) {
     this.remote = remote;
     this.mirror = mirror;
     this.online = online;
+    this.skip = skip;
   }
   async list(prefix: string) {
     return this.online() ? this.remote.list(prefix) : this.mirror.list(prefix);
@@ -181,13 +184,13 @@ export class MirroredStore implements FileStore {
   async read(path: string) {
     if (!this.online()) return this.mirror.read(path);
     const f = await this.remote.read(path);
-    if (f) await this.mirror.put(path, f.text, f.version).catch(() => undefined);
+    if (f && !this.skip(path)) await this.mirror.put(path, f.text, f.version).catch(() => undefined);
     return f;
   }
   async write(path: string, text: string, expected: string | null) {
     if (!this.online()) throw new StoreError("auth_expired");
     const r = await this.remote.write(path, text, expected);
-    await this.mirror.put(path, text, r.version).catch(() => undefined);
+    if (!this.skip(path)) await this.mirror.put(path, text, r.version).catch(() => undefined);
     return r;
   }
   async remove(path: string) {
@@ -198,7 +201,7 @@ export class MirroredStore implements FileStore {
 }
 
 /** 기기에만 있던 작업실을 다른 저장소(Drive)로 복사한다 — 기기 쪽은 그대로 둔다. 이미 있는 파일은 건드리지 않는다 */
-export async function copyStore(from: FileStore, to: FileStore, prefixes = ["state/manifest.json", "state/items/", "state/sources/", "raw/", "summaries/"]): Promise<{ copied: number; skipped: number }> {
+export async function copyStore(from: FileStore, to: FileStore, prefixes = ["state/manifest.json", "state/items/", "state/sources/", "state/index/", "state/pages/", "state/packs/", "archive/v2/", "raw/", "summaries/"]): Promise<{ copied: number; skipped: number }> {
   let copied = 0;
   let skipped = 0;
   for (const prefix of prefixes) {
@@ -550,6 +553,36 @@ export class WorkRepo {
     }
     const r = await this.saveIndexWith(plan.workspaceId, cur, (pages) => applyImportToIndex(pages, plan, (id) => refOf.get(id) ?? "file"), nowIso);
     return { ...r, packs: packs.length };
+  }
+
+  /** 이행 — 문서가 이미 있으면(앞선 이행이 중간에 멈춤) 그것을 쓰고, 없을 때만 새로 쓴다(충돌 사본을 만들지 않는다) */
+  async ensurePageDoc(doc: PageDoc, nowIso: string): Promise<SaveOutcome<PageDoc>> {
+    const f = await this.store.read(PATHS.page(doc.id)).catch(() => null);
+    if (f) {
+      this.versions.set(PATHS.page(doc.id), f.version);
+      return { status: "saved", value: upgradeDoc(JSON.parse(f.text) as Record<string, unknown>) };
+    }
+    return this.savePageDoc(doc, nowIso);
+  }
+
+  /** 옛 업무 파일 id(목록만 — 읽지 않는다). 이행이 필요한지 볼 때 */
+  async listItemIds(): Promise<string[]> {
+    return (await this.store.list("state/items/")).map((p) => p.slice("state/items/".length).replace(/\.json$/, ""));
+  }
+
+  /** 옛 업무 파일 몇 개만 읽는다(이행할 것만) */
+  async readItems(ids: string[]): Promise<WorkItem[]> {
+    const files = await mapLimit(ids, READ_CONCURRENCY, (id) => this.store.read(PATHS.item(id)).catch(() => null));
+    const out: WorkItem[] = [];
+    files.forEach((f) => {
+      if (!f) return;
+      try {
+        out.push(upgradeItem(JSON.parse(f.text) as Record<string, unknown>));
+      } catch {
+        /* 깨진 파일은 건너뛴다(지우지 않는다) */
+      }
+    });
+    return out;
   }
 
   /** 한 번만 쓰는 파일(원문 · 옛 업무 원본) — 이미 있으면 그대로 */

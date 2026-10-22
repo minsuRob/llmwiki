@@ -1,11 +1,12 @@
 /**
- * 자료 붙이기 — 메모 · 링크 · 파일(글) · Drive(Picker) · 보관함에 있는 자료. 같은 자료는 다시 복사하지 않고 잇기만 한다.
+ * 자료 붙이기(페이지에) — 메모 · 링크 · 파일(글) · Drive(Picker) · 보관함에 있는 자료. 같은 자료는 다시 복사하지 않고 잇기만 한다.
  * 다른 작업실 자료는 확인을 받고서야 잇는다.
  */
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { itemsForSource, type Source, type WorkItem } from "../../../../packages/core/src/work.ts";
+import { pagesForSource, type PageDoc, type PageMeta } from "../../../../packages/core/src/pages.ts";
+import type { Source } from "../../../../packages/core/src/work.ts";
 import type { Palette } from "../../components/theme";
 import { Btn } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -13,14 +14,15 @@ import { confirmAsk, pickTextFile } from "./io";
 import { Field, Muted } from "./parts";
 import { useWork } from "./WorkContext";
 
-export function SourcePicker({ c, item, onDone }: { c: Palette; item: WorkItem; onDone?: () => void }) {
+export function SourcePicker({ c, page, doc, onDone }: { c: Palette; page: PageMeta; doc: PageDoc; onDone?: () => void }) {
   const t = useT();
   const { state, addSource, linkExisting, drive, pickFromDrive } = useWork();
   const [mode, setMode] = useState<"note" | "link" | "vault">("note");
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
-  const available = state.sources.filter((s) => !item.sourceIds.includes(s.id));
+  const item = page;
+  const available = state.sources.filter((s) => !doc.sourceIds.includes(s.id));
 
   const link = async (s: Source) => {
     let r = await linkExisting(item.id, s.id);
@@ -113,7 +115,7 @@ export function SourcePicker({ c, item, onDone }: { c: Palette; item: WorkItem; 
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13, color: c.text }}>{s.title}</Text>
                   <Muted c={c} danger={other}>
-                    {other ? t("source.otherWorkspace", { workspace: ws?.name ?? "" }) : t("source.usedBy", { count: itemsForSource(state.items, s.id).length })}
+                    {other ? t("source.otherWorkspace", { workspace: ws?.name ?? "" }) : t("source.usedBy", { count: pagesForSource(state.pages, s.id).length })}
                   </Muted>
                 </View>
                 <Btn c={c} small label={t("source.link")} onPress={() => void link(s)} />

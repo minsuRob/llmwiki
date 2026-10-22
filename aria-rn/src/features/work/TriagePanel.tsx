@@ -13,7 +13,7 @@ import { Btn } from "../../components/ui";
 import { useT, type T } from "../../i18n";
 import { isActive, triageTarget, useDesktopRuns } from "./DesktopRuns";
 import type { DesktopExecutor } from "./desktop";
-import { RunHint } from "./HandoffPanel";
+import { RunHint } from "./RunHint";
 import { copyText, exportFile } from "./io";
 import { Field, Muted } from "./parts";
 import { useWork } from "./WorkContext";

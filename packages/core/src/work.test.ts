@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { DriveFileStore, getMeta, readPlan, readText, type Fetch } from "./drive.ts";
+import { createPage, trashPage } from "./pages.ts";
 import type { Scrap } from "./types.ts";
 import {
   acceptProposal,
@@ -348,7 +349,7 @@ test("원문은 해시 이름으로 한 번만 저장된다(재시도해도 하�
 test("예전 스키마 파일도 빠진 칸을 채워 읽고, 영역만 지운다(나머지는 보존)", () => {
   const old = { id: "x", title: "옛 업무", workspaceId: "ws-personal", areaId: "area-dev", goal: "g", status: "active", createdAt: NOW, updatedAt: NOW, extra: "보존" };
   const up = upgradeItem(old) as unknown as Record<string, unknown>;
-  assert.equal(up.schemaVersion, 2);
+  assert.equal(up.schemaVersion, 3);
   assert.deepEqual(up.actions, []);
   assert.equal(up.extra, "보존");
   assert.equal("areaId" in up, false, "영역은 어디로도 옮기지 않고 지운다");
@@ -368,8 +369,11 @@ test("기존 기록 이행 — 복사만 하고(원본 그대로), 두 번 옮�
   assert.equal(scraps.length, 2, "원본 배열은 그대로");
   const after: WorkState = { ...state, sources: plan.sources, manifest: { ...state.manifest, migrations: [plan.record!] } };
   assert.equal(planScrapMigration(after, scraps, "ws-personal", LATER).sources.length, 0, "두 번 옮기지 않는다");
-  const rev = planRevert(after, plan.record!.id);
+  const page = { ...createPage([], { workspaceId: "ws-personal", title: "회의" }, NOW), sourceIds: [] };
+  const pages = page.kind === "ok" ? page.pages.map((p) => ({ ...p, sourceIds: [plan.sources[0].id] })) : [];
+  const rev = planRevert({ manifest: after.manifest, pages }, plan.record!.id);
   assert.deepEqual(rev.removeSourceIds, [plan.sources[0].id]);
+  assert.deepEqual(rev.pageIds, pages.map((p) => p.id), "이어 둔 페이지에서 풀어야 한다");
 });
 
 /* ───────────────────────── Drive(가짜 서버) ───────────────────────── */
@@ -511,9 +515,11 @@ test("주제 — 옛 개인 · 회사 작업실을 아이콘 · 비공개로 옮
   assert.equal(added.workspaces.length, 3);
   assert.equal(editWorkspace(added, workspace.id, { name: "책", private: true }).workspaces[2].private, true);
 
-  const state: WorkState = { manifest: added, items: [createWorkItem({ workspaceId: workspace.id, title: "책 1" }, NOW)], sources: [] };
-  assert.equal(canRemoveWorkspace(state, workspace.id), "in_use", "업무가 남은 주제는 지우지 않는다");
-  assert.equal(canRemoveWorkspace({ ...state, items: [] }, workspace.id), "ok");
+  const page = createPage([], { workspaceId: workspace.id, title: "책 1" }, NOW);
+  if (page.kind !== "ok") return assert.fail();
+  const state = { manifest: added, pages: trashPage(page.pages, page.page.id, "with_children", NOW).pages, sources: [] };
+  assert.equal(canRemoveWorkspace(state, workspace.id), "in_use", "페이지가 남은 주제는(휴지통 포함) 지우지 않는다");
+  assert.equal(canRemoveWorkspace({ ...state, pages: [] }, workspace.id), "ok");
   assert.equal(removeWorkspace(added, workspace.id).workspaces.length, 2);
-  assert.equal(canRemoveWorkspace({ manifest: { ...m, workspaces: [m.workspaces[0]] }, items: [], sources: [] }, "ws-personal"), "last");
+  assert.equal(canRemoveWorkspace({ manifest: { ...m, workspaces: [m.workspaces[0]] }, pages: [], sources: [] }, "ws-personal"), "last");
 });

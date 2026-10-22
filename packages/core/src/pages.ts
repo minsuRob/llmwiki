@@ -15,7 +15,8 @@
  */
 import { scanInjection } from "./inject.ts";
 import { newId } from "./types.ts";
-import { hashText as hash, type AiTool, type ChangeEntry, type Importance, type MigrationRecord, type Msg, type Proposal, type WorkItem, type WorkManifest, type WorkStatus, type Workspace } from "./work.ts";
+import { hashText as hash } from "./hash.ts";
+import type { AiTool, ChangeEntry, Importance, MigrationRecord, Msg, Proposal, WorkItem, WorkManifest, WorkStatus, Workspace } from "./work.ts";
 
 export const PAGES_SCHEMA_VERSION = 3;
 
@@ -45,6 +46,8 @@ export interface PageMeta {
   externalId?: string | null;
   /** 작은 문자열 값(회사 · 마감 …) — 목차 거르기 · 표 보기 */
   props?: Record<string, string>;
+  /** 이어 둔 자료 id — 문서(PageDoc.sourceIds)의 사본. 조각에서 거꾸로 페이지를 찾을 때(문서를 다 읽지 않게) */
+  sourceIds?: string[];
   /** 가져올 때의 모습 — 사람이 본문을 고쳤는지(bodyHash 가 달라졌는지) 본다 */
   imported?: { hash: string; bodyHash: string; title: string; at: string } | null;
   /** 휴지통 — 지우지 않고 시각만 적는다 */
@@ -436,13 +439,14 @@ export function unlinkSourceFromPage(doc: PageDoc, sourceId: string, nowIso: str
 /** 문서를 저장한 뒤 색인을 맞춘다 — 지문 · 길이 · 제 파일(file)로 */
 export function syncMeta(meta: PageMeta, doc: PageDoc, nowIso: string): PageMeta {
   const h = bodyHashOf(doc.body);
-  if (meta.bodyHash === h && meta.bodyRef === "file" && meta.bodyLen === doc.body.length) return meta;
-  return touch(meta, { bodyHash: h, bodyLen: doc.body.length, bodyRef: "file" }, nowIso);
+  const same = (meta.sourceIds ?? []).join(",") === doc.sourceIds.join(",");
+  if (meta.bodyHash === h && meta.bodyRef === "file" && meta.bodyLen === doc.body.length && same) return meta;
+  return touch(meta, { bodyHash: h, bodyLen: doc.body.length, bodyRef: "file", ...(doc.sourceIds.length || meta.sourceIds ? { sourceIds: [...doc.sourceIds] } : {}) }, nowIso);
 }
 
-/** 이 자료를 이어 둔 페이지 — 문서를 읽어 둔 것만 본다(묶음 속 페이지는 자료가 없다) */
-export function pagesForSource(docs: PageDoc[], sourceId: string): string[] {
-  return docs.filter((d) => d.sourceIds.includes(sourceId)).map((d) => d.id);
+/** 이 자료를 이어 둔 페이지(살아 있는 것) — 색인의 사본으로 */
+export function pagesForSource(pages: PageMeta[], sourceId: string): PageMeta[] {
+  return pages.filter((p) => alive(p) && p.sourceIds?.includes(sourceId));
 }
 
 /* ───────────────────────── 본문 제안(AI → 사람) ───────────────────────── */
@@ -822,6 +826,7 @@ export function migrateToPages(items: WorkItem[], existing: PageMeta[], workspac
         bodyHash: bodyHashOf(body),
         bodyLen: body.length,
         bodyRef: "file",
+        ...(doc.sourceIds.length ? { sourceIds: [...doc.sourceIds] } : {}),
         ...(it.status === "archived" ? { trashedAt: nowIso, trashedBy: it.id } : {}),
       });
       if (proposal) out.proposals.push({ pageId: it.id, body: proposal });

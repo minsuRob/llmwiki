@@ -2,92 +2,51 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { deriveJudgments, judgmentStats, toJsonl } from "./judgments.ts";
-import { acceptProposal, addDecision, confirmDecision, createWorkItem, defaultManifest, linkSource, newSource, rejectDecision, rejectProposal, type WorkItem, type WorkState } from "./work.ts";
-import { importResult, prepareRun, runMeta, type HandoffLabels } from "./workHandoff.ts";
+import { acceptBodyProposal, createPage, proposeBody } from "./pages.ts";
+import { defaultManifest, newSource, proposeTriage, rejectTriage, type WorkManifest } from "./work.ts";
 
 const NOW = "2026-10-20T09:00:00.000Z";
-const LATER = "2026-10-20T10:00:00.000Z";
 const DECIDE = "2026-10-20T11:00:00.000Z";
-const L = Object.fromEntries(
-  ["title", "meta", "goal", "doneCriteria", "status", "summaryNone", "summaryStale", "decisions", "decisionsNone", "sources", "sourcesNone", "sourceAccess", "sourceNoExcerpt", "excludedCross", "scope", "taskDone", "openQuestions", "openNone", "nextActions", "returnFormat", "returnGuide", "rules", "rulesTitle", "droppedBudget"].map((k) => [k, k]),
-) as unknown as HandoffLabels;
-const manifest = () => defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" });
 
-const RESULT = (run: string) =>
-  `<!-- llmwiki-run {"executor":"gemma","model":"gemma-4-E4B q4_0","latencyMs":461100} -->
-요약입니다.
-
-\`\`\`llmwiki-result
-${JSON.stringify({ run, summary: "s", tasks: [{ title: "씨그로 지원", due: "2026-11-06", refs: ["S1:1"] }, { title: "역 확인" }], decisions: [{ text: "IT 공고 먼저", reason: "목표", refs: ["S1:1"] }] })}
-\`\`\``;
-
-function setup(workspaceId = "ws-personal"): { state: WorkState; item: WorkItem } {
-  let item = createWorkItem({ workspaceId, title: "지원 정리" }, NOW);
-  const src = newSource({ workspaceId, provider: "note", title: "메모", text: "- 씨그로: 2026-11-06 마감" }, NOW);
-  const r = linkSource(item, src, NOW);
-  if (r.kind === "linked") item = r.item;
-  const p = prepareRun(item, [src], manifest().workspaces, { tool: "gemma", scope: "정리" }, L, NOW);
-  const imp = importResult(p.item, RESULT(p.run.id), LATER, { runId: p.run.id, tool: "gemma", lines: () => ["- 씨그로: 2026-11-06 마감"] });
-  assert.equal(imp.kind, "imported");
-  item = imp.kind === "imported" ? imp.item : item;
-  return { item, state: { manifest: manifest(), items: [item], sources: [src] } };
+function setup() {
+  let manifest: WorkManifest = defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" });
+  const page = createPage([], { workspaceId: "ws-personal", title: "지원 정리", body: "# 지원" }, NOW);
+  const secret = createPage(page.kind === "ok" ? page.pages : [], { workspaceId: "ws-company", title: "회사 일", body: "비밀" }, NOW);
+  if (page.kind !== "ok" || secret.kind !== "ok") throw new Error();
+  const src = newSource({ workspaceId: "ws-personal", provider: "note", title: "메모", text: "- 씨그로: 2026-11-06 마감", triage: "inbox" }, NOW);
+  const pages = secret.pages;
+  const t = proposeTriage({ manifest, pages, sources: [src] }, [{ kind: "file_source", sourceIds: [src.id], itemId: page.page.id, refs: ["S1:1"] }, { kind: "concept_link", sourceIds: [src.id], concept: "씨그로" }], NOW, { runId: "r1", tool: "gemma" });
+  manifest = rejectTriage(t.manifest, t.added[1].id, DECIDE);
+  const b = proposeBody({ manifest, pages }, { pageId: page.page.id, body: "# 지원\n- 씨그로", tool: "claude", runId: "r2", note: "씨그로 더함" }, NOW);
+  const c = proposeBody({ manifest: b.kind === "ok" ? b.manifest : manifest, pages }, { pageId: secret.page.id, body: "비밀 2", tool: "codex" }, NOW, { includePrivate: true });
+  if (b.kind !== "ok" || c.kind !== "ok") throw new Error();
+  const acc = acceptBodyProposal(c.manifest, page.page, page.doc, b.proposal.id, b.body, DECIDE);
+  if (acc.kind !== "ok") throw new Error();
+  return { manifest: acc.manifest, src, page: page.page };
 }
 
-test("실행 머리줄 — 모델 · 걸린 시간을 읽어 실행 기록에 남긴다", () => {
-  assert.deepEqual(runMeta(RESULT("r")), { executor: "gemma", model: "gemma-4-E4B q4_0", latencyMs: 461100 });
-  assert.equal(runMeta("머리줄 없음"), null);
-  const { item } = setup();
-  assert.equal(item.runs[0].model, "gemma-4-E4B q4_0");
-  assert.equal(item.runs[0].latencyMs, 461100);
+test("판단 기록 — 정리 제안 · 본문 제안이 한 행씩, 사람의 판단과 시각이 들어가고 본문은 넣지 않는다", () => {
+  const { manifest, src, page } = setup();
+  const rows = deriveJudgments({ manifest, sources: [src] });
+  assert.deepEqual(rows.map((r) => `${r.task}:${r.review.action}:${r.executor}`).sort(), ["body:approved:claude", "concept_link:rejected:gemma", "file_source:pending:gemma"]);
+  const body = rows.find((r) => r.task === "body");
+  assert.equal(body?.pageId, page.id);
+  assert.equal(body?.output.text, "씨그로 더함");
+  assert.ok(body?.output.bodyHash);
+  assert.ok(!JSON.stringify(rows).includes("- 씨그로"), "본문 글은 들어가지 않는다");
+  assert.deepEqual(rows.find((r) => r.task === "file_source")?.sourceRefs, [{ sourceId: src.id, version: src.remoteVersion }]);
+  assert.ok(rows.every((r) => r.consent.train === false && r.usage === "none"));
 });
 
-test("판단 기록 — 제안 · AI 결정이 한 행씩, 사람의 판단과 시각이 들어간다", () => {
-  const { item, state } = setup();
-  const [t0, t1] = item.proposals.filter((p) => p.kind === "task");
-  let it = acceptProposal(item, t0.id, DECIDE);
-  it = rejectProposal(it, t1.id, DECIDE);
-  it = confirmDecision(it, it.decisions[0].id, DECIDE);
-  it = addDecision(it, { text: "사람이 직접 정함", reason: "" }, DECIDE);
-  const rows = deriveJudgments({ ...state, items: [it] });
-  assert.equal(rows.length, 3, "사람이 직접 남긴 결정은 빠진다");
-  const byText = Object.fromEntries(rows.map((r) => [r.output.text, r]));
-  assert.deepEqual(byText["씨그로 지원"].review, { action: "approved", at: DECIDE });
-  assert.equal(byText["씨그로 지원"].output.due, "2026-11-06");
-  assert.deepEqual(byText["씨그로 지원"].refs, ["S1:1"]);
-  assert.deepEqual(byText["역 확인"].review, { action: "rejected", at: DECIDE });
-  assert.deepEqual(byText["역 확인"].flags, ["no_evidence"]);
-  assert.equal(byText["IT 공고 먼저"].task, "decision");
-  assert.equal(byText["IT 공고 먼저"].review.action, "approved");
-  for (const r of rows) {
-    assert.equal(r.executor, "gemma");
-    assert.equal(r.model, "gemma-4-E4B q4_0");
-    assert.deepEqual(r.consent, { train: false, fewShot: false });
-    assert.equal(r.sourceRefs.length, 1);
-    assert.ok(!JSON.stringify(r).includes("2026-11-06 마감"), "자료 본문은 들어가지 않는다");
-  }
-});
-
-test("판단 기록 — 회사 작업실은 기본으로 빼고, 거절한 결정 · 대기도 센다", () => {
-  const company = setup("ws-company");
-  assert.equal(deriveJudgments(company.state).length, 0);
-  assert.equal(deriveJudgments(company.state, { includePrivate: true }).length, 3);
-  const { item, state } = setup();
-  const it = rejectDecision(item, item.decisions[0].id, DECIDE);
-  const s = judgmentStats(deriveJudgments({ ...state, items: [it] }));
-  assert.deepEqual(s.all, { total: 3, approved: 0, rejected: 1, pending: 2, acceptRate: 0, flaggedButApproved: 0 });
-  assert.equal(s.byExecutor.gemma.total, 3);
-});
-
-test("판단 기록 — 채택률 · 경고가 붙었는데 받아들인 수, JSONL 은 한 줄에 하나", () => {
-  const { item, state } = setup();
-  const [t0, t1] = item.proposals.filter((p) => p.kind === "task");
-  const it = acceptProposal(acceptProposal(item, t0.id, DECIDE), t1.id, DECIDE);
-  const rows = deriveJudgments({ ...state, items: [it] });
-  const s = judgmentStats(rows).all;
-  assert.equal(s.acceptRate, 1);
-  assert.equal(s.flaggedButApproved, 1, "근거 없음 경고가 붙은 '역 확인'을 받아들였다");
-  const lines = toJsonl(rows).trim().split("\n");
-  assert.equal(lines.length, 3);
-  assert.equal(JSON.parse(lines[0]).workItemId, it.id);
+test("비공개 주제는 기본으로 빼고, 실행자별 채택률을 낸다 · JSONL", () => {
+  const { manifest } = setup();
+  assert.equal(deriveJudgments({ manifest }).some((r) => r.privateWorkspace), false);
+  const all = deriveJudgments({ manifest }, { includePrivate: true });
+  assert.equal(all.filter((r) => r.privateWorkspace).length, 1);
+  const s = judgmentStats(deriveJudgments({ manifest }));
+  assert.deepEqual([s.all.approved, s.all.rejected, s.all.pending, s.all.acceptRate], [1, 1, 1, 0.5]);
+  assert.deepEqual(s.byExecutor.gemma.acceptRate, 0);
+  assert.deepEqual(s.byExecutor.claude.acceptRate, 1);
   assert.equal(toJsonl([]), "");
+  assert.equal(toJsonl(all).trim().split("\n").length, all.length);
 });

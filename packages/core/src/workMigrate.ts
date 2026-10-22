@@ -7,9 +7,10 @@
  */
 import type { Scrap } from "./types.ts";
 import { newId } from "./types.ts";
-import { newSource, type MigrationRecord, type Source, type WorkState } from "./work.ts";
+import type { PageMeta } from "./pages.ts";
+import { newSource, type MigrationRecord, type Source, type WorkManifest } from "./work.ts";
 
-export function planScrapMigration(state: WorkState, scraps: Scrap[], workspaceId: string, nowIso: string): { sources: Source[]; record: MigrationRecord | null } {
+export function planScrapMigration(state: { sources: Source[] }, scraps: Scrap[], workspaceId: string, nowIso: string): { sources: Source[]; record: MigrationRecord | null } {
   const already = new Set(state.sources.filter((s) => s.migratedFrom?.coll === "scraps").map((s) => s.migratedFrom?.id));
   const sources = scraps
     .filter((s) => !s.deletedAt && !already.has(s.id))
@@ -21,10 +22,10 @@ export function planScrapMigration(state: WorkState, scraps: Scrap[], workspaceI
   return { sources, record: { id: newId(), kind: "legacy_scraps", at: nowIso, sourceIds: sources.map((s) => s.id), reverted: false } };
 }
 
-/** 되돌리기 — 지울 자료 id 와 그 자료를 풀어야 할 업무 */
-export function planRevert(state: WorkState, migrationId: string): { removeSourceIds: string[]; itemIds: string[] } {
-  const rec = state.manifest.migrations.find((m) => m.id === migrationId && !m.reverted);
-  if (!rec) return { removeSourceIds: [], itemIds: [] };
+/** 되돌리기 — 지울 자료 id 와 그 자료를 풀어야 할 페이지(색인의 자료 사본으로 찾는다) */
+export function planRevert(state: { manifest: WorkManifest; pages: PageMeta[] }, migrationId: string): { removeSourceIds: string[]; pageIds: string[] } {
+  const rec = state.manifest.migrations.find((m) => m.id === migrationId && !m.reverted && m.kind === "legacy_scraps");
+  if (!rec) return { removeSourceIds: [], pageIds: [] };
   const ids = new Set(rec.sourceIds);
-  return { removeSourceIds: rec.sourceIds, itemIds: state.items.filter((i) => i.sourceIds.some((s) => ids.has(s))).map((i) => i.id) };
+  return { removeSourceIds: rec.sourceIds, pageIds: state.pages.filter((p) => (p.sourceIds ?? []).some((s) => ids.has(s))).map((p) => p.id) };
 }

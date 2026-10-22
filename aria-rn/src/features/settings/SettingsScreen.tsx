@@ -38,7 +38,7 @@ export default function SettingsScreen() {
   const h = { fontSize: 16, fontWeight: "700", color: c.text } as const;
   const body = { fontSize: 13, color: c.muted, lineHeight: 19 } as const;
   const d = work.drive;
-  const migrations = work.state.manifest.migrations.filter((m) => !m.reverted);
+  const migrations = work.state.manifest.migrations.filter((m) => !m.reverted && m.kind === "legacy_scraps");
   const legacyScraps = state.scraps.filter((s) => !s.deletedAt).length;
 
   return (
@@ -216,7 +216,7 @@ export default function SettingsScreen() {
             edges: state.edges.length,
           })}
         </Text>
-        <Text style={{ fontSize: 13, color: c.muted }}>{t("settings.data.workCounts", { items: work.state.items.length, sources: work.state.sources.length })}</Text>
+        <Text style={{ fontSize: 13, color: c.muted }}>{t("settings.data.workCounts", { items: work.state.pages.filter((p) => !p.trashedAt).length, sources: work.state.sources.length })}</Text>
         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           <Btn
             c={c}

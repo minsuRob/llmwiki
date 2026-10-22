@@ -56,7 +56,7 @@ export interface McpKeyInfo {
 export const mcpKeyCreate = callable<{ label: string }, McpKeyInfo & { key: string }>("mcpKeyCreate");
 export const mcpKeyList = callable<Record<string, never>, { keys: McpKeyInfo[] }>("mcpKeyList");
 export const mcpKeyRevoke = callable<{ id: string }, { ok: boolean; revoked: boolean }>("mcpKeyRevoke");
-export const driveListWork = callable<Record<string, never>, { items: { id: string; title: string; status: string; workspaceId: string; updatedAt: string }[] }>("driveListWork");
+export const driveListWork = callable<Record<string, never>, { items: { id: string; title: string; workspaceId: string; parentId: string | null; updatedAt: string }[] }>("driveListWork");
 
 /** 서버 오류 → 사용자에게 보일 한 줄 */
 export function errorText(e: unknown, t: T = (k, p) => translate("ko", k, p)): string {

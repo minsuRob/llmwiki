@@ -6,7 +6,7 @@
  * - POST driveToken {}        보관한 열쇠로 새 access token → 새 탭 · 만료 때 팝업 없이 이어 쓴다
  * - POST driveUnlink {}       Google 에서 열쇠를 거두고 보관본을 지운다
  * - POST driveStatus {}       연결 여부 · 계정 · 연결 시각(열쇠는 돌려주지 않는다)
- * - POST driveListWork {}     서버가 사용자 Drive 의 업무 목록을 읽는다(제목 · 상태만 돌려주고 저장 · 로그하지 않는다)
+ * - POST driveListWork {}     서버가 사용자 Drive 의 페이지 목록을 읽는다(색인의 제목 · 범주 · 부모만 돌려주고 저장 · 로그하지 않는다 — driveList.ts)
  *
  * 익명 사용자는 쓰지 못한다 — 열쇠의 주인을 Google 계정으로 확인할 수 있을 때만 보관한다.
  * 보관 자리 driveLinks/{uid} 는 Firestore 규칙상 앱이 읽을 수 없다(서버 Admin 만).
@@ -17,8 +17,8 @@ import { HttpsError, onCall, type CallableRequest } from "firebase-functions/htt
 import { defineSecret } from "firebase-functions/params";
 
 import { DriveFileStore } from "../../../packages/core/src/drive.ts";
-import { upgradeItem } from "../../../packages/core/src/work.ts";
 import { REGION, requireUid } from "../common.ts";
+import { listPages } from "../driveList.ts";
 import { DriveTokenError, exchangeCode, keyFrom, refreshAccess, revoke, seal, unseal, type Fetch, type OAuthClient, type SealedToken } from "../driveTokens.ts";
 
 const CLIENT_SECRET = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
@@ -140,7 +140,7 @@ export const driveStatus = onCall({ region: REGION }, async (req) => {
 
 /**
  * 서버가 사용자 Drive 를 읽는 길 — 앞으로 MCP · Gemma 연결부가 같은 accessFor 를 쓴다.
- * 지금은 업무 목록(제목 · 상태 · 마지막 수정)만 돌려준다. 읽은 내용은 저장하지도 로그에 남기지도 않는다.
+ * 지금은 페이지 목록(제목 · 범주 · 부모 · 마지막 수정)만 돌려준다(driveList.ts). 읽은 내용은 저장하지도 로그에 남기지도 않는다.
  */
 export const driveListWork = onCall({ ...SECRETS, timeoutSeconds: 60 }, async (req) => {
   const uid = requireGoogleUser(req);
@@ -151,19 +151,8 @@ export const driveListWork = onCall({ ...SECRETS, timeoutSeconds: 60 }, async (r
     fail(e);
   }
   const store = new DriveFileStore({ fetch: http as never, token: () => access }, { root: "llmwiki 작업실", summaries: "업무 요약", appData: "앱 데이터(직접 고치지 마세요)" });
-  const paths = (await store.list("state/items/")).slice(0, 200);
-  const items = [];
-  for (const p of paths) {
-    const f = await store.read(p);
-    if (!f) continue;
-    try {
-      const it = upgradeItem(JSON.parse(f.text) as Record<string, unknown>);
-      items.push({ id: it.id, title: it.title, status: it.status, workspaceId: it.workspaceId, updatedAt: it.updatedAt });
-    } catch {
-      /* 깨진 파일은 건너뛴다 */
-    }
-  }
-  logger.info("drive read by server", { uid, action: "listWork", count: items.length });
+  const { items, source } = await listPages(store);
+  logger.info("drive read by server", { uid, action: "listPages", source, count: items.length });
   await linkRef(uid).update({ lastUsedAt: new Date().toISOString(), reads: FieldValue.increment(1) }).catch(() => undefined);
   return { items };
 });

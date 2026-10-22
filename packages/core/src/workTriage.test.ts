@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createWorkItem, defaultManifest, newSource, type WorkState } from "./work.ts";
+import { createPage, keysBetween, type PageMeta } from "./pages.ts";
+import { defaultManifest, newSource, type TriageState } from "./work.ts";
 import { importTriage, parseTriage, prepareTriage, type TriageLabels } from "./workTriage.ts";
 
 const NOW = "2026-10-22T09:00:00.000Z";
@@ -23,17 +24,21 @@ const L: TriageLabels = {
   droppedBudget: "넣지 못한 조각: {titles}",
 };
 
-function setup(): WorkState {
+function setup(): TriageState & { items: PageMeta[] } {
   const m = defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" });
-  const item = createWorkItem({ workspaceId: "ws-personal", title: "그룹바이 지원 후보 정리", goal: "지원할 곳 고르기" }, NOW);
-  const secret = createWorkItem({ workspaceId: "ws-company", title: "회사 비밀 업무" }, NOW);
+  const p1 = createPage([], { workspaceId: "ws-personal", title: "그룹바이 지원 후보 정리" }, NOW);
+  if (p1.kind !== "ok") throw new Error();
+  const kid = createPage(p1.pages, { workspaceId: "ws-personal", parentId: p1.page.id, title: "피트인" }, NOW);
+  if (kid.kind !== "ok") throw new Error();
+  const p2 = createPage(kid.pages, { workspaceId: "ws-company", title: "회사 비밀 업무" }, NOW);
+  if (p2.kind !== "ok") throw new Error();
   const a = newSource({ workspaceId: "ws-personal", provider: "paste", title: "피트인 이전", text: "피트인은 2027년 1월 부평구로 이전\n출퇴근 40분", triage: "inbox" }, NOW);
   const b = newSource({ workspaceId: "ws-personal", provider: "paste", title: "13289 공고", text: "13289 공고 마감 11/6", triage: "inbox" }, LATER);
   const c = newSource({ workspaceId: "ws-company", provider: "note", title: "회사 메모", text: "회사 메모", triage: "inbox" }, NOW);
-  return { manifest: m, items: [item, secret], sources: [a, b, c] };
+  return { manifest: m, pages: p2.pages, items: [p1.page, kid.page, p2.page], sources: [a, b, c] };
 }
 
-test("정리 묶음 — 이 주제의 조각(오래된 것부터 S1) · 업무(W1) 만, 줄 번호와 돌려줄 형식, 기록을 남긴다", () => {
+test("정리 묶음 — 이 주제의 조각(오래된 것부터 S1) · 페이지(P1 경로) 만, 줄 번호와 돌려줄 형식, 기록을 남긴다", () => {
   const st = setup();
   const r = prepareTriage(st, "ws-personal", { tool: "claude" }, L, NOW);
   assert.ok(r);
@@ -41,11 +46,11 @@ test("정리 묶음 — 이 주제의 조각(오래된 것부터 S1) · 업무(W
   assert.match(r.markdown, /### \[S1\] 피트인 이전/);
   assert.match(r.markdown, /S1:2\| 출퇴근 40분/);
   assert.match(r.markdown, /### \[S2\] 13289 공고/);
-  assert.match(r.markdown, /\[W1\] 그룹바이 지원 후보 정리 — 지원할 곳 고르기/);
+  assert.match(r.markdown, /\[P1\] 그룹바이 지원 후보 정리\n- \[P2\] 그룹바이 지원 후보 정리\/피트인/);
   assert.match(r.markdown, /```llmwiki-triage/);
   assert.doesNotMatch(r.markdown, /회사/, "다른 범주의 조각 · 업무는 묶음에 없다");
   assert.deepEqual(r.run.sourceIds, [st.sources[0].id, st.sources[1].id]);
-  assert.deepEqual(r.run.itemIds, [st.items[0].id]);
+  assert.deepEqual(r.run.itemIds, [st.items[0].id, st.items[1].id]);
   assert.deepEqual(r.run.refLines, { S1: 2, S2: 1 });
   assert.equal(r.manifest.triageRuns?.length, 1);
   assert.equal(prepareTriage(st, "ws-dev", { tool: "claude" }, L, NOW), null, "조각이 없으면 묶지 않는다");
@@ -56,7 +61,7 @@ test("정리 결과 — 이름(S1 · W1)을 되짚고, 없는 줄 근거 · 지�
   const prep = prepareTriage(st, "ws-personal", { tool: "claude" }, L, NOW);
   assert.ok(prep);
   if (!prep) return;
-  const state: WorkState = { ...st, manifest: prep.manifest };
+  const state: TriageState = { ...st, manifest: prep.manifest };
   const answer = [
     "정리했습니다.",
     "```llmwiki-triage",
@@ -64,8 +69,8 @@ test("정리 결과 — 이름(S1 · W1)을 되짚고, 없는 줄 근거 · 지�
       run: prep.run.id,
       status: "confirmed",
       triage: [
-        { kind: "file_source", sources: ["S1"], work: "W1", note: "근무지 정보", refs: ["S1:1"] },
-        { kind: "new_work", sources: ["S2"], title: "13289 공고 검토", goal: "11/6 전 결정", refs: ["S2:1", "S2:9"] },
+        { kind: "file_source", sources: ["S1"], page: "P2", note: "근무지 정보", refs: ["S1:1"] },
+        { kind: "new_page", sources: ["S2"], title: "13289 공고 검토", parent: "P1", refs: ["S2:1", "S2:9"] },
         { kind: "concept_link", sources: ["S1"], concept: "부평구", refs: ["S1:1"] },
         { kind: "concept_link", sources: ["S1"], concept: "", refs: [] },
         { kind: "file_source", sources: ["S9"], work: "W1", refs: ["S1:1"] },
@@ -79,7 +84,9 @@ test("정리 결과 — 이름(S1 · W1)을 되짚고, 없는 줄 근거 · 지�
   if (r.kind !== "imported") return;
   assert.equal(r.added.length, 4);
   assert.deepEqual(r.skipped, [{ index: 3, reason: "unknown_source" }], "빈 개념은 해석에서 버리고, 없는 조각(S9)은 들이지 않는다");
-  assert.equal(r.added[0].itemId, st.items[0].id);
+  assert.equal(r.added[0].itemId, st.items[1].id);
+  assert.equal(r.added[1].parentId, st.items[0].id);
+  assert.equal(r.added[3].kind, "new_page", "옛 new_work 도 new_page 로");
   assert.deepEqual(r.added[0].sourceIds, [st.sources[0].id]);
   assert.deepEqual(r.added[1].refs, ["S2:1"], "없는 줄(S2:9)은 근거에서 뺀다");
   assert.deepEqual(r.added[1].flags, ["bad_refs"]);
@@ -117,4 +124,17 @@ test("형식이 없거나 다른 요청의 결과면 버리지 않고 경고와 
     assert.equal(m.added[0].tool, "codex");
   }
   assert.equal(parseTriage("```json\n{\"triage\": []}\n```").found, true);
+});
+
+test("자식이 많은 페이지(공고 500개)는 묶음에서 펼치지 않고 수만 적는다", () => {
+  const st = setup();
+  const parent = st.items[0];
+  const keys = keysBetween(null, null, 500);
+  const many: PageMeta[] = keys.map((order, i) => ({ ...parent, id: `job-${i}`, parentId: parent.id, title: `공고 ${i}`, order }));
+  const r = prepareTriage({ ...st, pages: [...st.pages.filter((p) => p.id !== st.items[1].id), ...many] }, "ws-personal", { tool: "claude" }, L, NOW);
+  assert.ok(r);
+  if (!r) return;
+  assert.match(r.markdown, /\[P1\] 그룹바이 지원 후보 정리 \(\+500\)/);
+  assert.doesNotMatch(r.markdown, /공고 0/);
+  assert.equal(r.run.itemIds.length, 1);
 });

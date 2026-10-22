@@ -196,7 +196,7 @@ test("두 곳이 번갈아 쓰기(앱 + MCP) — 남이 고친 매니페스트�
 
   // MCP 가 제안을 쓴다
   const m = await mcp.load();
-  const p = proposeTriage(m, [{ kind: "concept_link", sourceIds: [src.id], concept: "피트인", refs: ["S1:1"] }], NOW2);
+  const p = proposeTriage({ ...m, pages: [] }, [{ kind: "concept_link", sourceIds: [src.id], concept: "피트인", refs: ["S1:1"] }], NOW2);
   assert.equal((await mcp.saveManifestWith(m.manifest, (cur) => mergeTriage(cur, p.manifest), NOW2)).status, "saved");
 
   // 앱은 낡은 매니페스트를 들고 순서를 바꾼다 — 충돌하면 최신본(제안 있음)에 같은 바꿈을 다시 얹는다
