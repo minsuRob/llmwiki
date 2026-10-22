@@ -82,6 +82,10 @@ interface WorkApi {
   retry: (itemId: string) => Promise<void>;
   createItem: (input: { workspaceId: string; title: string; templateKey?: TemplateKey | null; due?: string | null; importance?: Importance }) => Promise<WorkItem | null>;
   addSource: (input: Parameters<typeof newSource>[0], linkTo?: string | null) => Promise<{ source: Source | null; link?: "linked" | "already" | "needs_confirm" }>;
+  /** 받은 것 — 조각 하나를 던진다(이 범주의 정리 대기로). 묻지 않는다 */
+  capture: (text: string) => Promise<Source | null>;
+  /** 받은 것 — core 가 돌려준 바뀐 업무 · 조각 · 매니페스트를 저장한다 */
+  applyTriage: (r: { manifest?: WorkManifest; items?: WorkItem[]; sources?: Source[] }) => Promise<SaveState>;
   linkExisting: (itemId: string, sourceId: string, confirmCross?: boolean) => Promise<"linked" | "already" | "needs_confirm">;
   unlink: (itemId: string, sourceId: string) => Promise<void>;
   saveManifest: (fn: (m: WorkManifest) => WorkManifest) => Promise<SaveState>;
@@ -431,6 +435,18 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
     [saveSource, linkExisting],
   );
 
+  const capture = useCallback<WorkApi["capture"]>(
+    async (text) => {
+      const v = text.trim();
+      if (!v) return null;
+      const isUrl = /^https?:\/\/\S+$/.test(v);
+      const meta = { workspaceId, triage: "inbox" as const, origin: { via: "app" as const } };
+      const r = await addSource(isUrl ? { ...meta, provider: "link", title: v, url: v } : { ...meta, provider: "paste", title: v.split("\n")[0].slice(0, 80), text: v });
+      return r.source;
+    },
+    [addSource, workspaceId],
+  );
+
   const unlink = useCallback(async (itemId: string, sourceId: string) => void (await update(itemId, (i) => unlinkSource(i, sourceId, nowIso()))), [update]);
 
   const saveManifest = useCallback<WorkApi["saveManifest"]>(
@@ -451,6 +467,20 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       return r.status === "conflict" ? "conflict" : "failed";
     },
     [getRepo, ],
+  );
+
+  const applyTriage = useCallback<WorkApi["applyTriage"]>(
+    async (r) => {
+      const results: SaveState[] = [];
+      for (const s of r.sources ?? []) results.push(await saveSource(s));
+      for (const i of r.items ?? []) results.push(await saveItem(i));
+      if (r.manifest) {
+        const m = r.manifest;
+        results.push(await saveManifest(() => m));
+      }
+      return results.find((x) => x !== "saved") ?? "saved";
+    },
+    [saveSource, saveItem, saveManifest],
   );
 
   const handoffLabels = useCallback(() => labelsFrom(tRef.current), []);
@@ -738,6 +768,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       retry,
       createItem,
       addSource,
+      capture,
+      applyTriage,
       linkExisting,
       unlink,
       saveManifest,
@@ -757,7 +789,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       handoffLabels,
       templateText,
     }),
-    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, update, retry, createItem, addSource, linkExisting, unlink, saveManifest, prepare, importText, undo, rawText, connectDrive, disconnectDrive, pickFromDrive, pickDriveOutput, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration, handoffLabels, templateText],
+    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, update, retry, createItem, addSource, capture, applyTriage, linkExisting, unlink, saveManifest, prepare, importText, undo, rawText, connectDrive, disconnectDrive, pickFromDrive, pickDriveOutput, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration, handoffLabels, templateText],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

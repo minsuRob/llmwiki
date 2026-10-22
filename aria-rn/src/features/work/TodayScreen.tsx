@@ -1,129 +1,260 @@
 /**
- * 오늘 — 추천 행동(처음엔 3개, 이유와 함께 · 순서를 바꿀 수 있다) · 이어서 할 업무 · 가까운 마감 · 판단이 필요한 것 · 최근 AI 작업 결과.
- * 전체 할 일 · 일정은 기존 화면으로 이어진다(옛 할일은 Firestore 에서 그대로 읽는다).
+ * 오늘 — 받은 것(인박스) 중심. 설계: docs/inbox-today.md
+ *
+ * 위에서 아래로: 범주 칩 → 입력란(묻지 않는다) → 받은 것 흐름(정리 대기 · 제안 있음 · 엮임)
+ * → 판단이 필요해요 → 오늘 위키에 더해진 것 → 이어서 할 업무(한 줄씩, 위에 나온 업무는 뺀다).
+ * 추천 · 마감은 업무 탭으로 옮겼다. 규칙은 전부 core(work.ts "받은 것" 절)에 있고 여기서는 부르기만 한다.
  */
-import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
-import { formatWhen, isOverdue } from "../../../../packages/core/src/dates.ts";
-import { liveTasks } from "../../../../packages/core/src/engine.ts";
-import { continueItems, moveRecommendation, nextActions, pendingReview, recommend, staleSources, toggleAction } from "../../../../packages/core/src/work.ts";
-import { usePalette } from "../../components/theme";
+import {
+  acceptTriage,
+  continueItems,
+  dismissSource,
+  fileSource,
+  fragmentState,
+  inboxSources,
+  itemsForSource,
+  nextActions,
+  pendingReview,
+  rejectTriage,
+  restoreSource,
+  sourceTriage,
+  staleSources,
+  type Source,
+  type TriageProposal,
+  type WorkItem,
+} from "../../../../packages/core/src/work.ts";
+import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
-import { useData } from "../../firebase/data";
 import { useT } from "../../i18n";
 import { ConflictPanel } from "./ConflictPanel";
-import { Card, H, Muted, Pill, WorkspaceChips, msgText } from "./parts";
+import { Card, Field, H, Muted, Pill, WorkspaceChips, when } from "./parts";
 import { useWork } from "./WorkContext";
 
-const FIRST = 3;
+const DAY = 86400000;
+const nowIso = () => new Date().toISOString();
+const open = (id: string) => router.push({ pathname: "/work/[id]", params: { id } });
+const isToday = (iso?: string | null) => !!iso && Date.now() - new Date(iso).getTime() < DAY;
+
+/** 입력란 — 붙여 넣고 남기기, 끝. 범주는 위 칩으로 이미 골라져 있다 */
+function Capture({ c }: { c: Palette }) {
+  const t = useT();
+  const { capture } = useWork();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const save = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    const s = await capture(text);
+    setBusy(false);
+    setFailed(!s);
+    if (s) setText("");
+  };
+  return (
+    <Card c={c}>
+      <Field c={c} value={text} onChangeText={setText} placeholder={t("inbox.placeholder")} accessibilityLabel={t("inbox.captureA11y")} multiline style={{ minHeight: 64 }} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={{ flex: 1, fontSize: 12, color: failed ? c.danger : c.muted }}>{failed ? t("source.saveFailed") : t("inbox.hint")}</Text>
+        <Btn c={c} primary label={t("inbox.save")} busy={busy} disabled={!text.trim()} onPress={() => void save()} />
+      </View>
+    </Card>
+  );
+}
+
+/** 이 조각을 이을 업무 고르기 — 손으로 잇기 · [다른 곳] 이 같이 쓴다 */
+function ItemPicker({ c, items, onPick, onCancel }: { c: Palette; items: WorkItem[]; onPick: (id: string) => void; onCancel: () => void }) {
+  const t = useT();
+  return (
+    <View style={{ gap: 6 }}>
+      <Muted c={c}>{items.length ? t("inbox.pickItem") : t("inbox.noItems")}</Muted>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {items.map((i) => (
+          <Pressable key={i.id} onPress={() => onPick(i.id)} accessibilityRole="button" accessibilityLabel={i.title} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: c.soft }}>
+            <Text style={{ fontSize: 12, color: c.text }}>{i.title}</Text>
+          </Pressable>
+        ))}
+        <Btn c={c} small label={t("common.close")} onPress={onCancel} />
+      </View>
+    </View>
+  );
+}
+
+function ProposalLine({ c, p, onAccept, onOther, onReject }: { c: Palette; p: TriageProposal; onAccept: () => void; onOther: () => void; onReject: () => void }) {
+  const t = useT();
+  const { state } = useWork();
+  const target =
+    p.kind === "file_source"
+      ? t("inbox.toItem", { title: state.items.find((i) => i.id === p.itemId)?.title ?? "?" })
+      : p.kind === "new_work"
+        ? t("inbox.toNew", { title: p.title ?? "" })
+        : t("inbox.toConcept", { concept: p.concept ?? "" });
+  return (
+    <View style={{ gap: 4, borderLeftWidth: 2, borderLeftColor: c.accent, paddingLeft: 8 }}>
+      <Text style={{ fontSize: 13, color: c.text, fontWeight: "600" }}>→ {target}</Text>
+      {p.note ? <Muted c={c}>{p.note}</Muted> : null}
+      <Text style={{ fontSize: 11, color: p.flags?.length ? c.danger : c.muted }}>
+        {p.tool ? `${t(`tool.${p.tool}`)} · ` : ""}
+        {p.refs?.length ? t("inbox.refs", { refs: p.refs.join(", ") }) : t("inbox.noEvidence")}
+      </Text>
+      <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+        <Btn c={c} small primary label={t("inbox.accept")} onPress={onAccept} />
+        <Btn c={c} small label={t("inbox.elsewhere")} onPress={onOther} />
+        <Btn c={c} small label={t("inbox.reject")} onPress={onReject} />
+      </View>
+    </View>
+  );
+}
+
+/** 조각 하나 — 원문 · 출처 · 상태, 그리고 상태에 맞는 동작 */
+function Fragment({ c, s }: { c: Palette; s: Source }) {
+  const t = useT();
+  const { state, applyTriage } = useWork();
+  const [picking, setPicking] = useState<null | { proposalId?: string }>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const st = fragmentState(s, state.manifest);
+  const proposals = state.manifest.triage.filter((p) => p.status === "open" && p.sourceIds.includes(s.id));
+  const linked = itemsForSource(state.items, s.id);
+  const pickable = state.items.filter((i) => i.workspaceId === s.workspaceId && i.status !== "archived" && i.status !== "done");
+  const origin = s.origin?.via === "mcp" ? t("inbox.origin.mcp", { tool: t(`tool.${s.origin.tool ?? "other"}`) }) : t(`inbox.origin.${s.origin?.via ?? "app"}`);
+  const pill = { waiting: ["inbox.state.waiting", "muted"], proposed: ["inbox.state.proposed", "accent"], filed: ["inbox.state.filed", "ok"], dismissed: ["inbox.state.dismissed", "muted"] } as const;
+
+  const report = (r: Awaited<ReturnType<typeof applyTriage>>) => setNote(r === "saved" ? null : t("source.saveFailed"));
+  const accept = async (p: TriageProposal, itemId?: string) => {
+    const r = acceptTriage(state, p.id, nowIso(), itemId ? { itemId } : {});
+    if (r.kind === "needs_confirm") return setNote(t("inbox.crossConfirm"));
+    if (r.kind === "gone") return setNote(t("inbox.gone"));
+    report(await applyTriage(r));
+    setPicking(null);
+  };
+  const pick = async (itemId: string) => {
+    const p = picking?.proposalId ? proposals.find((x) => x.id === picking.proposalId) : null;
+    if (p) return accept(p, itemId);
+    const item = state.items.find((i) => i.id === itemId);
+    if (!item) return;
+    const r = fileSource(item, s, nowIso());
+    if (r.kind === "needs_confirm") return setNote(t("inbox.crossConfirm"));
+    report(await applyTriage({ items: [r.item], sources: [r.source] }));
+    setPicking(null);
+  };
+
+  return (
+    <View style={{ backgroundColor: c.row, borderRadius: 10, padding: 10, gap: 6, opacity: st === "dismissed" ? 0.6 : 1 }}>
+      <Text numberOfLines={3} style={{ fontSize: 14, color: s.url ? c.accent : c.text }}>
+        {s.text ?? s.url ?? s.title}
+      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Text style={{ flex: 1, fontSize: 12, color: c.muted }}>
+          {origin} · {when(s.createdAt)}
+        </Text>
+        <Pill c={c} label={t(pill[st][0])} tone={pill[st][1]} />
+      </View>
+
+      {st === "proposed"
+        ? proposals.map((p) => (
+            <ProposalLine
+              key={p.id}
+              c={c}
+              p={p}
+              onAccept={() => void accept(p)}
+              onOther={() => setPicking({ proposalId: p.id })}
+              onReject={() => void applyTriage({ manifest: rejectTriage(state.manifest, p.id, nowIso()) }).then(report)}
+            />
+          ))
+        : null}
+
+      {st === "filed" ? (
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+          {linked.map((i) => (
+            <Pressable key={i.id} onPress={() => open(i.id)} accessibilityRole="link">
+              <Pill c={c} label={`[[${i.title}]]`} tone="accent" icon="briefcase-outline" />
+            </Pressable>
+          ))}
+          {(s.concepts ?? []).map((x) => (
+            <Pill key={x} c={c} label={`[[${x}]]`} tone="muted" />
+          ))}
+        </View>
+      ) : null}
+
+      {picking ? (
+        <ItemPicker c={c} items={pickable} onPick={(id) => void pick(id)} onCancel={() => setPicking(null)} />
+      ) : st === "waiting" || st === "proposed" ? (
+        <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+          <Btn c={c} small label={t("inbox.fileByHand")} onPress={() => setPicking({})} />
+          <Btn c={c} small label={t("inbox.dismiss")} onPress={() => void applyTriage({ sources: [dismissSource(s, nowIso())] }).then(report)} />
+        </View>
+      ) : st === "dismissed" ? (
+        <View style={{ flexDirection: "row" }}>
+          <Btn c={c} small label={t("inbox.restore")} onPress={() => void applyTriage({ sources: [restoreSource(s, nowIso())] }).then(report)} />
+        </View>
+      ) : null}
+      {note ? <Muted c={c} danger>{note}</Muted> : null}
+    </View>
+  );
+}
 
 export default function TodayScreen() {
   const c = usePalette();
   const t = useT();
-  const { state: legacy } = useData();
-  const { ready, state, workspaceId, update, saveManifest } = useWork();
-  const [more, setMore] = useState(false);
+  const { ready, state, workspaceId } = useWork();
+  const [showAll, setShowAll] = useState(false);
   if (!ready) return <ActivityIndicator style={{ flex: 1, backgroundColor: c.bg }} color={c.muted} />;
 
-  const now = new Date();
-  const recs = recommend(state, now, { workspaceId });
-  const shown = more ? recs : recs.slice(0, FIRST);
-  const items = continueItems(state, workspaceId);
   const inWs = state.items.filter((i) => i.workspaceId === workspaceId);
-  const soon = (d?: string | null) => !!d && (isOverdue(d, now) || new Date(d.length === 10 ? `${d}T23:59` : d).getTime() - now.getTime() < 7 * 86400000);
-  const deadlines = [
-    ...inWs.flatMap((i) => nextActions(i).filter((a) => soon(a.due)).map((a) => ({ key: a.id, title: a.title, due: a.due as string, sub: i.title, itemId: i.id as string | null }))),
-    // 예전 할일(작업실 밖) — 할일 탭과 같은 데이터
-    ...liveTasks(legacy).filter((x) => !x.done && soon(x.due)).map((x) => ({ key: x.id, title: x.title, due: x.due as string, sub: t("today.legacyTask"), itemId: null })),
-  ].sort((a, b) => a.due.localeCompare(b.due));
-  const needs = inWs.map((i) => ({ item: i, review: pendingReview(i), stale: staleSources(i, state.sources).length })).filter((x) => x.review.proposals.length + x.review.decisions.length + x.stale > 0);
-  const recentRuns = inWs
-    .flatMap((i) => i.runs.filter((r) => r.finishedAt).map((r) => ({ r, item: i })))
-    .sort((a, b) => (b.r.finishedAt ?? "").localeCompare(a.r.finishedAt ?? ""))
-    .slice(0, 3);
+  const waiting = inboxSources(state, workspaceId);
+  // 엮이거나 뺀 지 하루가 안 된 조각도 흐름에 남겨 "어디로 갔는지" 보여 준다(그 뒤엔 보관함 · 업무 상세에서)
+  const recent = state.sources
+    .filter((s) => s.workspaceId === workspaceId && s.triage != null && sourceTriage(s) !== "inbox" && isToday(s.updatedAt))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const stream = [...waiting, ...recent];
+  const shown = showAll ? stream : stream.slice(0, 8);
+  const triageOpen = state.manifest.triage.filter((p) => p.status === "open" && p.workspaceId === workspaceId).length;
 
-  const move = (key: string, dir: -1 | 1) => void saveManifest((m) => ({ ...m, prefs: moveRecommendation(m.prefs, recs.map((r) => r.key), key, dir) }));
-  const open = (id: string) => router.push({ pathname: "/work/[id]", params: { id } });
+  // 판단이 필요해요 — 업무의 제안 · 결정 제안 · 바뀐 자료
+  const needs = inWs.map((i) => ({ item: i, review: pendingReview(i), stale: staleSources(i, state.sources).length })).filter((x) => x.review.proposals.length + x.review.decisions.length + x.stale > 0);
+
+  // 오늘 위키에 더해진 것 — 업무별로 모은다
+  const added = inWs
+    .map((i) => {
+      const frags = state.sources.filter((s) => i.sourceIds.includes(s.id) && s.triage === "filed" && isToday(s.updatedAt));
+      const tasks = i.actions.filter((a) => isToday(a.createdAt)).length;
+      const decisions = i.decisions.filter((d) => d.status === "confirmed" && isToday(d.decidedAt ?? d.createdAt)).length;
+      const runs = i.runs.filter((r) => isToday(r.finishedAt)).length;
+      const concepts = [...new Set(frags.flatMap((s) => s.concepts ?? []))];
+      return { item: i, frags: frags.length, tasks, decisions, runs, concepts, total: frags.length + tasks + decisions + runs };
+    })
+    .filter((x) => x.total > 0);
+  const looseConcepts = [...new Set(state.sources.filter((s) => s.workspaceId === workspaceId && s.triage === "filed" && isToday(s.updatedAt) && !itemsForSource(state.items, s.id).length).flatMap((s) => s.concepts ?? []))];
+
+  // 이어서 할 업무 — 위에 이미 나온 업무는 뺀다(한 업무는 한 번)
+  const seen = new Set([...needs.map((x) => x.item.id), ...added.map((x) => x.item.id)]);
+  const cont = continueItems(state, workspaceId).filter((i) => !seen.has(i.id)).slice(0, 5);
 
   return (
-    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE}>
+    <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE} keyboardShouldPersistTaps="handled">
       <WorkspaceChips c={c} />
       <ConflictPanel c={c} />
+      <Capture c={c} />
 
-      {!inWs.length ? (
-        <Card c={c}>
-          <H c={c}>{t("today.emptyTitle")}</H>
-          <Muted c={c}>{t("today.emptyBody")}</Muted>
-          <View style={{ flexDirection: "row" }}>
-            <Btn c={c} primary label={t("work.new")} onPress={() => router.push({ pathname: "/work", params: { new: "1" } })} />
-          </View>
-        </Card>
-      ) : null}
+      <Card c={c}>
+        <H c={c} right={waiting.length ? <Pill c={c} label={t("inbox.waitingCount", { count: waiting.length })} tone="accent" /> : null}>
+          {t("inbox.title")}
+        </H>
+        {stream.length ? (
+          shown.map((s) => <Fragment key={s.id} c={c} s={s} />)
+        ) : (
+          <Muted c={c}>{t("inbox.empty")}</Muted>
+        )}
+        {stream.length > shown.length || showAll ? <Btn c={c} small label={showAll ? t("today.less") : t("today.more", { count: stream.length - shown.length })} onPress={() => setShowAll(!showAll)} /> : null}
+      </Card>
 
-      {recs.length ? (
-        <Card c={c}>
-          <H c={c} right={state.manifest.prefs.todayOrder.length ? <Btn c={c} small label={t("today.resetOrder")} onPress={() => void saveManifest((m) => ({ ...m, prefs: { ...m.prefs, todayOrder: [] } }))} /> : null}>
-            {t("today.recommended")}
-          </H>
-          {shown.map((r, i) => (
-            <View key={r.key} style={{ flexDirection: "row", gap: 10, alignItems: "flex-start", backgroundColor: c.row, borderRadius: 10, padding: 10 }}>
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: false }}
-                accessibilityLabel={t("today.doneA11y", { title: r.title })}
-                onPress={() => r.taskId && void update(r.itemId, (it) => toggleAction(it, r.taskId as string, new Date().toISOString()))}
-                style={{ paddingTop: 1 }}
-              >
-                <Ionicons name="square-outline" size={20} color={r.blocked ? c.muted : c.text} />
-              </Pressable>
-              <Pressable style={{ flex: 1, gap: 3 }} onPress={() => open(r.itemId)} accessibilityRole="link">
-                <Text style={{ fontSize: 15, color: r.blocked ? c.muted : c.text, fontWeight: "600" }}>{r.title}</Text>
-                <Text style={{ fontSize: 12, color: c.muted }}>
-                  {r.workTitle}
-                  {r.due ? ` · ${formatWhen(r.due, now)}` : ""}
-                </Text>
-                <Text style={{ fontSize: 12, color: r.blocked ? c.danger : c.accent }}>{t("today.why", { reasons: r.reasons.map((m) => msgText(t, m)).join(" · ") })}</Text>
-              </Pressable>
-              <View style={{ gap: 4 }}>
-                <Pressable accessibilityRole="button" accessibilityLabel={t("today.moveUp")} disabled={i === 0} onPress={() => move(r.key, -1)} style={{ opacity: i === 0 ? 0.3 : 1 }}>
-                  <Ionicons name="chevron-up" size={18} color={c.muted} />
-                </Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel={t("today.moveDown")} disabled={i === shown.length - 1} onPress={() => move(r.key, 1)} style={{ opacity: i === shown.length - 1 ? 0.3 : 1 }}>
-                  <Ionicons name="chevron-down" size={18} color={c.muted} />
-                </Pressable>
-              </View>
-            </View>
-          ))}
-          {recs.length > FIRST ? <Btn c={c} small label={more ? t("today.less") : t("today.more", { count: recs.length - FIRST })} onPress={() => setMore(!more)} /> : null}
-        </Card>
-      ) : null}
-
-      {items.length ? (
-        <Card c={c}>
-          <H c={c}>{t("today.continue")}</H>
-          {items.slice(0, 3).map((i) => (
-            <Pressable key={i.id} onPress={() => open(i.id)} accessibilityRole="link" style={{ backgroundColor: c.row, borderRadius: 10, padding: 10, gap: 4 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: c.text }}>{i.title}</Text>
-                <Pill c={c} label={t(`work.status.${i.status}`)} tone="accent" />
-              </View>
-              {i.summary ? (
-                <Text numberOfLines={2} style={{ fontSize: 13, color: c.text }}>
-                  {i.summary.text}
-                </Text>
-              ) : null}
-              <Text style={{ fontSize: 12, color: c.muted }}>{nextActions(i)[0] ? t("today.nextIs", { title: nextActions(i)[0].title }) : t("work.noNext")}</Text>
-            </Pressable>
-          ))}
-        </Card>
-      ) : null}
-
-      {needs.length ? (
+      {needs.length || triageOpen ? (
         <Card c={c} tone="attention">
           <H c={c}>{t("today.needsYou")}</H>
+          {triageOpen ? <Muted c={c}>{t("inbox.needsTriage", { count: triageOpen })}</Muted> : null}
           {needs.map(({ item, review, stale }) => (
             <Pressable key={item.id} onPress={() => open(item.id)} accessibilityRole="link" style={{ gap: 2 }}>
               <Text style={{ fontSize: 14, color: c.text, fontWeight: "600" }}>{item.title}</Text>
@@ -133,35 +264,43 @@ export default function TodayScreen() {
         </Card>
       ) : null}
 
-      <Card c={c}>
-        <H c={c}>{t("today.deadlines")}</H>
-        {deadlines.length ? (
-          deadlines.slice(0, 6).map((d) => (
-            <Pressable key={d.key} onPress={() => (d.itemId ? open(d.itemId) : router.push("/tasks"))} accessibilityRole="link" style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-              <Text style={{ flex: 1, fontSize: 14, color: c.text }}>{d.title}</Text>
-              <Text style={{ fontSize: 12, color: isOverdue(d.due, now) ? c.danger : c.muted }}>
-                {formatWhen(d.due, now)} · {d.sub}
-              </Text>
-            </Pressable>
-          ))
-        ) : (
-          <Muted c={c}>{t("today.noDeadlines")}</Muted>
-        )}
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Btn c={c} small label={t("nav.allTasks")} onPress={() => router.push("/tasks")} />
-          <Btn c={c} small label={t("nav.calendar")} onPress={() => router.push("/calendar")} />
-        </View>
-      </Card>
-
-      {recentRuns.length ? (
+      {added.length || looseConcepts.length ? (
         <Card c={c}>
-          <H c={c}>{t("today.recentAi")}</H>
-          {recentRuns.map(({ r, item }) => (
-            <Pressable key={r.id} onPress={() => open(item.id)} accessibilityRole="link" style={{ gap: 2 }}>
-              <Text style={{ fontSize: 14, color: c.text }}>
-                {item.title} · {t(`tool.${r.tool}`)}
+          <H c={c}>{t("inbox.addedToday")}</H>
+          {added.map((x) => (
+            <Pressable key={x.item.id} onPress={() => open(x.item.id)} accessibilityRole="link" style={{ gap: 4 }}>
+              <Text style={{ fontSize: 14, color: c.text, fontWeight: "600" }}>{x.item.title}</Text>
+              <Muted c={c}>{t("inbox.addedDetail", { frags: x.frags, tasks: x.tasks, decisions: x.decisions, runs: x.runs })}</Muted>
+              {x.concepts.length ? (
+                <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                  {x.concepts.map((k) => (
+                    <Pill key={k} c={c} label={`[[${k}]]`} tone="muted" />
+                  ))}
+                </View>
+              ) : null}
+            </Pressable>
+          ))}
+          {looseConcepts.length ? (
+            <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+              {looseConcepts.map((k) => (
+                <Pill key={k} c={c} label={`[[${k}]]`} tone="muted" />
+              ))}
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {cont.length ? (
+        <Card c={c}>
+          <H c={c}>{t("today.continue")}</H>
+          {cont.map((i) => (
+            <Pressable key={i.id} onPress={() => open(i.id)} accessibilityRole="link" style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <Text numberOfLines={1} style={{ fontSize: 14, color: c.text, fontWeight: "600", flexShrink: 1 }}>
+                {i.title}
               </Text>
-              <Muted c={c}>{r.resultSummary ?? t("today.noSummary")}</Muted>
+              <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: c.muted }}>
+                {nextActions(i)[0] ? t("today.nextIs", { title: nextActions(i)[0].title }) : t("work.noNext")}
+              </Text>
             </Pressable>
           ))}
         </Card>

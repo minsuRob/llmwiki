@@ -10,6 +10,7 @@ import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
 import { Card, Field, Fold, H, Muted, Pill, WorkspaceChips } from "./parts";
+import { DeadlineCard, RecommendCard } from "./PlanCards";
 import { useWork } from "./WorkContext";
 
 function Choice<K extends string>({ c, options, value, onChange, label }: { c: Palette; options: { key: K; label: string }[]; value: K; onChange: (k: K) => void; label: string }) {
@@ -115,6 +116,8 @@ export default function WorkListScreen() {
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE}>
       <WorkspaceChips c={c} />
+      <RecommendCard c={c} />
+      <DeadlineCard c={c} />
       {creating ? <NewWork c={c} onDone={close} /> : <Btn c={c} primary label={t("work.new")} onPress={() => setCreating(true)} />}
       {!active.length && !creating ? <Muted c={c}>{t("work.empty")}</Muted> : null}
       {/* 범주 바로 아래가 업무 — 상태별로 묶는다(진행 중 · 대기 · 막힘 · 계획) */}

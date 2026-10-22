@@ -1,11 +1,11 @@
 /**
- * 공통 입력 — 어느 화면에서나 + 단추로 메모 · 링크를 바로 보관함에 넣는다. 업무 상세에 있으면 그 업무에 잇는 것이 기본.
+ * 공통 입력 — 오늘 밖의 화면에서 + 단추로 조각을 던진다. 업무 상세에 있으면 그 업무에 바로 잇고, 그 밖에서는 받은 것(정리 대기)으로.
  * AI 를 부르지 않는다 — 저장만 하고, 정리는 나중에.
  */
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname } from "expo-router";
 import React, { useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, View } from "react-native";
 
 import { usePalette } from "../../components/theme";
 import { Btn } from "../../components/ui";
@@ -20,17 +20,15 @@ export function QuickAdd() {
   const { ready, state, workspaceId, addSource } = useWork();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [target, setTarget] = useState<string | null>(null);
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  // 편집기에서는 글 위를 가리니 숨긴다
-  if (!ready || path === "/editor") return null;
+  // 편집기에서는 글 위를 가리니, 오늘 화면에는 입력란이 늘 있으니 숨긴다
+  if (!ready || path === "/editor" || path === "/") return null;
+  // 업무 상세에 있으면 그 업무에 바로 잇는다(묻지 않는다) — 그 밖에서는 받은 것(정리 대기)으로
   const here = /^\/work\/([^/]+)$/.exec(path)?.[1] ?? null;
-  const items = state.items.filter((i) => i.workspaceId === workspaceId && i.status !== "archived" && i.status !== "done");
+  const item = here ? state.items.find((i) => i.id === here && i.workspaceId === workspaceId) : null;
 
   const show = () => {
-    const item = here ? state.items.find((i) => i.id === here) : null;
-    setTarget(item && item.workspaceId === workspaceId ? item.id : null);
     setNote(null);
     setOpen(true);
   };
@@ -39,13 +37,12 @@ export function QuickAdd() {
     if (!v) return;
     setBusy(true);
     const isUrl = /^https?:\/\/\S+$/.test(v);
-    // 이을 업무를 고르지 않았으면 받은 것(정리 대기)으로, 골랐으면 바로 엮인 것으로
-    const meta = { triage: target ? ("filed" as const) : ("inbox" as const), origin: { via: "app" as const } };
-    const r = await addSource(isUrl ? { workspaceId, provider: "link", title: v, url: v, ...meta } : { workspaceId, provider: "note", title: v.split("\n")[0].slice(0, 80), text: v, ...meta }, target);
+    const meta = { workspaceId, triage: item ? ("filed" as const) : ("inbox" as const), origin: { via: "app" as const } };
+    const r = await addSource(isUrl ? { ...meta, provider: "link", title: v, url: v } : { ...meta, provider: "paste", title: v.split("\n")[0].slice(0, 80), text: v }, item?.id ?? null);
     setBusy(false);
     if (!r.source) return setNote({ text: t("source.saveFailed"), bad: true });
     setText("");
-    setNote({ text: target ? t("quick.savedLinked") : t("quick.saved") });
+    setNote({ text: item ? t("quick.savedLinked") : t("quick.saved") });
   };
 
   // 대화 화면은 아래에 입력줄 · 보내기 단추가 있어 그 위로 올린다
@@ -67,17 +64,10 @@ export function QuickAdd() {
               {t("quick.title")}
             </Text>
             <WorkspaceChips c={c} manage={false} />
-            <Field c={c} value={text} onChangeText={setText} placeholder={t("quick.placeholder")} accessibilityLabel={t("quick.title")} multiline autoFocus />
-            <Muted c={c}>{t("quick.linkTo")}</Muted>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-              {[{ id: null as string | null, title: t("quick.noLink") }, ...items.map((i) => ({ id: i.id as string | null, title: i.title }))].map((o) => (
-                <Pressable key={o.id ?? "none"} onPress={() => setTarget(o.id)} accessibilityRole="radio" accessibilityState={{ selected: target === o.id }} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: target === o.id ? c.accent : c.soft }}>
-                  <Text style={{ fontSize: 12, color: target === o.id ? c.accentText : c.text }}>{o.title}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <Field c={c} value={text} onChangeText={setText} placeholder={t("inbox.placeholder")} accessibilityLabel={t("quick.title")} multiline autoFocus />
+            <Muted c={c}>{item ? t("quick.linkHere", { title: item.title }) : t("quick.toInbox")}</Muted>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <Btn c={c} primary label={t("common.save")} busy={busy} disabled={!text.trim()} onPress={() => void save()} />
+              <Btn c={c} primary label={t("inbox.save")} busy={busy} disabled={!text.trim()} onPress={() => void save()} />
               <Btn c={c} label={t("common.close")} onPress={() => setOpen(false)} />
             </View>
             {note ? <Text style={{ fontSize: 13, color: note.bad ? c.danger : c.ok }}>{note.text}</Text> : null}
