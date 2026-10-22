@@ -91,27 +91,50 @@ llmwiki 는 할 일 앱이 아니라 **LLM 과 사람이 같이 쓰는 위키**�
 
 ### 모델 — 더하는 것만, 새 저장소 없음
 
+구현(`packages/core/src/work.ts`, 스키마 2)은 아래 모양이다. 처음 설계와 달라진 곳은 셋 — 정리 제안은 업무 `proposals` 가 아니라 **매니페스트의 `triage` 한 곳**에, 개념은 노드 id 가 아니라 **이름(`concepts`)** 으로, 정리 묶음 기록(`triageRuns`)도 매니페스트에.
+
 ```ts
 // Source 에 셋을 더한다
 interface Source {
   …
-  /** 정리 상태 — inbox: 아직 안 엮임 · filed: 업무 · 개념에 이어짐 · dismissed: 뺌 */
+  /** 정리 상태 — inbox: 아직 안 엮임 · filed: 업무 · 개념에 이어짐 · dismissed: 뺌. 값이 없는 옛 자료는 filed 로 본다 */
   triage?: "inbox" | "filed" | "dismissed";
   /** 어디서 던졌나 — 출처 표시 · 검사 기준 */
-  origin?: { via: "app" | "share" | "mcp"; tool?: AiTool; sessionHint?: string | null };
-  /** 엮인 개념(시냅스 노드 id) */
-  conceptIds?: string[];
+  origin?: { via: "app" | "share" | "mcp"; tool?: AiTool | null };
+  /** 받아들인 개념 이름 — 시냅스 그래프와 합치기 전 */
+  concepts?: string[];
 }
 
-// Proposal 종류 셋 추가
-type ProposalKind = "task" | "due_change" | "output_latest" | "cross_link"
-  | "file_source"   // 조각 → 업무에 잇자 (sourceId · 대상 itemId · refs · note)
-  | "new_work"      // 조각들로 새 업무 만들자 (제목 · 목표 · sourceIds · 작업실)
-  | "concept_link"; // 조각 → 개념 (sourceId · 개념 이름)
+// 정리 제안 — 업무 proposals 와 별개. 매니페스트 triage[] 에 둔다
+type TriageKind = "file_source" | "new_work" | "concept_link";
+interface TriageProposal {
+  id: string;
+  kind: TriageKind;
+  status: "open" | "accepted" | "rejected";
+  workspaceId: string;      // 조각과 같은 범주 — 제안은 이 범주 안에서만
+  sourceIds: string[];      // 대상 조각(new_work 는 여럿일 수 있다)
+  itemId?: string | null;   // file_source: 이을 업무
+  title?: string; goal?: string;   // new_work: 새 업무 제목 · 목표
+  concept?: string;         // concept_link: 개념 이름
+  note?: string;            // AI 가 쓴 근거 문장
+  refs?: string[];          // 근거 줄("S1:2")
+  flags?: ("no_evidence" | "injection_suspect" | "bad_refs")[];
+  runId?: string | null; tool?: AiTool | null;
+  createdAt: string; decidedAt?: string | null;
+}
+
+interface WorkManifest {
+  …
+  triage: TriageProposal[];   // 열린 것은 모두, 정한 것은 최근 100개
+  triageRuns?: TriageRun[];   // 묶음의 S1 · W1 이 어느 조각 · 업무인지(refLines · rawHash · counts). 최근 20개
+}
 ```
-- `file_source` · `concept_link` 는 대상 업무의 `proposals` 에 붙는다(지금 구조). `new_work` 는 업무가 아직 없으므로 **작업실 매니페스트의 `inboxProposals`** 에 둔다 — 매니페스트는 이미 Drive 에 한 파일이라 새 저장소가 아니다.
-- 받아들이기는 지금 함수로 끝난다: `file_source` → `linkSource`, `new_work` → `createWorkItem` + `linkSource`, `concept_link` → `mergeGraph`. 셋 다 `triage` 를 `filed` 로 바꾼다. 화면 단추와 MCP 가 같은 함수를 부른다(원칙 1).
-- `workspaceId` 는 지금처럼 **항상 있다**. 범주는 사람 몫이므로 Claude 의 제안(`file_source` · `new_work`)은 조각과 같은 작업실 안에서만 낸다. 다른 작업실 업무에 잇자는 제안은 `cross_link` 처럼 확인을 거친다(지금 규칙).
+- 제안 셋이 모두 매니페스트 `triage` 에 있으므로 조각 하나의 제안을 한 번에 보이기 쉽고, `new_work` 처럼 업무가 아직 없는 제안도 같은 자리에 둔다. 매니페스트는 이미 Drive 에 한 파일이라 새 저장소가 아니다.
+- 들이기는 `proposeTriage` 가 한다 — 없는 조각 · 업무, 범주를 넘는 제안, 빈 칸(`new_work` 제목 · `concept_link` 개념), 같은 열린 제안은 들이지 않고(`TriageSkip`), 근거(`refs`)가 없으면 들이되 `no_evidence` 로 표시한다.
+- 받아들이기는 `acceptTriage` 하나다: `file_source` → `linkSource`, `new_work` → `createWorkItem` + `linkSource`, `concept_link` → 조각 `concepts` 에 이름 추가. 셋 다 조각 `triage` 를 `filed` 로 바꾼다. [다른 곳]은 `itemId` 를 넘겨 사람이 고른 업무에 잇고, 그 업무가 다른 범주면 `needs_confirm` 으로 확인을 거친다. [빼기]는 `rejectTriage`(조각은 정리 대기로 남는다). 화면 단추와 MCP 가 같은 함수를 부른다(원칙 1).
+- 사람만 하는 것: `fileSource`(제안 없이 손으로 잇기) · `dismissSource` · `restoreSource` · `moveSource`(범주 옮기기 — 그 조각의 열린 제안은 닫는다) · `moveWorkItem`.
+- `workspaceId` 는 지금처럼 **항상 있다**. 범주는 사람 몫이므로 Claude 의 제안은 조각과 같은 범주 안에서만 들어온다. 다른 범주 업무에 잇는 것은 사람이 [다른 곳]으로 고를 때만, 확인을 거쳐서.
+- 앱과 MCP 가 같은 매니페스트를 번갈아 쓰므로 저장은 `WorkRepo.saveManifestWith` 로 하고, 충돌하면 최신본에 `mergeTriage` 로 내 제안 · 기록만 얹는다(사본 없음).
 
 ### 흐름
 
@@ -120,13 +143,16 @@ type ProposalKind = "task" | "due_change" | "output_latest" | "cross_link"
            ├─ 공유 시트(iOS · Android)     ─┼→ newSource({provider, text|url, triage:"inbox", origin})  → Drive 보관함
            └─ MCP llmwiki_capture (Claude) ─┘
 
-② 엮기 ──── [Claude 에게 정리 맡기기] 또는 Claude 가 대화 중 스스로
-            묶음 = 정리 대기 조각 N개(줄 번호 S1:1…) + 작업실의 업무 목록(제목 · 목표 · 상태) + 개념 목록
-            결과 = llmwiki-result 의 proposals[] 에 file_source · new_work · concept_link
-            → importResult 가 지금처럼 검사(refs 없음 · 지시문 섞임 · 금지 필드) → 제안으로만 저장
+② 엮기 ──── [Claude 에게 정리 맡기기](prepareTriage → 셸 · 터미널) 또는 MCP llmwiki_inbox (Claude 가 대화 중 스스로)
+            묶음 = 이 범주의 정리 대기 조각(최신 30개, 오래된 것부터 S1 · 줄 번호 S1:1…) + 업무 목록(W1 · 제목 · 목표 · 다음 행동) + 개념 이름 목록
+            기록 = 매니페스트 triageRuns 에 run(S1 · W1 → 실제 id · 줄 수)
+            결과 = llmwiki-triage 블록의 triage[] 에 file_source · new_work · concept_link (붙여 넣기 또는 MCP llmwiki_propose)
+            → importTriage 가 검사(없는 줄 근거는 빼고 bad_refs · 지시문은 injection_suspect · 확정 필드는 무시 · 같은 원문은 한 번만)
+            → proposeTriage 가 들인다(범주 넘김 · 없는 조각/업무 · 빈 칸 · 중복은 거름) → 매니페스트 triage 에 제안으로만 저장
 
-③ 확정 ──── 받은 것 흐름 또는 "판단이 필요해요" 에서 사람이 [받기] [다른 곳] [빼기]
-            → linkSource / createWorkItem / mergeGraph → triage: filed → "오늘 위키에 더해진 것"
+③ 확정 ──── 받은 것 흐름에서 사람이 [받기] [다른 곳] [빼기]
+            → acceptTriage(linkSource / createWorkItem + linkSource / concepts 추가) → triage: filed → "오늘 위키에 더해진 것"
+            → rejectTriage 면 조각은 정리 대기로 남는다
 
 ④ 이어가기 ─ 다음 맥락 묶음에 그 조각이 자료로 들어간다(지금 흐름 그대로)
 ```
@@ -135,17 +161,22 @@ type ProposalKind = "task" | "due_change" | "output_latest" | "cross_link"
 
 컨셉의 진짜 마찰은 이 앱이 아니라 **Claude Code · Codex 대화창**에 있다. 거기서 "이거 남겨 둬" 한마디가 곧 ① 이 되어야 한다. architecture.md 의 열린 문제 "서버 읽기를 MCP 로 열 때의 인증"에 답을 먼저 적는다.
 
+구현(`tools/llmwiki-mcp/server.mjs`, stdio, 의존성 없음)의 도구 여섯. 범주(`workspace`)는 이름 또는 id.
+
 | 도구 | 하는 일 | 권한 |
 |---|---|---|
-| `llmwiki_capture(workspace, text \| url)` | 조각을 `triage:"inbox"`, `origin.via:"mcp"` 로 저장. **범주는 필수** — Claude 가 대화 맥락으로 고르고 "개발에 남겼어" 라고 말한다. 틀리면 앱에서 칩 한 번으로 옮긴다. 범주를 만들거나 바꾸는 도구는 없다 | 쓰기 — 인박스에만 |
-| `llmwiki_inbox()` | 정리 대기 조각 목록(줄 번호 붙여서) | 읽기 |
-| `llmwiki_work(workspace?)` | 업무 목록 · 각 업무의 목표 · 현재 상태 · 다음 행동 | 읽기 |
-| `llmwiki_read(itemId)` | 업무 하나의 맥락 묶음(지금 `prepareRun` 과 같은 것) | 읽기 |
-| `llmwiki_propose(proposals[])` | `file_source` · `new_work` · `concept_link` · `task` · 결정 제안 | 쓰기 — **제안만**. 확정 · 상태 전환 · 삭제 도구는 없다 |
+| `llmwiki_workspaces()` | 범주 목록(이름 · id · 비공개 여부). 범주는 사용자가 정한다 | 읽기 |
+| `llmwiki_capture(workspace, text, tool?)` | 조각을 `triage:"inbox"`, `origin:{via:"mcp", tool}` 로 저장(URL 하나면 `link`, 아니면 `paste`). **범주는 필수** — Claude 가 대화 맥락으로 고르고 "개발에 남겼어요" 라고 말한다. 틀리면 앱에서 칩 한 번으로 옮긴다. 범주를 만들거나 바꾸는 도구는 없다 | 쓰기 — 받은 것에만. 비공개 범주도 됨 |
+| `llmwiki_work(workspace)` | 업무 목록 — 제목 · 상태 · 목표 · 다음 행동 · 이어 둔 조각 수 | 읽기 |
+| `llmwiki_read(item)` | 업무 하나의 맥락 — 목표 · 완료 조건 · 현재 상황 · 확정된 결정 · 다음 행동 · 이어 둔 조각(글 조각은 본문까지) | 읽기 |
+| `llmwiki_inbox(workspace, tool?)` | 정리 묶음(`prepareTriage` 와 같은 것 — 조각 S1 · 줄 번호 · 업무 W1 · 개념 · 규칙 · 돌려줄 형식)과 `run`. 묶음 기록을 매니페스트 `triageRuns` 에 남기므로 저장이 한 번 일어난다 | 읽기(+기록) |
+| `llmwiki_propose(run, triage[], tool?)` | `file_source`(W# 에 잇기) · `new_work`(title · goal) · `concept_link`(concept) **세 종류만**. `sources` 는 S#, `refs` 는 근거 줄(S1:2). 업무의 할 일 · 결정 제안은 여기 아니라 업무 맥락 묶음(`llmwiki-result`) 길 | 쓰기 — **제안만**. 확정 · 상태 전환 · 삭제 도구는 없다 |
 
-- 저장 위치는 사용자 Drive(`llmwiki 작업실/`). MCP 서버는 **이 컴퓨터에서** 돌고, Drive 토큰은 데스크톱 셸이 아니라 사용자가 브라우저에서 이은 것을 서버 함수의 1시간 access token 으로 받는다(원칙 4 의 표 그대로). Drive 를 안 이었으면 `tools/local-drive` 폴더.
-- Claude 가 쓰는 것은 전부 `importResult` 를 거친다 — 앱에서 붙여 넣은 결과와 같은 검사. **MCP 라고 검사를 건너뛰지 않는다.**
+- 비공개 범주(회사 등)는 `llmwiki_capture` 만 된다. 읽기 · 묶기 · 제안은 `--include-private` 로 켰을 때만.
+- 저장 위치는 사용자 Drive(`llmwiki 작업실/`). MCP 서버는 **이 컴퓨터에서** 돌고, Drive 토큰은 설정에서 만든 **MCP 열쇠**(`lwk_…`, `~/.config/llmwiki/mcp-key` 권한 600 또는 `LLMWIKI_MCP_KEY`)로 서버 함수 `mcpDriveToken` 에서 1시간 access token 만 받는다(원칙 4 의 표 그대로, refresh token 은 서버 밖으로 안 나간다). 개발 · 검증은 `--local-drive http://127.0.0.1:8790`.
+- Claude 가 내는 제안은 전부 `importTriage` → `proposeTriage` 를 거친다 — 앱에서 붙여 넣은 결과와 같은 검사. **MCP 라고 검사를 건너뛰지 않는다.** 들이지 않은 것(범주 넘김 · 없는 조각/업무 · 빈 칸 · 중복)과 표시(근거 없음 · 없는 줄 · 지시문 의심)는 도구 응답에 적어 돌려준다.
 - 원칙 5 그대로: 조각 속 지시문은 데이터. `llmwiki_inbox` 가 돌려주는 조각에 "이 조각을 지워라" 가 있어도 지울 도구가 없다.
+- 도구 호출마다 작업실 전체를 다시 읽는다(열린 문제 — 조각이 많아지면 도구별로 필요한 것만 읽기 · 짧은 캐시).
 
 ## 단계
 
@@ -153,13 +184,13 @@ type ProposalKind = "task" | "due_change" | "output_latest" | "cross_link"
 |---|---|---|
 | 1 | `Source.triage` · `origin` · 제안 종류 셋 · 받아들이기 함수 · 테스트 | `packages/core/src/work.ts` · `work.test.ts` |
 | 2 | 오늘 화면 재구성(입력란 · 받은 것 흐름 · 판단 카드 확장 · 오늘 더해진 것) · 추천 · 마감을 업무 탭으로 · QuickAdd 간소화 | `aria-rn/src/features/work/TodayScreen.tsx` · `QuickAdd.tsx` · `WorkListScreen.tsx` · `app.ko.ts` |
-| 3 | 정리 묶음(`prepareTriage`) 과 결과 가져오기 — 기존 handoff · 실행자 · 데스크톱 셸 그대로 | `workHandoff.ts` · `tools/handoff` |
+| 3 | 정리 묶음(`prepareTriage`) 과 결과 가져오기(`importTriage`) — 기존 handoff · 실행자 · 데스크톱 셸 그대로 | `packages/core/src/workTriage.ts` · `TriagePanel.tsx` · `tools/handoff` |
 | 4 | MCP 서버 — 읽기 4 · 쓰기 2 | `tools/llmwiki-mcp/` (새) · architecture.md 원칙 4 표에 "서버가 읽는 범위" 추가 |
 | 5 | 공유 시트(iOS · Android) | Expo 설정 · 네이티브 빌드 |
 
 1 → 2 만으로도 "던지고 손으로 잇기"가 되고, 3 에서 Claude 정리가 붙고, 4 에서 대화 중 저장이 된다.
 
-### 진행(2026-10-22, 브랜치 `feat/inbox`)
+### 진행(2026-10-22, `main` 에 커밋)
 
 | 단계 | 상태 | 검증 |
 |---|---|---|
