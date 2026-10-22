@@ -36,6 +36,14 @@
 4. **데이터 액세스(선택)** — 범위 목록이 비어 있다. 앱이 실제로 요청하는 `.../auth/drive.file` · `openid` · `.../auth/userinfo.email` 을 '민감하지 않은 범위'로 등록해 두면 검토자가 보기 쉽다.
 5. **인증 센터 → 브랜딩 인증 제출**. 민감하지 않은 범위만 쓰므로 보통 며칠 안에 끝난다. 결과는 개발자 연락처 이메일로 온다.
 
+## 진행 기록(2026-10-22)
+
+- Search Console: URL 접두어 `https://llmwiki-minsu.web.app/` 소유 확인 완료(HTML 파일 `aria-rn/public/google669b85aaa8d5054c.html` — 지우면 확인이 풀린다).
+- 브랜딩: 홈페이지 `/about` · 방침 `/privacy` · 약관 `/terms` · 승인 도메인(`llmwiki-minsu.web.app` · `llmwiki-minsu.firebaseapp.com`) · 개발자 연락처 저장 완료. 로고 없음.
+- 데이터 액세스: `drive.file` · `userinfo.email` · `userinfo.profile` · `openid` 등록 — 모두 '민감하지 않은 범위'.
+- **브랜딩 인증 제출은 못 함** — Google 문서는 브랜딩 페이지의 'Verify Branding' 단추로 제출한다고 하지만, 이 프로젝트의 브랜딩 페이지 · 인증 센터 어디에도 그 단추가 없었다(저장 · 변경사항 취소뿐). 저장은 바로 반영됐다. 인증 센터는 여전히 '브랜딩이 사용자에게 표시되고 있지 않습니다'.
+- 다음에 볼 것: 하루쯤 뒤 인증 센터 상태가 바뀌는지. 그대로면 실제 로고(120×120)를 올리면 검증 흐름(초안 → 인증 → 게시)이 열리는지 확인.
+
 ## 확인할 것
 - 배포 뒤 `https://llmwiki-minsu.web.app/about` · `/privacy` · `/terms` 가 로그인 없이 열리는지, 앱(`/`)은 그대로인지.
 - 기존 Drive 연결은 이미 프로덕션 상태에서 받은 열쇠라 다시 연결할 필요 없다.
