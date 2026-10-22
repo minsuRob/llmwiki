@@ -12,7 +12,7 @@
 | `PageScreen.tsx` | 페이지 하나 — 경로 · 아이콘 · 제목 · 속성(작은 값, 사람이 고침) · 저장 상태 · 셸 실행 줄 · 본문 제안 띠 · 편집기(`initialMarkdown` · `onMarkdown`) · 하위(펼쳐 보기 · 가져오기) · 자료 · AI 에게 맡기기(거른 하위만) · 바꾼 기록(되돌리기) |
 | `ProposalCompare.tsx` | 본문 제안 띠 · 줄 비교(core `textDiff`) · 받기 · 빼기 · 낡았지만 그대로 받기 |
 | `ExpandedView.tsx` | 펼쳐 보기 — 하위를 한 문서처럼(보이는 근처만 읽음) · **거르기 · 정렬**(core `pageQuery.ts`: 낱말 · 본문까지 · 속성 값 칩 · 날짜 지난 것 빼기 · 아무 속성으로 정렬) · 표(머리 눌러 정렬) · 한 문서로 내보내기. 거른 조건은 PageScreen 이 들고 있다 |
-| `ImportPagesSheet.tsx` | 이 아래로 가져오기 — 붙여 넣기 · 파일(마크다운 '# 제목' 마다, CSV · JSON 은 행마다 · 칸은 속성) · 옛 데이터(Firestore 공고, jobTexts 는 기기에서) |
+| `ImportPagesSheet.tsx` | 이 아래로 가져오기 — 붙여 넣기 · 파일(마크다운 '# 제목' 마다, CSV · JSON 은 행마다 · 칸은 속성) |
 | `PageHandoffPanel.tsx` · `RunHint.tsx` | 페이지 넘기기 — 묶음 복사 · 내보내기 · 셸 바로 실행 · 결과 붙여 넣기(→ 본문 제안) · 셸 없을 때 명령 안내 |
 | `TodayScreen.tsx` | 오늘 = 입력란 → 받은 것 흐름(`Fragment`, 정리 제안 받기 · 빼기 · 다른 곳 · 페이지에 잇기) → 최근 바뀐 페이지 |
 | `TriagePanel.tsx` | 'Claude 에게 정리 맡기기' — 정리 묶음 복사 · 셸 바로 실행 · 결과 붙여 넣기 |

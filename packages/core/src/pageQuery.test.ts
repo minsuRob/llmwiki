@@ -1,12 +1,12 @@
 /**
- * 하위 페이지 거르기 · 정렬 · 표 데이터 가져오기 — 공고든 무엇이든 같은 길.
+ * 하위 페이지 거르기 · 정렬 · 가져오기(표 · 마크다운) — 무엇이든 같은 길.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { preparePageRun, type PagePackLabels } from "./pageHandoff.ts";
 import { describeQuery, facetsOf, parseWhere, queryPages } from "./pageQuery.ts";
-import { createPage, importPlan, keysBetween, rowsToEntries, setPageProps, type PageMeta } from "./pages.ts";
+import { createPage, importPlan, keysBetween, rowsToEntries, setPageProps, splitMarkdownPages, type PageMeta } from "./pages.ts";
 import { defaultManifest } from "./work.ts";
 
 const NOW = "2026-10-22T09:00:00.000Z";
@@ -113,4 +113,14 @@ test("작은 값 고치기(사람) · 거른 하위만 AI 에게", () => {
   assert.equal(r?.run.refKeys.length, picked.length + 1, "거른 것 + 이 페이지만(모르는 id 는 뺀다)");
   assert.match(r?.markdown ?? "", /거른 하위만: source=groupby · 6\/12/);
   assert.doesNotMatch(r?.markdown ?? "", /inthiswork/);
+});
+
+test("마크다운 붙여 넣기 — '# 제목' 마다 페이지 하나(코드 블록 속 '#' 은 그대로), 제목이 같으면 같은 바깥 id", () => {
+  const md = "# 피트인\n- 1순위\n```sh\n# 주석\n```\n# 그룹바이\n본문";
+  const e = splitMarkdownPages(md, "붙여 넣은 글");
+  assert.deepEqual(e.map((x) => x.title), ["피트인", "그룹바이"]);
+  assert.match(e[0].markdown, /# 주석/);
+  assert.equal(splitMarkdownPages("# 피트인\n다른 본문", "x")[0].externalId, e[0].externalId);
+  assert.deepEqual(splitMarkdownPages("제목 없는 글", "붙여 넣은 글").map((x) => x.title), ["붙여 넣은 글"]);
+  assert.deepEqual(splitMarkdownPages("  \n", "x"), []);
 });

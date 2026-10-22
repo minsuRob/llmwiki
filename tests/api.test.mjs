@@ -13,7 +13,6 @@ import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/
 
 import { readFileSync, appendFileSync } from "node:fs";
 
-import { fromGroupby, fromInthiswork } from "../packages/core/src/jobs.ts";
 
 /**
  * API_TARGET=cloud 이면 배포된 프로젝트(llmwiki-minsu)에 대고 돈다 — 쓴 사용자 uid 를 API_TEST_UIDS_FILE 에 적어
@@ -183,33 +182,6 @@ test("할일 상태 · 우선순위 — 탭에서 바꾸고, 대화(규칙 길)�
   const r = await chat("헤르메스 보류");
   assert.match(r.text, /보류로 바꿨어요/);
   assert.equal((await list("tasks")).find((x) => x.id === h).status, "보류");
-});
-
-test("취준 공고 — 넣기 · 지난 공고 빼기 · 다시 넣어도 그대로 · 정리 · 본문", async () => {
-  const gb = (id, over = {}) =>
-    fromGroupby({ id, status: "완료", company: `회사${id}`, title: "백엔드 개발자", main: "API 개발", due: "마감일 미기재", dev: true, devReason: "개발", ...over });
-  const itw = fromInthiswork(
-    { id: 900, company: "인디", pos: "AI 엔지니어", link: "https://inthiswork.com/archives/900", apply: null, jobs: [], it: true, aititle: true, tasks: ["LLM"], due: "2099.1.2", date: "2026-10-15" },
-    "공고 본문",
-  );
-  const jobs = [gb(1), gb(2), gb(3, { due: "2020-01-01" }), itw.job];
-  const r1 = await call("jobsSync", { op: "upsert", jobs, texts: [itw.text] });
-  assert.deepEqual(r1, { written: 3, unchanged: 0, removed: 0, expired: 1 });
-  const stored = await list("jobs");
-  assert.deepEqual(stored.map((j) => j.id).sort(), ["gb-1", "gb-2", "itw-900"], "지난 공고(gb-3)는 넣지 않는다");
-  assert.equal(stored.find((j) => j.id === "itw-900").dueDate, "2099-01-02");
-  assert.equal((await list("jobTexts")).find((t) => t.id === "itw-900").text, "공고 본문");
-
-  const r2 = await call("jobsSync", { op: "upsert", jobs, texts: [itw.text] });
-  assert.equal(r2.written, 0, "다시 넣어도 바뀐 게 없으면 쓰지 않는다");
-  assert.equal(r2.unchanged, 3);
-
-  const r3 = await call("jobsSync", { op: "prune", sources: ["groupby"], keepIds: ["gb-1", "itw-900"] });
-  assert.equal(r3.removed, 1);
-  assert.deepEqual((await list("jobs")).map((j) => j.id).sort(), ["gb-1", "itw-900"]);
-
-  await assert.rejects(call("jobsSync", { op: "upsert", jobs: [{ ...gb(4), dueDate: "2026-12-01" }] }), /dueDate/);
-  await assert.rejects(setDoc(doc(db, "users", uid, "jobs", "hack"), { title: "직접 쓰기" }), /permission/i);
 });
 
 test("Drive 열쇠 — 익명은 서버 보관을 못 쓰고, 보관 자리(driveLinks)는 앱이 읽지 못한다", async () => {

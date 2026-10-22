@@ -1,6 +1,6 @@
 # functions — Cloud Functions(asia-northeast3)
 
-서버는 **AI API 를 쓰지 않는다**(Anthropic SDK · 키 없음). 하는 일은 옛 기능의 규칙 길(대화 · 할일 · 시냅스 · 공고)과, Drive · MCP **열쇠 관리**뿐이다. 규칙은 `packages/core` 를 번들해서 쓴다(esbuild).
+서버는 **AI API 를 쓰지 않는다**(Anthropic SDK · 키 없음). 하는 일은 옛 기능의 규칙 길(대화 · 할일 · 시냅스)과, Drive · MCP **열쇠 관리**뿐이다. 규칙은 `packages/core` 를 번들해서 쓴다(esbuild).
 
 ## 지도
 
@@ -10,8 +10,8 @@
 | `src/features/drive.ts` | Drive 열쇠 — `driveLink`(코드 → 암호화 보관) · `driveToken`(1시간 토큰) · `driveUnlink`(거두기 + MCP 열쇠 삭제) · `driveStatus` · `driveListWork`(서버 읽기: 페이지 색인의 id · 제목 · 범주 · 부모만 — `src/driveList.ts`, 색인이 없으면 옛 업무 파일). `accessFor` · `requireGoogleUser` 를 mcp.ts 가 쓴다 |
 | `src/features/mcp.ts` | MCP 열쇠 — `mcpKeyCreate` · `mcpKeyList` · `mcpKeyRevoke`(앱) · `mcpDriveToken`(HTTP, Bearer `lwk_…` → 1시간 토큰) |
 | `src/driveTokens.ts` · `src/mcpKeys.ts` | 순수 함수 — 열쇠 암호화(AES-256-GCM, uid 묶음) · Google 토큰 교환/갱신/폐기 · MCP 열쇠 모양 · 해시 · 비교 |
-| `src/features/{chat,cards,tasks,synapse,jobs}.ts` | 옛 기능(Firestore `users/{uid}/…`) — 대화는 `runLocalTurn` 규칙 길만 |
-| `src/common.ts` · `src/store.ts` · `src/jobsStore.ts` | 로그인 확인 · 사용자 시각 · 읽고 → 바꾸고 → 그래프 → 바뀐 것만 쓰기 |
+| `src/features/{chat,cards,tasks,synapse}.ts` | 옛 기능(Firestore `users/{uid}/…`) — 대화는 `runLocalTurn` 규칙 길만 |
+| `src/common.ts` · `src/store.ts` | 로그인 확인 · 사용자 시각 · 읽고 → 바꾸고 → 그래프 → 바뀐 것만 쓰기 |
 
 ## 규칙
 

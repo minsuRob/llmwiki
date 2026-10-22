@@ -12,9 +12,8 @@
 | `workV2.ts` | 옛 업무(스키마 2) 파일 모양 · `upgradeItem` — 이행과 시험만 쓴다 | `pages.test.ts` |
 | `pageHandoff.ts` | 페이지 **넘기기** — 묶음(`preparePageRun`, P1 · P2…, 하위는 다이제스트) · 전문 나눠 읽기(`fullChunk`, cursor) · 결과 해석(```` ```llmwiki-page ````) · 들이기(`importPageResult` → 본문 제안) · `runMeta` | `pageHandoff.test.ts` |
 | `workTriage.ts` | 받은 것 **정리 묶음**(`prepareTriage`, 페이지는 'P#: 경로/제목') · 결과 해석(`parseTriage`, ```` ```llmwiki-triage ````) · 들이기(`importTriage`) | `workTriage.test.ts` |
-| `textDiff.ts` | 줄 단위 비교(LCS) — 본문 제안 비교 화면 | `jobPages.test.ts` |
+| `textDiff.ts` | 줄 단위 비교(LCS) — 본문 제안 비교 화면 | `textDiff.test.ts` |
 | `inject.ts` | 지시문 검사(`scanInjection`, 자모 · 폭 없는 글자 우회 포함) | `inject.test.ts` |
-| `jobPages.ts` | 취준 공고 → 가져오기 항목(`jobToEntry`, 바깥 id = 공고 id) | `jobPages.test.ts` |
 | `hash.ts` | 해시 · 결과 정규화(work · pages 가 같이 씀) | — |
 | `executors.ts` | 실행자(Claude · Codex · Gemma)별 자료 예산 · 명령 | — |
 | `workStore.ts` | 파일 저장소 틀(`FileStore`) · `WorkRepo`(`load` = 매니페스트 · 색인 · 자료, `readDoc` · `readBody`(메모리 → 기기 캐시 → 파일 · 묶음), `saveIndexWith` · `saveManifestWith` 재적용, `savePageDoc` 충돌 사본, `applyImport` 묶음 먼저 · 색인 마지막, `writePageMd`) · 기기(KV) · 메모리 · `MirroredStore`(묶음 · 사본은 기기에 두지 않음) | `work.test.ts` · `pages.test.ts` · `localDrive.test.ts` |
@@ -23,7 +22,6 @@
 | `judgments.ts` | 판단 기록(정리 제안 · 본문 제안을 사람이 받았나) 내보내기 — 매니페스트에서 계산 | `judgments.test.ts` |
 | `engine.ts` · `local.ts` · `types.ts` · `dates.ts` | **옛 기능**(대화 · 할일 · 일정 · 기록) — 도구 실행 · 한국어 규칙 길 · 날짜 해석 | `engine.test.ts` · `dates.test.ts` |
 | `synapse.ts` · `vault.ts` | 개념 그래프(규칙 길) · 볼트 그래프 | `synapse.test.ts` · `vault.test.ts` |
-| `jobs.ts` | 취준 공고 정규화 | `jobs.test.ts` |
 
 ## 받은 것 — 자주 만지는 함수
 
