@@ -1,19 +1,23 @@
 # llmwiki
 
-구조와 원칙(세 역할 · 데이터 위치 · Drive 열쇠 보관 규칙): [docs/architecture.md](docs/architecture.md)
+AI 와 같이 쓰는 개인 위키. Claude · Codex 와 얘기하다 남기고 싶은 것을 던지면(받은 것) AI 가 정리를 제안하고, 사람이 받기 · 빼기로 확정한다. 데이터는 사용자 Google Drive 에 있다.
 
-Aria(맥 · iOS 할일 비서)의 구조를 옮겨 다시 만든 할일 비서. 분석은 [docs/aria-analysis.md](docs/aria-analysis.md).
+- 개발 안내(색인): [CLAUDE.md](CLAUDE.md) — 폴더마다 `CLAUDE.md` 가 그 영역의 지도 · 규칙 · 시험을 가진다
+- 구조와 원칙(데이터 위치 · 열쇠 보관 규칙): [docs/architecture.md](docs/architecture.md)
+- 받은 것 설계 · 진행: [docs/inbox-today.md](docs/inbox-today.md)
+- 출발점(Aria 할일 비서 분석)과 지난 지시문: [docs/archive](docs/archive/README.md)
+- 로컬 모델(Gemma)·업무 위임 검증: [docs/local-models](docs/local-models/README.md)
 
-로컬 모델(Gemma · Laya)·업무 위임 검증과 현재 상태는 [docs/local-models](docs/local-models/README.md).
-
-말하면 할일 · 일정 · 기록으로 정리하고, 결과를 대화 아래 카드로 보여 준다. 기록이 쌓이면 개념이 이어져 시냅스가 된다.
+옛 기능(대화 · 할일 · 일정 · 기록 · 시냅스)은 그대로 있다 — 말하면 할일 · 일정 · 기록으로 정리하는 규칙 길(서버 AI 없음)과 개념 그래프.
 
 | 폴더 | 하는 일 |
 |---|---|
-| `aria-rn/` | 앱 — React Native + RN web(Expo Router). 기능별 `src/features/*` |
-| `functions/` | API — Cloud Functions(asia-northeast3). 기능별 `src/features/*` |
-| `packages/core/` | 공용 로직 — 날짜 해석 · 도구 실행기 · 한국어 규칙 · 시냅스(순수 함수) |
-| `tests/` | 에뮬레이터 통합 테스트 |
+| `packages/core/` | 규칙(순수 함수) — 업무 · 받은 것 · 정리 제안 · 맥락 묶음 · Drive 저장 · 옛 기능 규칙 |
+| `aria-rn/` | 앱 — React Native + 웹(Expo Router). 작업실 화면 `src/features/work` · 편집기 `src/features/editor` |
+| `functions/` | 서버 — Cloud Functions(asia-northeast3). Drive · MCP 열쇠, 옛 기능 규칙 길(AI API 없음) |
+| `tools/` | 사용자 컴퓨터 — llmwiki MCP · AI 실행 도구 · 로컬 Drive · 로컬 모델 검증 |
+| `desktop/` | Electron 셸(동결) |
+| `tests/` | 에뮬레이터 · 클라우드 통합 테스트 |
 
 Firebase 프로젝트: `llmwiki-minsu`(이름 llmwiki)
 

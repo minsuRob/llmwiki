@@ -1,5 +1,7 @@
 # llmwiki 구조 브리핑 — 2026-10-22 변경분
 
+> 지금은 루트 `CLAUDE.md`(색인)와 폴더별 `CLAUDE.md` 가 이 내용을 나눠 가진다. 빈 세션은 따로 붙이지 않아도 된다 — 다른 도구에 한 번에 넘길 때만 쓴다.
+
 다른 Claude · Codex 세션에 이 저장소 작업을 맡길 때 맨 앞에 붙이는 프롬프트. 자세한 근거는 `docs/inbox-today.md` · `docs/architecture.md`.
 
 ```text

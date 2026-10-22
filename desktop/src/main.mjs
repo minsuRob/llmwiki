@@ -1,5 +1,5 @@
 // llmwiki 데스크톱 셸 — 배포된 웹을 그대로 띄우고, 정해진 실행자(Claude · Codex · Gemma)에 묶음 하나를 넘기는 일만 더한다.
-// 원칙: docs/architecture.md "데스크톱 셸". 구현 지시: docs/prompts/electron-shell.md.
+// 원칙: docs/architecture.md "데스크톱 셸". 구현 지시: docs/archive/prompts/electron-shell.md.
 // 화면은 웹 배포로만 바뀐다. 여기 바꿀 일은 브리지 계약(bridge-types.ts) · 보안 정책(policy.mjs)이 바뀔 때뿐이다.
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { tmpdir } from 'node:os';

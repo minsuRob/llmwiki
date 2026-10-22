@@ -64,7 +64,7 @@
 - Gemma 는 오라클 서버 작업 큐(`jobd`)에서 정해진 작업만 돈다. 임의 명령은 받지 않는다.
 
 ### 6. 데스크톱 셸(Electron) — 실행만 맡는 얇은 껍데기
-웹은 로컬 CLI · SSH 를 띄울 수 없다. 데스크톱 셸(`desktop/`)은 배포된 웹(`https://llmwiki-minsu.web.app`)을 그대로 띄우고, **정해진 실행자 3개(Claude · Codex · Gemma)에 묶음 하나를 넘기는 일**만 더한다. 구현 지시: `docs/prompts/electron-shell.md`.
+웹은 로컬 CLI · SSH 를 띄울 수 없다. 데스크톱 셸(`desktop/`)은 배포된 웹(`https://llmwiki-minsu.web.app`)을 그대로 띄우고, **정해진 실행자 3개(Claude · Codex · Gemma)에 묶음 하나를 넘기는 일**만 더한다. 구현 지시: `docs/archive/prompts/electron-shell.md`.
 
 | 셸이 하는 것 | 셸이 하지 않는 것 |
 |---|---|
