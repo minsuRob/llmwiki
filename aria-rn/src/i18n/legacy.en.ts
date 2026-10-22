@@ -218,7 +218,7 @@ export default {
     linkDistance: "Link distance",
   },
   login: {
-    tagline: "Just talk and it gets organized into tasks, events and notes — and as notes pile up, Synapse shows how your thoughts connect.",
+    tagline: "Drop what you want to keep from your Claude and Codex chats. AI suggests how to organize it, you decide — and your data stays in your Google Drive.",
     google: "Sign in with Google",
     googleWebOnly: "Google sign-in is only available on the web for now.",
     anonymous: "Try without signing in",

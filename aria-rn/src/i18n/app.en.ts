@@ -485,6 +485,7 @@ export default {
     revokeAsk: "Revoke key “{label}”? An MCP using it stops writing to Drive right away.",
     revoked: "Revoked “{label}”.",
   },
+  legal: { about: "About", privacy: "Privacy Policy", terms: "Terms of Service" },
   inbox: {
     title: "Inbox",
     placeholder: "Paste or jot it down. Claude sorts it out.",

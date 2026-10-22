@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llmwiki 개인정보처리방침</title>
+<meta name="description" content="llmwiki 개인정보처리방침 — 어떤 정보를 어디에 두고, Google 사용자 데이터를 어떻게 쓰는지.">
+<link rel="stylesheet" href="/legal.css">
+</head>
+<body>
+<main>
+<header>
+  <a class="brand" href="/about">llmwiki</a>
+  <nav><a href="/about">소개</a><a href="/privacy" aria-current="page">개인정보처리방침</a><a href="/terms">이용약관</a><a href="/">앱 열기</a></nav>
+</header>
+
+<h1>개인정보처리방침</h1>
+<p class="muted">시행일 2026년 10월 22일 · 운영 llmwiki(개인 개발자) · 문의 <a href="mailto:minsu.rob@gmail.com">minsu.rob@gmail.com</a></p>
+
+<div class="box">
+  <p><strong>한 줄 요약.</strong> 업무 · 조각 · 정리 제안은 사용자의 Google Drive 에 사용자 소유 파일로 저장됩니다. llmwiki 서버는 Drive 내용을 저장하지 않고, Drive 연결 열쇠만 암호화해 보관합니다. Google 사용자 데이터는 광고나 판매에 쓰지 않고, 범용 AI 모델 학습에도 쓰지 않습니다.</p>
+</div>
+
+<h2>1. 받는 정보와 쓰는 곳</h2>
+<table>
+  <tr><th>정보</th><th>어디서</th><th>왜</th></tr>
+  <tr><td>Google 계정 식별자 · 이메일 · 이름 · 프로필 사진</td><td>Google 로그인(Firebase Authentication)</td><td>계정을 확인하고 다른 기기에서 같은 데이터를 보이기 위해</td></tr>
+  <tr><td>Google Drive 파일(<code>drive.file</code> 범위만)</td><td>사용자가 'Drive 연결'로 허락했을 때</td><td>'llmwiki 작업실' 폴더에 업무 · 조각 · 정리 제안 · AI 결과 원문 · 업무 요약을 읽고 쓰기 위해, 그리고 사용자가 직접 고른 파일의 글을 읽어 업무 자료로 잇기 위해</td></tr>
+  <tr><td>Drive 연결 열쇠(refresh token) · 연결한 계정 이메일 · 연결 시각 · 마지막 사용 시각</td><td>Drive 연결 때</td><td>새 탭이나 토큰 만료 때 다시 묻지 않기 위해. AES-256-GCM 으로 암호화해 서버에만 두고, 앱에는 1시간짜리 접근 토큰만 내려줍니다</td></tr>
+  <tr><td>MCP 열쇠의 해시 · 이름 · 만든 시각 · 마지막 사용 시각</td><td>사용자가 설정에서 MCP 열쇠를 만들 때</td><td>사용자 컴퓨터의 llmwiki MCP 가 1시간짜리 Drive 접근 토큰을 받게 하기 위해. 열쇠 자체는 저장하지 않습니다</td></tr>
+  <tr><td>대화 · 할 일 · 일정 · 기록 · 개념 그래프 · 취업 공고 메모</td><td>앱의 대화 · 할 일 · 일정 · 기록 기능을 쓸 때</td><td>그 기능을 제공하기 위해(Firebase Firestore 에 사용자별로 저장)</td></tr>
+  <tr><td>운영 기록(사용자 id · 동작 · 개수 · 시각)</td><td>서버 함수가 실행될 때</td><td>장애 확인과 보안을 위해(Google Cloud Logging). 열쇠 · 토큰 · 파일 내용은 남기지 않습니다</td></tr>
+</table>
+
+<h2>2. Google 사용자 데이터 — 제한적 사용</h2>
+<p>llmwiki 가 Google API 로 받은 정보를 사용하고 다른 앱으로 전송하는 것은 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 서비스 사용자 데이터 정책</a>의 제한적 사용(Limited Use) 요구 사항을 포함해 그 정책을 따릅니다.</p>
+<ul>
+  <li>Drive 데이터는 사용자가 보는 기능(업무 저장 · 받은 것 정리 · 자료 잇기)을 제공하는 데만 씁니다.</li>
+  <li>판매하지 않고, 광고에 쓰지 않고, 신용도 판단 등 다른 목적에 쓰지 않습니다.</li>
+  <li>범용 AI · 머신러닝 모델을 학습시키는 데 쓰지 않습니다.</li>
+  <li>사람이 Drive 데이터를 읽는 일은 사용자의 명시적인 동의가 있거나, 보안 · 법적 의무 때문에 필요할 때만 있습니다.</li>
+  <li>서버는 Drive 내용을 저장 · 색인하지 않습니다. 사용자가 요청한 읽기(예: 업무 목록 확인)는 그때 읽고 응답으로만 돌려줍니다.</li>
+</ul>
+
+<h2>3. AI 처리</h2>
+<ul>
+  <li><strong>대화 기능:</strong> 사용자가 대화 화면에 쓴 글과 그 답을 만드는 데 필요한 맥락(할 일 · 일정 등)은 답을 만들기 위해 Anthropic 의 Claude API 로 보내질 수 있습니다.</li>
+  <li><strong>AI 로 이어하기 · 정리 맡기기:</strong> 사용자가 직접 실행할 때만, 사용자가 고른 AI(Claude · Codex · Gemma)에 '맥락 묶음'을 넘깁니다. 묶음에는 사용자가 이어 둔 자료와 받은 것 조각의 발췌가 들어갈 수 있습니다. 묶음은 사용자 컴퓨터의 도구(Claude Code · Codex CLI)나 개발자가 운영하는 Gemma 서버에서 처리됩니다. Gemma 서버에 남는 묶음과 결과는 받은 뒤 지우는 것을 목표로 하며, 지금은 개발자가 직접 정리합니다. llmwiki 는 Drive 데이터를 자동으로 AI 에 보내지 않습니다.</li>
+  <li><strong>MCP:</strong> 사용자가 자기 컴퓨터의 Claude Code 등에 llmwiki MCP 를 등록하면, 그 도구가 사용자 대화 중에 받은 것에 조각을 남기고 정리 제안을 낼 수 있습니다. 확정 · 삭제는 앱에서 사용자만 할 수 있습니다.</li>
+  <li>AI 가 낸 결과는 언제나 제안으로만 들어오고, 사용자가 받아들여야 반영됩니다.</li>
+</ul>
+
+<h2>4. 맡기는 곳(처리 위탁)</h2>
+<ul>
+  <li>Google(Firebase Authentication · Firestore · Cloud Functions · Hosting · Cloud Logging, Google Drive API) — 서울 리전(asia-northeast3) 등</li>
+  <li>Anthropic(대화 기능의 Claude API)</li>
+  <li>사용자가 직접 고른 AI 도구(Anthropic Claude Code · OpenAI Codex) — 사용자 자신의 계정과 컴퓨터에서 실행</li>
+</ul>
+
+<h2>5. 보관과 삭제</h2>
+<ul>
+  <li><strong>Drive 의 파일</strong>은 사용자 소유입니다. Drive 에서 언제든 지울 수 있고, llmwiki 를 그만 써도 그대로 남습니다.</li>
+  <li><strong>Drive 연결 해제</strong>(설정 → Drive 연결 해제)를 누르면 Google 에서 열쇠를 거두고, 서버의 암호화된 열쇠와 MCP 열쇠를 모두 지웁니다. Google 계정의 <a href="https://myaccount.google.com/permissions">서드파티 앱 권한</a>에서 거둬도 다음 사용 때 서버 보관본을 지웁니다.</li>
+  <li><strong>MCP 열쇠</strong>는 설정에서 언제든 거둘 수 있고, 거두면 바로 막힙니다.</li>
+  <li><strong>휴지통</strong>에 넣은 할 일 · 기록은 7일 뒤 비워집니다.</li>
+  <li><strong>계정과 서버 데이터 전체 삭제</strong>는 <a href="mailto:minsu.rob@gmail.com">minsu.rob@gmail.com</a> 으로 요청하면 30일 안에 처리하고 결과를 알려 드립니다.</li>
+</ul>
+
+<h2>6. 보안</h2>
+<ul>
+  <li>모든 통신은 HTTPS 로 합니다.</li>
+  <li>Drive 열쇠는 사용자별로 묶어 암호화하고, 앱(브라우저)은 서버 보관 자리를 읽을 수 없습니다.</li>
+  <li>권한은 가장 좁게 씁니다(Drive 는 <code>drive.file</code> 하나).</li>
+</ul>
+
+<h2>7. 바뀌면</h2>
+<p>이 방침이 바뀌면 이 페이지의 시행일을 고치고, 중요한 변경은 앱 안에서 알립니다.</p>
+
+<section class="lang" lang="en">
+  <h1>Privacy Policy (English)</h1>
+  <p class="muted">Effective October 22, 2026 · Operated by llmwiki (an individual developer) · Contact <a href="mailto:minsu.rob@gmail.com">minsu.rob@gmail.com</a></p>
+  <div class="box"><p><strong>Summary.</strong> Your work items, notes and suggestions are stored as files you own in your Google Drive. The llmwiki server does not store Drive content; it only keeps an encrypted Drive connection key. Google user data is never sold, used for advertising, or used to train generalized AI models.</p></div>
+
+  <h2>1. Information we receive and why</h2>
+  <ul>
+    <li><strong>Google Sign-In</strong> (Firebase Authentication): account identifier, email, name and profile photo — to identify your account across devices.</li>
+    <li><strong>Google Drive</strong>, <code>drive.file</code> scope only, after you choose "Connect Drive": to read and write work items, notes, sorting suggestions, raw AI results and summaries in the "llmwiki 작업실" folder the app creates, and to read the text of files you explicitly pick. The app cannot see any other file in your Drive.</li>
+    <li><strong>Drive connection key</strong> (refresh token), connected email and timestamps — encrypted with AES-256-GCM and kept on the server only, so you are not asked again in new tabs. The app only receives 1-hour access tokens.</li>
+    <li><strong>MCP keys</strong> you create in Settings — only a SHA-256 hash, a label and timestamps are stored. They let the llmwiki MCP on your own computer obtain 1-hour Drive access tokens.</li>
+    <li><strong>Chat, tasks, calendar events, notes, concept graph and job notes</strong> — stored per user in Firebase Firestore to provide those features.</li>
+    <li><strong>Operational logs</strong> (user id, action, counts, time) in Google Cloud Logging. Keys, tokens and file contents are never logged.</li>
+  </ul>
+
+  <h2>2. Google user data — Limited Use</h2>
+  <p>llmwiki's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+  <ul>
+    <li>Drive data is used only to provide user-facing features (saving work, sorting the inbox, linking sources).</li>
+    <li>It is not sold, not used for advertising, and not used for purposes such as determining creditworthiness.</li>
+    <li>It is not used to develop, improve or train generalized AI or machine-learning models.</li>
+    <li>Humans do not read Drive data unless you give explicit consent, or it is necessary for security purposes or to comply with applicable law.</li>
+    <li>The server does not store or index Drive content. Reads you request (for example, listing your work items) are returned in the response only.</li>
+  </ul>
+
+  <h2>3. AI processing</h2>
+  <ul>
+    <li><strong>Chat:</strong> what you write in the chat screen, with the context needed to answer (tasks, events), may be sent to Anthropic's Claude API to generate replies.</li>
+    <li><strong>Hand-off and inbox sorting:</strong> only when you start it, a context bundle is passed to the AI you choose (Claude, Codex or Gemma). The bundle may include excerpts from sources you linked and from inbox notes. It is processed by tools on your own computer (Claude Code, Codex CLI) or on a Gemma server run by the developer. Bundles and results left on the Gemma server are meant to be deleted after the result is received; for now the developer cleans them up manually. llmwiki never sends Drive data to an AI automatically.</li>
+    <li><strong>MCP:</strong> if you register the llmwiki MCP in a tool on your computer, that tool can add notes to your inbox and submit sorting suggestions during your conversation. Only you can confirm or delete, in the app.</li>
+    <li>AI output always arrives as a suggestion and is applied only after you accept it.</li>
+  </ul>
+
+  <h2>4. Service providers</h2>
+  <p>Google (Firebase Authentication, Firestore, Cloud Functions, Hosting, Cloud Logging, Google Drive API), Anthropic (Claude API for chat), and AI tools you choose to run with your own accounts (Anthropic Claude Code, OpenAI Codex).</p>
+
+  <h2>5. Retention and deletion</h2>
+  <ul>
+    <li>Files in your Drive are yours. You can delete them at any time; they remain if you stop using llmwiki.</li>
+    <li>"Disconnect Drive" in Settings revokes the key with Google and deletes the encrypted key and all MCP keys from the server. Revoking access in your Google Account's <a href="https://myaccount.google.com/permissions">third-party access</a> page also causes the stored key to be deleted on next use.</li>
+    <li>MCP keys can be revoked in Settings at any time and stop working immediately.</li>
+    <li>Items in the trash are emptied after 7 days.</li>
+    <li>To delete your account and all server data, email <a href="mailto:minsu.rob@gmail.com">minsu.rob@gmail.com</a>; requests are completed within 30 days.</li>
+  </ul>
+
+  <h2>6. Security</h2>
+  <p>All traffic uses HTTPS. Drive keys are encrypted and bound to your user id, and the app cannot read where they are stored. Access is kept to the narrowest scope (<code>drive.file</code> only).</p>
+
+  <h2>7. Changes</h2>
+  <p>If this policy changes, the effective date on this page is updated, and material changes are announced in the app.</p>
+</section>
+
+<footer>llmwiki · <a href="/about">About</a> · <a href="/terms">Terms of Service</a></footer>
+</main>
+</body>
+</html>

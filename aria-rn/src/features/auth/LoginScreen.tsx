@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
 import { usePalette } from "../../components/theme";
+import { LegalLinks } from "../../components/LegalLinks";
 import { Btn } from "../../components/ui";
 import { errorText } from "../../firebase/api";
 import { useData } from "../../firebase/data";
@@ -64,6 +65,7 @@ export default function LoginScreen() {
             {error}
           </Text>
         ) : null}
+        <LegalLinks c={c} />
       </View>
     </View>
   );

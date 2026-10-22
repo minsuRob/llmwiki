@@ -218,7 +218,7 @@ export default {
     linkDistance: "링크 거리",
   },
   login: {
-    tagline: "말하면 할일 · 일정 · 기록으로 정리하고, 기록이 쌓이면 생각이 어떻게 이어지는지 시냅스로 보여 드려요.",
+    tagline: "Claude · Codex 와 얘기하다 남기고 싶은 것을 던져 두세요. 정리는 AI 가 제안하고, 확정은 내가 해요. 데이터는 내 Google Drive 에 남아요.",
     google: "Google 로 로그인",
     googleWebOnly: "Google 로그인은 지금 웹에서만 돼요.",
     anonymous: "로그인 없이 써 보기",

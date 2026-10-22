@@ -485,6 +485,7 @@ export default {
     revokeAsk: "「{label}」 열쇠를 거둘까요? 이 열쇠를 쓰는 MCP 는 바로 Drive 에 쓰지 못해요.",
     revoked: "「{label}」 열쇠를 거뒀어요.",
   },
+  legal: { about: "소개", privacy: "개인정보처리방침", terms: "이용약관" },
   inbox: {
     title: "받은 것",
     placeholder: "붙여 넣거나 적어 두세요. 정리는 Claude 가 합니다.",

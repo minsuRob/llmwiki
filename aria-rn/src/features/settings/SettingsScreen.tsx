@@ -15,6 +15,7 @@ import { ConflictPanel } from "../work/ConflictPanel";
 import { confirmAsk } from "../work/io";
 import { JudgmentsCard } from "../work/JudgmentsCard";
 import { when } from "../work/parts";
+import { LegalLinks } from "../../components/LegalLinks";
 import { useWork } from "../work/WorkContext";
 import { McpKeysCard } from "./McpKeysCard";
 
@@ -201,6 +202,7 @@ export default function SettingsScreen() {
         {user?.isAnonymous ? <Text style={{ fontSize: 12, color: c.danger }}>{t("settings.account.anonWarning")}</Text> : null}
         {user?.isAnonymous && !GOOGLE_SUPPORTED ? <Text style={{ fontSize: 12, color: c.muted }}>{t("settings.account.webOnly")}</Text> : null}
         {note ? <Text style={{ fontSize: 13, color: c.ok }}>{note}</Text> : null}
+        <LegalLinks c={c} />
       </View>
 
       <View style={section}>

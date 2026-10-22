@@ -42,7 +42,8 @@
           }
         ]
       }
-    ]
+    ],
+    "cleanUrls": true
   },
   "functions": [
     {
