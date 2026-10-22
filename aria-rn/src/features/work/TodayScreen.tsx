@@ -31,7 +31,7 @@ import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
 import { ConflictPanel } from "./ConflictPanel";
-import { Card, Field, H, Muted, Pill, WorkspaceChips, when } from "./parts";
+import { Card, Field, H, Muted, Pill, when } from "./parts";
 import { TriagePanel } from "./TriagePanel";
 import { useWork } from "./WorkContext";
 
@@ -238,7 +238,6 @@ export default function TodayScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE} keyboardShouldPersistTaps="handled">
-      <WorkspaceChips c={c} />
       <ConflictPanel c={c} />
       <Capture c={c} />
 

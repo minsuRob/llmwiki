@@ -17,7 +17,7 @@
 | `DesktopRuns.tsx` · `DesktopRunLines.tsx` · `desktop.ts` | 데스크톱 셸 브리지(`triage-<범주>` 대상은 정리 결과로 들인다) |
 | `QuickAdd.tsx` | + 단추(오늘 화면 밖에서만). 업무 상세에선 그 업무에 바로 잇는다 |
 | `ArchiveScreen.tsx` · `SourcePicker.tsx` | 보관함 · 자료 고르기 |
-| `TopicSheet.tsx` · `parts.tsx` | 범주(주제) 칩 · 만들기, 공용 부품(Card · H · Muted · Pill · Field · Fold) |
+| `TopicSheet.tsx` · `parts.tsx` | 범주(주제) 머리 드롭다운(`WorkspaceSwitcher` — 오늘 · 업무 · 보관함 탭 머리) · 칩(+ 단추 시트) · 만들기, 공용 부품(Card · H · Muted · Pill · Field · Fold) |
 | `ConflictPanel.tsx` · `DriveBanner.tsx` · `ConfirmHost.tsx` · `io.ts` | 저장 충돌 · Drive 알림 · 확인 창 · 복사/내보내기 |
 | `drive/` | Google Identity · Picker(웹) · 로컬 Drive(개발) 설정 |
 

@@ -10,7 +10,7 @@ import { itemsForSource, searchWork, type Source } from "../../../../packages/co
 import { usePalette, type Palette } from "../../components/theme";
 import { PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
-import { Field, Muted, Pill, WorkspaceChips, when } from "./parts";
+import { Field, Muted, Pill, when } from "./parts";
 import { useWork } from "./WorkContext";
 
 type Tab = "sources" | "notes" | "runs" | "outputs" | "search";
@@ -76,7 +76,6 @@ export default function ArchiveScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE}>
-      <WorkspaceChips c={c} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
         {TABS.map((k) => (
           <Pressable key={k} onPress={() => setTab(k)} accessibilityRole="tab" accessibilityState={{ selected: tab === k }} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: tab === k ? c.accent : c.soft }}>

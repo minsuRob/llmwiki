@@ -9,7 +9,7 @@ import { nextActions, pendingReview, staleSources, TEMPLATE_KEYS, type Importanc
 import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
-import { Card, Field, Fold, H, Muted, Pill, WorkspaceChips } from "./parts";
+import { Card, Field, Fold, H, Muted, Pill } from "./parts";
 import { DeadlineCard, RecommendCard } from "./PlanCards";
 import { useWork } from "./WorkContext";
 
@@ -115,7 +115,6 @@ export default function WorkListScreen() {
   const closed = inWs.filter((i) => i.status === "done" || i.status === "archived");
   return (
     <ScrollView style={{ backgroundColor: c.bg }} contentContainerStyle={PAGE}>
-      <WorkspaceChips c={c} />
       <RecommendCard c={c} />
       <DeadlineCard c={c} />
       {creating ? <NewWork c={c} onDone={close} /> : <Btn c={c} primary label={t("work.new")} onPress={() => setCreating(true)} />}

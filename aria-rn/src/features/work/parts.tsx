@@ -1,9 +1,9 @@
 /**
- * 작업실 화면 조각 — 주제 고르기(＋ 새 주제 · 길게 눌러 고치기) · 접는 칸 · 입력칸 · 저장/동기화/AI 정리 상태 · 바뀐 것 카드.
+ * 작업실 화면 조각 — 주제 고르기(머리 드롭다운 · 칩, ＋ 새 주제 · 길게 눌러 고치기) · 접는 칸 · 입력칸 · 저장/동기화/AI 정리 상태 · 바뀐 것 카드.
  */
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
-import { Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
+import { Modal, Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
 
 import { pendingReview, staleSources, type ChangeEntry, type Msg, type WorkItem, type Workspace } from "../../../../packages/core/src/work.ts";
 import type { Palette } from "../../components/theme";
@@ -67,6 +67,85 @@ export function WorkspaceChips({ c, manage = true }: { c: Palette; manage?: bool
       ) : null}
       {manage ? <TopicSheet c={c} editing={editing} onClose={() => setEditing(null)} /> : null}
     </View>
+  );
+}
+
+/** 주제 이름 첫 글자를 아이콘처럼 */
+function TopicLetter({ c, name, on }: { c: Palette; name: string; on?: boolean }) {
+  return (
+    <View style={{ width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: on ? c.accent : c.soft }}>
+      <Text style={{ fontSize: 13, fontWeight: "700", color: on ? c.accentText : c.text }}>{(Array.from(name.trim())[0] ?? "?").toUpperCase()}</Text>
+    </View>
+  );
+}
+
+/** 화면 머리의 주제 드롭다운 — 첫 글자 아이콘 · 이름 · ⌄. 펼치면 주제 목록(… 로 고치기) · ＋ 새 주제 */
+export function WorkspaceSwitcher({ c }: { c: Palette }) {
+  const { state, workspaceId, setWorkspaceId } = useWork();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Workspace | "new" | null>(null);
+  const current = state.manifest.workspaces.find((w) => w.id === workspaceId);
+  const edit = (w: Workspace | "new") => {
+    setOpen(false);
+    setEditing(w);
+  };
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={t("ws.switch")}
+        style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4, paddingRight: 6 }}
+      >
+        {current ? <TopicLetter c={c} name={current.name} /> : null}
+        <Text style={{ fontSize: 17, fontWeight: "700", color: c.text }}>{current?.name ?? t("ws.switch")}</Text>
+        <Ionicons name="chevron-down" size={16} color={c.muted} />
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} onPress={() => setOpen(false)} accessibilityLabel={t("common.close")}>
+          <View
+            accessibilityRole="menu"
+            style={{ position: "absolute", top: 60, left: 12, minWidth: 220, maxWidth: 320, backgroundColor: c.surface, borderRadius: 14, paddingVertical: 6, borderWidth: 1, borderColor: c.border }}
+          >
+            {state.manifest.workspaces.map((w) => {
+              const on = w.id === workspaceId;
+              return (
+                <Pressable
+                  key={w.id}
+                  accessibilityRole="menuitem"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => {
+                    setWorkspaceId(w.id);
+                    setOpen(false);
+                  }}
+                  onLongPress={() => edit(w)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: on ? c.row : undefined }}
+                >
+                  <TopicLetter c={c} name={w.name} on={on} />
+                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: on ? "700" : "500", color: c.text }}>{w.name}</Text>
+                  {w.private ? <Ionicons name="lock-closed-outline" size={13} color={c.muted} /> : null}
+                  <Pressable onPress={() => edit(w)} hitSlop={8} accessibilityRole="button" accessibilityLabel={t("topic.edit")}>
+                    <Ionicons name="ellipsis-horizontal" size={16} color={c.muted} />
+                  </Pressable>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              accessibilityRole="menuitem"
+              onPress={() => edit("new")}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 4, borderTopWidth: 1, borderTopColor: c.border }}
+            >
+              <View style={{ width: 24, alignItems: "center" }}>
+                <Ionicons name="add" size={18} color={c.accent} />
+              </View>
+              <Text style={{ fontSize: 14, color: c.accent }}>{t("topic.new")}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+      <TopicSheet c={c} editing={editing} onClose={() => setEditing(null)} />
+    </>
   );
 }
 

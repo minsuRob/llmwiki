@@ -11,17 +11,18 @@ import { ConfirmHost } from "../features/work/ConfirmHost";
 import { DriveBanner } from "../features/work/DriveBanner";
 import { QuickAdd } from "../features/work/QuickAdd";
 import { DesktopRunsProvider } from "../features/work/DesktopRuns";
+import { WorkspaceSwitcher } from "../features/work/parts";
 import { WorkProvider } from "../features/work/WorkContext";
 import { DataProvider, useData } from "../firebase/data";
 import { I18nProvider, useT } from "../i18n";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-/** 아래 탭 — 오늘 · 업무 · 보관함 · 편집기 · 대화. 나머지(할일 · 일정 · 기록 · 그래프 · 설정)는 위 오른쪽 메뉴에서 */
-const TABS: { name: string; title: string; icon: IconName }[] = [
-  { name: "index", title: "nav.today", icon: "sunny-outline" },
-  { name: "work/index", title: "nav.work", icon: "briefcase-outline" },
-  { name: "archive", title: "nav.archive", icon: "archive-outline" },
+/** 아래 탭 — 오늘 · 업무 · 보관함 · 편집기 · 대화. 나머지(할일 · 일정 · 기록 · 그래프 · 설정)는 위 오른쪽 메뉴에서. topic: 머리에 탭 이름 대신 주제 드롭다운 */
+const TABS: { name: string; title: string; icon: IconName; topic?: boolean }[] = [
+  { name: "index", title: "nav.today", icon: "sunny-outline", topic: true },
+  { name: "work/index", title: "nav.work", icon: "briefcase-outline", topic: true },
+  { name: "archive", title: "nav.archive", icon: "archive-outline", topic: true },
   { name: "editor", title: "nav.editor", icon: "create-outline" },
   { name: "chat", title: "nav.chat", icon: "chatbubble-ellipses-outline" },
 ];
@@ -132,7 +133,7 @@ function AppTabs() {
         }}
       >
         {TABS.map((tab) => (
-          <Tabs.Screen key={tab.name} name={tab.name} options={{ title: t(tab.title), tabBarIcon: ({ color, size }) => <Ionicons name={tab.icon} color={color} size={size} /> }} />
+          <Tabs.Screen key={tab.name} name={tab.name} options={{ title: t(tab.title), headerTitle: tab.topic ? () => <WorkspaceSwitcher c={c} /> : undefined, tabBarIcon: ({ color, size }) => <Ionicons name={tab.icon} color={color} size={size} /> }} />
         ))}
         {HIDDEN.map((h) => (
           <Tabs.Screen key={h.name} name={h.name} options={{ title: t(h.title), href: null }} />
