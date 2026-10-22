@@ -7,6 +7,10 @@
  *   state/sources/{id}.json    원본 자료 하나 = 파일 하나(여러 업무가 같은 파일을 가리킨다)
  *   raw/{hash}.txt             가져온 AI 결과 원문(한 번 쓰면 바꾸지 않는다)
  *   summaries/{id}.md          사람이 읽는 업무 요약(앱이 만든다 — 사람이 고칠 필요 없다)
+ *   state/index/{범주}.json    페이지 색인(트리 · 제목 · 본문 지문) — 범주 하나 = 파일 하나(pages.ts)
+ *   state/pages/{id}.json      사람이 만들거나 고친 페이지 문서(본문 · 자료 · 되돌리기)
+ *   state/packs/{packId}.json  가져온 본문 묶음(한 번 쓰고 고치지 않는다 — 고치면 그 페이지만 state/pages 로 옮긴다)
+ *   archive/v2/{id}.json       페이지로 옮기기 전 옛 업무 원본(한 번만)
  *   conflicts/…                충돌했을 때 내 쪽 사본
  *
  * 규칙
@@ -14,6 +18,20 @@
  * - 쓰기에 실패하면 저장된 것으로 치지 않는다(rev 도 올리지 않는다).
  * - 검색 색인 · 화면 캐시는 여기서 다시 만든다(저장하지 않는다).
  */
+import {
+  applyImportToIndex,
+  bodyHashOf,
+  packBodies,
+  PAGES_SCHEMA_VERSION,
+  upgradeDoc,
+  upgradeIndex,
+  type BodyRef,
+  type ImportPlan,
+  type PageDoc,
+  type PageIndexFile,
+  type PageMeta,
+  type PagePack,
+} from "./pages.ts";
 import {
   upgradeItem,
   upgradeManifest,
@@ -208,6 +226,10 @@ export const PATHS = {
   source: (id: string) => `state/sources/${id}.json`,
   raw: (hash: string) => `raw/${hash}.txt`,
   summary: (id: string) => `summaries/${id}.md`,
+  index: (workspaceId: string) => `state/index/${workspaceId}.json`,
+  page: (id: string) => `state/pages/${id}.json`,
+  pack: (packId: string) => `state/packs/${packId}.json`,
+  archiveV2: (id: string) => `archive/v2/${id}.json`,
   conflict: (path: string, at: string) => `conflicts/${at.replace(/[:.]/g, "-")}__${path.replace(/\//g, "~")}`,
 };
 
@@ -241,17 +263,33 @@ export async function mapLimit<T, R>(xs: T[], limit: number, fn: (x: T) => Promi
   return out;
 }
 
+/** 페이지 본문 기기 캐시 — 본문 지문(bodyHash)이 키라 낡은 본문을 돌려줄 일이 없다 */
+export interface BodyCache {
+  get(hash: string): Promise<string | null>;
+  put(hash: string, body: string): Promise<void>;
+}
+
+const bodyKey = (body: string) => bodyHashOf(body);
+
 export class WorkRepo {
   /** 경로 → 내가 마지막으로 본 버전 */
   private versions = new Map<string, string>();
+  /** 범주 → 내가 마지막으로 본 색인 파일 rev */
+  private indexRevs = new Map<string, number>();
+  /** 본문 지문 → 본문(이번 실행 동안) */
+  private bodies = new Map<string, string>();
+  /** 묶음은 한 번만 읽는다(같은 묶음의 페이지 여럿을 동시에 열어도) */
+  private packs = new Map<string, Promise<PagePack | null>>();
 
   readonly store: FileStore;
   private fallbackManifest: WorkManifest;
   private renderSummary?: (item: WorkItem) => string;
-  constructor(store: FileStore, fallbackManifest: WorkManifest, renderSummary?: (item: WorkItem) => string) {
+  private bodyCache?: BodyCache;
+  constructor(store: FileStore, fallbackManifest: WorkManifest, renderSummary?: (item: WorkItem) => string, opts: { bodyCache?: BodyCache } = {}) {
     this.store = store;
     this.fallbackManifest = fallbackManifest;
     this.renderSummary = renderSummary;
+    this.bodyCache = opts.bodyCache;
   }
 
   /** 설정 · 업무 · 자료를 함께 읽는다 — Drive 는 요청 하나가 느려 차례로 읽으면 파일 수만큼 기다린다 */
@@ -369,15 +407,7 @@ export class WorkRepo {
 
   /** 원문은 해시 이름으로 한 번만 쓴다 — 이미 있으면 그대로(재시도해도 겹치지 않는다) */
   async saveRaw(hash: string, text: string): Promise<{ ok: true } | { ok: false; code: StoreErrorCode }> {
-    const p = PATHS.raw(hash);
-    try {
-      if (await this.store.read(p)) return { ok: true };
-      await this.store.write(p, text, null);
-      return { ok: true };
-    } catch (e) {
-      if (e instanceof ConflictError) return { ok: true };
-      return { ok: false, code: e instanceof StoreError ? e.code : "unknown" };
-    }
+    return this.writeOnce(PATHS.raw(hash), text);
   }
 
   async readRaw(hash: string): Promise<string | null> {
@@ -387,6 +417,151 @@ export class WorkRepo {
   async removeSource(id: string): Promise<void> {
     await this.store.remove(PATHS.source(id));
     this.versions.delete(PATHS.source(id));
+  }
+
+  /* ───────── 페이지(스키마 3) ───────── */
+
+  /** 매니페스트 · 색인(범주마다 하나) · 자료만 — 페이지 본문은 열 때 readBody. hasIndex: 색인이 하나라도 있나(없으면 아직 이행 전) */
+  async loadPages(): Promise<{ manifest: WorkManifest; pages: PageMeta[]; sources: Source[]; hasIndex: boolean }> {
+    const [m, indexes, sources] = await Promise.all([
+      this.store.read(PATHS.manifest),
+      this.readAll("state/index/", (raw) => raw),
+      this.readAll("state/sources/", (raw) => upgradeSource(raw)),
+    ]);
+    if (m) this.versions.set(PATHS.manifest, m.version);
+    const manifest = upgradeManifest(m ? (JSON.parse(m.text) as Record<string, unknown>) : null, this.fallbackManifest);
+    const pages: PageMeta[] = [];
+    for (const raw of indexes) {
+      const f = upgradeIndex(raw, String(raw.workspaceId ?? ""));
+      this.indexRevs.set(f.workspaceId, f.rev);
+      pages.push(...f.pages);
+    }
+    return { manifest, pages, sources, hasIndex: indexes.length > 0 };
+  }
+
+  /**
+   * 범주 하나의 색인을 바꿔 쓴다 — 다른 곳이 먼저 고쳤으면 그 최신본에 fn 을 다시 적용한다(최대 3번, saveManifestWith 와 같다).
+   * cur 는 지금 아는 전체 페이지(다른 범주는 무시). 돌려주는 값은 이 범주의 페이지.
+   */
+  async saveIndexWith(workspaceId: string, cur: PageMeta[], fn: (pages: PageMeta[]) => PageMeta[], nowIso: string): Promise<SaveOutcome<PageMeta[]>> {
+    const path = PATHS.index(workspaceId);
+    let base = cur.filter((p) => p.workspaceId === workspaceId);
+    for (let i = 0; i < 3; i++) {
+      const file: PageIndexFile = { schemaVersion: PAGES_SCHEMA_VERSION, workspaceId, rev: this.indexRevs.get(workspaceId) ?? 0, pages: fn(base).filter((p) => p.workspaceId === workspaceId) };
+      const r = await this.put(path, file, nowIso, (t) => upgradeIndex(JSON.parse(t) as Record<string, unknown>, workspaceId), { noCopy: true });
+      if (r.status === "saved") {
+        this.indexRevs.set(workspaceId, r.value.rev);
+        return { status: "saved", value: r.value.pages };
+      }
+      if (r.status === "failed") return r;
+      if (!r.remote) return { status: "conflict", remote: null, copyPath: "" };
+      this.indexRevs.set(workspaceId, r.remote.rev);
+      base = r.remote.pages;
+    }
+    return { status: "conflict", remote: base, copyPath: "" };
+  }
+
+  /** 페이지 문서 쓰기 — 버전 검사 · 충돌 사본(업무 파일과 같다). 묶음 속 페이지를 처음 고치면 여기서 제 파일이 생긴다 */
+  async savePageDoc(doc: PageDoc, nowIso: string): Promise<SaveOutcome<PageDoc>> {
+    const r = await this.put(PATHS.page(doc.id), doc, nowIso, (t) => upgradeDoc(JSON.parse(t) as Record<string, unknown>));
+    if (r.status === "saved") this.remember(doc.body);
+    return r;
+  }
+
+  private remember(body: string) {
+    const key = bodyKey(body);
+    this.bodies.set(key, body);
+    void this.bodyCache?.put(key, body).catch(() => undefined);
+  }
+
+  private readPack(packId: string): Promise<PagePack | null> {
+    let p = this.packs.get(packId);
+    if (!p) {
+      p = this.store
+        .read(PATHS.pack(packId))
+        .then((f) => (f ? (JSON.parse(f.text) as PagePack) : null))
+        .catch((e) => {
+          this.packs.delete(packId);
+          throw e;
+        });
+      this.packs.set(packId, p);
+    }
+    return p;
+  }
+
+  /** 문서 하나 — 제 파일이면 그것을, 묶음 속이면 본문만 꺼내 rev 0 문서로(처음 저장할 때 제 파일이 생긴다) */
+  async readDoc(meta: PageMeta): Promise<PageDoc | null> {
+    if (meta.bodyRef === "file") {
+      const f = await this.store.read(PATHS.page(meta.id));
+      if (!f) return null;
+      this.versions.set(PATHS.page(meta.id), f.version);
+      const doc = upgradeDoc(JSON.parse(f.text) as Record<string, unknown>);
+      this.remember(doc.body);
+      return doc;
+    }
+    const pack = await this.readPack(meta.bodyRef.slice("pack:".length));
+    const hit = pack?.pages.find((x) => x.id === meta.id);
+    if (!hit) return null;
+    this.remember(hit.body);
+    return { id: meta.id, schemaVersion: PAGES_SCHEMA_VERSION, rev: 0, workspaceId: meta.workspaceId, body: hit.body, sourceIds: [], changes: [], updatedAt: meta.updatedAt };
+  }
+
+  /** 본문만 — 메모리 → 기기 캐시(지문 키) → 저장소(제 파일 · 묶음) 순서로 */
+  async readBody(meta: PageMeta): Promise<string | null> {
+    const mem = this.bodies.get(meta.bodyHash);
+    if (mem != null) return mem;
+    const cached = await this.bodyCache?.get(meta.bodyHash).catch(() => null);
+    if (cached != null && bodyKey(cached) === meta.bodyHash) {
+      this.bodies.set(meta.bodyHash, cached);
+      return cached;
+    }
+    return (await this.readDoc(meta))?.body ?? null;
+  }
+
+  /** 여러 페이지 본문(펼쳐 보기 · 묶음) — 같은 묶음은 한 번만 읽는다 */
+  async readBodies(metas: PageMeta[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const got = await mapLimit(metas, READ_CONCURRENCY, (m) => this.readBody(m).catch(() => null));
+    metas.forEach((m, i) => {
+      if (got[i] != null) out.set(m.id, got[i] as string);
+    });
+    return out;
+  }
+
+  /**
+   * 가져오기를 쓴다 — 본문 묶음을 먼저(한 번 쓰고 고치지 않는다), 색인은 마지막에. 묶음 쓰기가 실패하면 색인을 건드리지 않는다
+   * (남은 묶음은 아무도 가리키지 않을 뿐 해롭지 않다). 색인은 최신본에 다시 얹는다.
+   */
+  async applyImport(plan: ImportPlan, cur: PageMeta[], nowIso: string): Promise<SaveOutcome<PageMeta[]> & { packs?: number }> {
+    const items = [...plan.create.map((c) => ({ id: c.meta.id, body: c.body })), ...plan.update.map((u) => ({ id: u.meta.id, body: u.body }))];
+    const packs = packBodies(items);
+    const refOf = new Map<string, BodyRef>();
+    for (const pack of packs) {
+      try {
+        await this.store.write(PATHS.pack(pack.id), JSON.stringify(pack), null);
+      } catch (e) {
+        return { status: "failed", code: e instanceof StoreError ? e.code : "unknown", message: (e as Error)?.message ?? String(e) };
+      }
+      this.packs.set(pack.id, Promise.resolve(pack));
+      for (const p of pack.pages) {
+        refOf.set(p.id, `pack:${pack.id}`);
+        this.remember(p.body);
+      }
+    }
+    const r = await this.saveIndexWith(plan.workspaceId, cur, (pages) => applyImportToIndex(pages, plan, (id) => refOf.get(id) ?? "file"), nowIso);
+    return { ...r, packs: packs.length };
+  }
+
+  /** 한 번만 쓰는 파일(원문 · 옛 업무 원본) — 이미 있으면 그대로 */
+  async writeOnce(path: string, text: string): Promise<{ ok: true } | { ok: false; code: StoreErrorCode }> {
+    try {
+      if (await this.store.read(path)) return { ok: true };
+      await this.store.write(path, text, null);
+      return { ok: true };
+    } catch (e) {
+      if (e instanceof ConflictError) return { ok: true };
+      return { ok: false, code: e instanceof StoreError ? e.code : "unknown" };
+    }
   }
 
   async listConflicts(): Promise<ConflictCopy[]> {

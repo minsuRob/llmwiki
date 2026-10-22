@@ -9,6 +9,7 @@
  * - 같은 결과를 두 번 가져와도 한 번만 들어간다(원문 해시).
  * - 화면에 보일 고정 문구는 여기 두지 않는다 — 문구 키(msg)와 값만 남기고 앱이 번역 파일로 그린다.
  */
+import type { BodyProposal } from "./pages.ts";
 import { newId, type Task } from "./types.ts";
 
 /** 2: 영역(Area) 층을 없앴다 — 범주 바로 아래가 업무 */
@@ -272,9 +273,12 @@ export interface WorkPrefs {
 
 export interface MigrationRecord {
   id: string;
-  kind: "legacy_scraps";
+  /** legacy_scraps: 옛 Firestore 기록 → 보관함 · pages_v3: 업무 → 페이지(pages.ts migrateToPages) */
+  kind: "legacy_scraps" | "pages_v3";
   at: string;
   sourceIds: string[];
+  /** pages_v3: 페이지가 된 업무 id */
+  pageIds?: string[];
   reverted: boolean;
 }
 
@@ -287,6 +291,8 @@ export interface WorkManifest {
   triage: TriageProposal[];
   /** 정리 묶음 기록 — 묶음의 S1 · W1 이 어느 조각 · 업무인지(가져올 때 되짚는다). 최근 것만 */
   triageRuns?: TriageRun[];
+  /** 페이지 본문 제안(pages.ts) — 열린 것은 모두, 정한 것은 최근 것만 */
+  bodyProposals?: BodyProposal[];
 }
 
 export interface TriageRun {

@@ -13,6 +13,7 @@
  * 묶음의 고정 문구(제목 · 안내)는 앱이 번역 파일에서 넘긴다(HandoffLabels).
  */
 import { executorOf } from "./executors.ts";
+import { scanInjection } from "./inject.ts";
 import { newId } from "./types.ts";
 import {
   hashText,
@@ -206,6 +207,9 @@ function resultTemplate(runId: string) {
   };
 }
 
+// 지시문 검사는 inject.ts 로 옮겼다 — 예전 import 길을 위해 다시 내보낸다
+export { composeJamo, scanInjection } from "./inject.ts";
+
 /* ───────────────────────── 해석 ───────────────────────── */
 
 export interface ParsedResult {
@@ -370,48 +374,6 @@ const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 /* ───────────────────────── 검사 ───────────────────────── */
 
 const REF = /^S(\d+):(\d+)(?:-(\d+))?$/;
-
-/** 결과 원문에서 지시문으로 보이는 말 — 자료나 AI 답에 숨은 주입을 표시만 한다(막지 않는다) */
-const INJECTION: RegExp[] = [
-  /ignore\s+(all\s+)?(the\s+)?(previous|prior|above|earlier)\s+(instructions|prompts?|rules)/i,
-  /disregard\s+.{0,30}(instructions|rules|prompt)/i,
-  /(reveal|print|show)\s+.{0,20}system\s+prompt/i,
-  /you\s+are\s+now\s+(a|an|the)\b/i,
-  /(이전|앞의|위의|기존)\s*(의\s*)?(모든\s*)?(지시|명령|규칙|프롬프트)[^\n]{0,12}(무시|잊)/,
-  /시스템\s*프롬프트[^\n]{0,12}(보여|출력|알려|공개)/,
-  /(지금부터|이제부터)\s*(너는|당신은)/,
-  /(업무|할\s*일|결정)[^\n]{0,10}(자동으로\s*)?(확정|완료)\s*(처리|상태로)[^\n]{0,6}(해라|하라|하세요|해\s*줘)/,
-];
-
-const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
-const JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
-const JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
-
-/** 호환 자모로 풀어 쓴 글(ㅁㅜㅅㅣ)을 음절(무시)로 합친다. 조합형 자모는 NFC 가, 폭 없는 글자는 지워서 */
-export function composeJamo(text: string): string {
-  const t = text.normalize("NFC").replace(/[\u200b-\u200d\u2060\ufeff\u00ad]/g, "");
-  let out = "";
-  for (let i = 0; i < t.length; i++) {
-    const l = CHO.indexOf(t[i]);
-    const v = l >= 0 ? JUNG.indexOf(t[i + 1] ?? "") : -1;
-    if (l < 0 || v < 0) {
-      out += t[i];
-      continue;
-    }
-    let tail = 0;
-    const j = JONG.indexOf(t[i + 2] ?? "");
-    if (j > 0 && JUNG.indexOf(t[i + 3] ?? "") < 0) tail = j;
-    out += String.fromCharCode(0xac00 + (l * 21 + v) * 28 + tail);
-    i += tail ? 2 : 1;
-  }
-  return out;
-}
-
-/** 자모를 풀어 쓴 우회(ㅁㅜㅅㅣ → 무시) · 폭 없는 글자 끼우기도 잡도록 합친 뒤 본다 */
-export function scanInjection(text: string): string[] {
-  const t = composeJamo(text);
-  return INJECTION.filter((re) => re.test(t)).map((re) => re.source.slice(0, 40));
-}
 
 /** 마감 날짜가 그 줄에 쓰여 있나 — 2026-10-25 · 10월 25일 · 2026.10.25 · 10/25 */
 function dueInLine(due: string, line: string): boolean {
