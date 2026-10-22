@@ -737,6 +737,9 @@ export interface MigrateLabels {
 
 const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? "");
 
+/** 편집기(Lexical)가 내보내는 꼴로 — 제목 뒤 빈 줄. 편집기를 한 번 거쳐도 글이 바뀌지 않게 */
+export const editorBlocks = (md: string) => normalizeBody(md.replace(/^(#{1,4} [^\n]*)\n(?=[^\n])/gm, "$1\n\n"));
+
 /**
  * 옛 업무 하나 → 페이지 본문(사람이 확정한 것) + 이행 제안 본문(AI 가 썼거나 확정 안 된 것이 있을 때만).
  * 사람이 확정한 것: 목표 · 완료 조건 · 확정 결정 · 할 일 · 결과물 · 사람이 쓴 현재 상황 · 옛 상태 한 줄.
@@ -754,7 +757,7 @@ export function migrateItemBody(item: WorkItem, L: MigrateLabels): { body: strin
   if (actions.length) out.push(`## ${L.actions}`, ...actions.map((a) => `- [${a.done ? "x" : " "}] ${a.title}${a.due ? ` (${a.due})` : ""}`), "");
   const outputs = item.outputs ?? [];
   if (outputs.length) out.push(`## ${L.outputs}`, ...outputs.map((o) => `- ${o.url ? `[${o.title}](${o.url})` : o.title}${o.isLatest ? ` — ${L.latest}` : ""}`), "");
-  const body = normalizeBody(out.join("\n"));
+  const body = editorBlocks(out.join("\n"));
 
   const ai: string[] = [];
   if (item.summary && item.summary.origin === "ai" && item.summary.text.trim()) ai.push(`### ${L.aiSummary}`, item.summary.text.trim(), "");
@@ -774,7 +777,7 @@ export function migrateItemBody(item: WorkItem, L: MigrateLabels): { body: strin
     );
   const unverified = (item.runs ?? []).flatMap((r) => r.unverified ?? []).filter((x) => x.trim());
   if (unverified.length) ai.push(`### ${L.unverified}`, ...unverified.map((x) => `- ${x}`), "");
-  const proposal = ai.length ? normalizeBody([body, "", `## ${L.aiSection}`, "", ...ai].join("\n")) : null;
+  const proposal = ai.length ? editorBlocks([body, "", `## ${L.aiSection}`, "", ...ai].join("\n")) : null;
   return { body, proposal };
 }
 

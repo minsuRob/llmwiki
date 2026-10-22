@@ -5,7 +5,6 @@ import { CodeExtension } from "@lexical/code-core";
 import { HorizontalRuleExtension } from "@lexical/extension";
 import { LinkExtension } from "@lexical/link";
 import { CheckListExtension, ListExtension } from "@lexical/list";
-import { $convertFromMarkdownString } from "@lexical/markdown";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalExtensionComposer } from "@lexical/react/LexicalExtensionComposer";
@@ -17,8 +16,8 @@ import { useEffect, type CSSProperties } from "react";
 import type { Palette } from "../../components/theme";
 import { CalloutExtension } from "./CalloutExtension";
 import type { EditorDomProps } from "./LexicalEditor";
-import { MARKDOWN_TRANSFORMERS } from "./markdown";
-import { toEditorMarkdown } from "./markdownCompat";
+import { ImageExtension } from "./ImageExtension";
+import { $fromMarkdown } from "./markdown";
 import { editorTheme } from "./theme";
 import { ToggleExtension } from "./ToggleExtension";
 
@@ -30,7 +29,7 @@ const viewerExtension = defineExtension({
   name: "llmwiki/viewer",
   namespace: "llmwiki-viewer",
   theme: editorTheme,
-  dependencies: [RichTextExtension, ListExtension, CheckListExtension, LinkExtension, CodeExtension, HorizontalRuleExtension, ToggleExtension, CalloutExtension],
+  dependencies: [RichTextExtension, ListExtension, CheckListExtension, LinkExtension, CodeExtension, HorizontalRuleExtension, ImageExtension, ToggleExtension, CalloutExtension],
   onError(error: Error) {
     throw error;
   },
@@ -45,7 +44,7 @@ function MarkdownSyncPlugin({ markdown }: { markdown: string }) {
   useEffect(() => {
     editor.update(
       () => {
-        $convertFromMarkdownString(toEditorMarkdown(markdown), MARKDOWN_TRANSFORMERS);
+        $fromMarkdown(markdown);
         // 가져오기 규칙이 남긴 선택을 지운다 — 읽기 전용이라 커서 · 초점이 필요 없다
         $setSelection(null);
       },

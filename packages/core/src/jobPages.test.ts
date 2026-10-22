@@ -25,21 +25,27 @@ test("그룹바이 공고 — 본문 없이 필드 목록 · 섹션 · 링크, p
       "- **출처**: 그룹바이",
       "",
       "## 주요 업무",
+      "",
       "LLM 서비스 개발",
       "",
       "## 스택",
+      "",
       "Python, TypeScript",
       "",
       "## 특징",
+      "",
       "재택 주 2회",
       "",
       "## 방향성",
+      "",
       "B2B SaaS",
       "",
       "## 개발 직군 판단",
+      "",
       "개발 직무",
       "",
       "## 링크",
+      "",
       "- [공고 원문](https://groupby.kr/positions/10027)",
     ].join("\n"),
   );
@@ -50,7 +56,7 @@ test("인디스워크 공고 — 본문 · 지원 링크가 들어가고, 같은
   if (!r) return assert.fail();
   const e = jobToEntry(r.job, r.text);
   assert.match(e.markdown, /- \*\*회사\*\*: 회사 미기재/);
-  assert.match(e.markdown, /## 공고 본문\n회사 소개\n\n담당 업무: API/);
+  assert.match(e.markdown, /## 공고 본문\n\n회사 소개\n\n담당 업무: API/);
   assert.match(e.markdown, /- \[지원하기\]\(https:\/\/apply\.example\.com\/1\)$/);
   assert.equal(e.props?.career, "신입/인턴");
   assert.equal(e.props?.dueDate, undefined, "날짜로 시작하지 않는 마감은 날짜로 만들지 않는다");

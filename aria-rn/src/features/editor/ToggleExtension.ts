@@ -220,17 +220,11 @@ function $onArrowUp(event: KeyboardEvent): boolean {
   return true;
 }
 
-/** 마크다운 단축 입력 — 문단 맨 앞 "> " 로 토글. 내보낼 때는 <details> 로(인용 "> " 와 겹치지 않게) */
+/** 입력할 때 "> " → 토글. 내보내기 · 가져오기(<details>)는 markdown.ts 의 DETAILS_TRANSFORMER */
 export const TOGGLE_TRANSFORMER: ElementTransformer = {
   type: "element",
   dependencies: [ToggleContainerNode, ToggleTitleNode, ToggleContentNode],
-  export: (node, exportChildren) => {
-    if (!$isToggleContainerNode(node)) return null;
-    const title = node.getTitle();
-    const lines = (node.getContent()?.getChildren() ?? []).map((c) => c.getTextContent()).filter((t) => t.trim() !== "");
-    const summary = `<details${node.getOpen() ? " open" : ""}><summary>${title ? exportChildren(title) : ""}</summary>`;
-    return [summary, ...(lines.length > 0 ? ["", ...lines, ""] : []), "</details>"].join("\n");
-  },
+  export: () => null,
   regExp: /^>\s/,
   replace: (parentNode, children, _match, isImport) => {
     // 가져오기의 "> " 는 인용 몫 — 토글은 입력할 때만

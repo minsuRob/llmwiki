@@ -46,6 +46,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test:editor": "node scripts/test-editor.mjs",
     "web:emulator": "EXPO_PUBLIC_USE_EMULATORS=1 expo start --web",
     "build:web": "expo export --platform web --output-dir dist",
     "lint": "expo lint"

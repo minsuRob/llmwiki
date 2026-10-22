@@ -2,6 +2,8 @@ import { $createCodeNode, $isCodeNode } from "@lexical/code-core";
 import { $createHorizontalRuleNode, $isHorizontalRuleNode, HorizontalRuleNode } from "@lexical/extension";
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode, ListNode, type ListType } from "@lexical/list";
 import {
+  $convertFromMarkdownString,
+  $convertToMarkdownString,
   $generateNodesFromMarkdownString,
   BOLD_ITALIC_STAR,
   BOLD_ITALIC_UNDERSCORE,
@@ -17,6 +19,7 @@ import {
   STRIKETHROUGH,
   UNORDERED_LIST,
   type ElementTransformer,
+  type MultilineElementTransformer,
   type TextFormatTransformer,
   type Transformer,
 } from "@lexical/markdown";
@@ -30,13 +33,18 @@ import {
   COMMAND_PRIORITY_NORMAL,
   PASTE_COMMAND,
   TextNode,
+  type ElementNode,
   type LexicalEditor,
 } from "lexical";
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, type HeadingTagType } from "@lexical/rich-text";
 
+import { $createCalloutNode, $isCalloutNode, CalloutNode } from "./CalloutExtension";
+import { $createImageNode, $isImageNode, ImageNode } from "./ImageNode";
 import { $listItemToBlock, $listItemToToggle, $setListItemType } from "./listItems";
 import { listLetters } from "./listStyle";
+import { toEditorMarkdown } from "./markdownCompat";
 import { TOGGLE_TRANSFORMER } from "./ToggleExtension";
+import { $createToggleContainerNode, $createToggleContentNode, $createToggleTitleNode, $isToggleContainerNode, ToggleContainerNode, ToggleContentNode, ToggleTitleNode } from "./ToggleNodes";
 
 /** 제목은 4단계까지 — "#" ~ "####" + 띄어쓰기(Notion 과 같다. "#####" 는 그대로 둔다) */
 const HEADING_1_4: ElementTransformer = {
@@ -55,11 +63,11 @@ const HEADING_1_4: ElementTransformer = {
   },
 };
 
-/** 인용 — 큰따옴표 · 세로줄 + 띄어쓰기(">" 는 토글) */
+/** 인용 — 큰따옴표 · 세로줄 + 띄어쓰기(">" 는 토글). 내보낼 때는 일반 마크다운 "> "(줄마다) */
 const QUOTE_DQ: ElementTransformer = {
   type: "element",
   dependencies: [QuoteNode],
-  export: (node, exportChildren) => ($isQuoteNode(node) ? "> " + exportChildren(node) : null),
+  export: (node, exportChildren) => ($isQuoteNode(node) ? "> " + exportChildren(node).replace(/\n/g, "\n> ") : null),
   regExp: /^["“”|]\s/,
   replace: (parentNode, children) => {
     const node = $createQuoteNode();
@@ -115,11 +123,98 @@ const NUMBERED_TYPED: ElementTransformer = {
   },
 };
 
+/** 블록을 담는 노드(토글 내용 · 콜아웃)의 안쪽을 같은 규칙으로 — 깊이가 있어도 그대로 */
+const $exportInner = (node: ElementNode) => $convertToMarkdownString(MARKDOWN_TRANSFORMERS, node);
+function $importInner(markdown: string, into: ElementNode) {
+  $convertFromMarkdownString(toEditorMarkdown(markdown), MARKDOWN_TRANSFORMERS, into);
+  if (into.isEmpty()) into.append($createParagraphNode());
+}
+
+/**
+ * 토글 — 일반 마크다운의 <details>(GitHub · Obsidian 이 접어 보인다). 안쪽은 블록 그대로(목록 · 토글 속 토글).
+ * 가져올 때 짝이 맞는 </details> 까지 읽는다. 입력할 때의 "> " 는 TOGGLE_TRANSFORMER 가 맡는다
+ */
+export const DETAILS_TRANSFORMER: MultilineElementTransformer = {
+  type: "multiline-element",
+  dependencies: [ToggleContainerNode, ToggleTitleNode, ToggleContentNode],
+  regExpStart: /^<details( open)?>\s*<summary>(.*?)<\/summary>\s*$/,
+  regExpEnd: /^<\/details>\s*$/,
+  handleImportAfterStartMatch: ({ lines, rootNode, startLineIndex, startMatch }) => {
+    let depth = 1;
+    let end = startLineIndex;
+    while (depth > 0 && end + 1 < lines.length) {
+      const line = lines[++end].trim();
+      if (/^<details[\s>]/.test(line)) depth++;
+      else if (/^<\/details>$/.test(line)) depth--;
+    }
+    if (depth > 0) return null;
+    const toggle = $createToggleContainerNode(!!startMatch[1]);
+    const title = $createToggleTitleNode();
+    const content = $createToggleContentNode();
+    toggle.append(title, content);
+    rootNode.append(toggle);
+    // 제목 속 서식(굵게 · 링크)도 — 문단 하나로 읽어 그 글자들만 옮긴다
+    const holder = $createToggleContentNode();
+    $convertFromMarkdownString(startMatch[2] ?? "", MARKDOWN_TRANSFORMERS, holder);
+    const first = holder.getFirstChild();
+    if (first && "getChildren" in first) title.append(...(first as ElementNode).getChildren());
+    $importInner(lines.slice(startLineIndex + 1, end).join("\n"), content);
+    return [true, end];
+  },
+  replace: () => false,
+  export: (node, traverseChildren) => {
+    if (!$isToggleContainerNode(node)) return null;
+    const title = node.getTitle();
+    const content = node.getContent();
+    const inner = content ? $exportInner(content) : "";
+    return [`<details${node.getOpen() ? " open" : ""}><summary>${title ? traverseChildren(title) : ""}</summary>`, ...(inner.trim() ? ["", inner, ""] : []), "</details>"].join("\n");
+  },
+};
+
+/** 콜아웃 — Obsidian · GitHub 꼴 "> [!note] 💡" + "> " 줄들. 안쪽은 블록 그대로 */
+export const CALLOUT_TRANSFORMER: MultilineElementTransformer = {
+  type: "multiline-element",
+  dependencies: [CalloutNode],
+  regExpStart: /^>\s?\[!(\w+)\][ \t]*(.*)$/,
+  handleImportAfterStartMatch: ({ lines, rootNode, startLineIndex, startMatch }) => {
+    let end = startLineIndex;
+    while (end + 1 < lines.length && /^>/.test(lines[end + 1])) end++;
+    const callout = $createCalloutNode(startMatch[2]?.trim() || undefined);
+    rootNode.append(callout);
+    $importInner(lines.slice(startLineIndex + 1, end + 1).map((l) => l.replace(/^>\s?/, "")).join("\n"), callout);
+    return [true, end];
+  },
+  replace: () => false,
+  export: (node) => {
+    if (!$isCalloutNode(node)) return null;
+    const inner = $exportInner(node);
+    return [`> [!note] ${node.getEmoji()}`, ...inner.split("\n").map((l) => (l ? `> ${l}` : ">"))].join("\n");
+  },
+};
+
+/** 이미지(블록) — ![설명](주소 "너비"). 기기에서 줄인 data URL 도 그대로 */
+const IMAGE_TRANSFORMER: ElementTransformer = {
+  type: "element",
+  dependencies: [ImageNode],
+  export: (node) => {
+    if (!$isImageNode(node)) return null;
+    const width = node.getWidth();
+    return `![${node.getAlt().replace(/[[\]]/g, "")}](${node.getSrc()}${width ? ` "${width}"` : ""})`;
+  },
+  regExp: /^!\[([^\]]*)\]\((\S+?)(?:\s+"(\d+)")?\)\s*$/,
+  replace: (parentNode, _children, match) => {
+    parentNode.replace($createImageNode({ src: match[2], alt: match[1], width: match[3] ? Number(match[3]) : null }));
+  },
+};
+
 /** 취소선 — 물결 하나(~글~)도 받는다. "~~" 가 먼저 와야 한다 */
 const STRIKE_SINGLE: TextFormatTransformer = { type: "text-format", format: ["strikethrough"], tag: "~" };
 
 /** 순서가 중요하다 — 할 일("[] ")이 글머리("- ")보다, 굵게("**")가 기울임("*")보다 먼저 */
 export const MARKDOWN_TRANSFORMERS: Transformer[] = [
+  DETAILS_TRANSFORMER,
+  CALLOUT_TRANSFORMER,
+  IMAGE_TRANSFORMER,
   HEADING_1_4,
   TOGGLE_TRANSFORMER,
   QUOTE_DQ,
@@ -140,6 +235,16 @@ export const MARKDOWN_TRANSFORMERS: Transformer[] = [
   ITALIC_UNDERSCORE,
   LINK,
 ];
+
+/** 편집기 내용 → 마크다운(페이지 본문 정본). 편집기 update · read 안에서 */
+export function $toMarkdown(): string {
+  return $convertToMarkdownString(MARKDOWN_TRANSFORMERS);
+}
+
+/** 마크다운(일반 마크다운 · 이 편집기 규칙 둘 다) → 편집기 내용. 지금 내용은 지운다 */
+export function $fromMarkdown(markdown: string): void {
+  $convertFromMarkdownString(toEditorMarkdown(markdown), MARKDOWN_TRANSFORMERS);
+}
 
 /**
  * "```" · "---" 는 띄어쓰기 없이 세 번째 글자에서 바로 바꾼다(Notion 과 같다).

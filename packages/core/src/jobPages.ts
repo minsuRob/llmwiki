@@ -8,7 +8,7 @@
  * 문구는 앱이 넘긴다(JobPageLabels) — MCP · 시험은 한국어 기본값을 쓴다.
  */
 import { JOB_SOURCE_NAMES, type Job, type JobText } from "./jobs.ts";
-import type { ImportEntry } from "./pages.ts";
+import { editorBlocks, type ImportEntry } from "./pages.ts";
 
 export interface JobPageLabels {
   company: string;
@@ -79,5 +79,5 @@ export function jobToEntry(job: Job, text: JobText | string | null, L: JobPageLa
   if (job.dueDate) props.dueDate = job.dueDate;
   if (job.location) props.location = job.location;
   if (job.career) props.career = job.career;
-  return { title: `${job.company} — ${job.title}`, markdown: out.join("\n"), externalId: job.id, props };
+  return { title: `${job.company} — ${job.title}`, markdown: editorBlocks(out.join("\n")), externalId: job.id, props };
 }
