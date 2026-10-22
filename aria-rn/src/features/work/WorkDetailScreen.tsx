@@ -30,6 +30,7 @@ import { useT } from "../../i18n";
 import { DesktopRunLines } from "./DesktopRunLines";
 import { HandoffPanel } from "./HandoffPanel";
 import { ImportPanel } from "./ImportPanel";
+import { RawView } from "./RawView";
 import { confirmAsk } from "./io";
 import { Card, ChangeCard, Field, Fold, H, Muted, Pill, StatusStrip, msgText, when } from "./parts";
 import { ReviewCards } from "./ReviewCards";
@@ -237,6 +238,7 @@ export default function WorkDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { ready, state, cachedText, rawText, unlink } = useWork();
   const [panel, setPanel] = useState<"handoff" | "import" | null>(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [raw, setRaw] = useState<{ hash: string; text: string } | null>(null);
   // 화면을 연 시각 — 그 10분 전 이후에 바뀐 것만 위 카드로 보여 준다
   const [openedAt] = useState(() => Date.now());
@@ -279,7 +281,9 @@ export default function WorkDetailScreen() {
       <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
         <Btn c={c} primary label={t("detail.continueWithAi")} onPress={() => setPanel(panel === "handoff" ? null : "handoff")} />
         <Btn c={c} label={t("detail.importResult")} onPress={() => setPanel(panel === "import" ? null : "import")} />
+        <Btn c={c} label={t("detail.raw.open")} onPress={() => setSourceOpen(true)} />
       </View>
+      {sourceOpen ? <RawView c={c} item={item} onClose={() => setSourceOpen(false)} /> : null}
       {panel !== "handoff" ? <DesktopRunLines c={c} itemId={item.id} /> : null}
       {panel === "handoff" ? <HandoffPanel c={c} item={item} onClose={() => setPanel(null)} /> : null}
       {panel === "import" ? <ImportPanel c={c} item={item} onClose={() => setPanel(null)} /> : null}
