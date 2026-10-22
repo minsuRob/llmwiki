@@ -8,8 +8,7 @@ import { when } from "./parts";
 
 export function renderSummaryMarkdown(item: WorkItem, state: WorkState, t: T): string {
   const ws = state.manifest.workspaces.find((w) => w.id === item.workspaceId);
-  const area = ws?.areas.find((a) => a.id === item.areaId);
-  const out: string[] = [`# ${item.title}`, "", `> ${ws?.name ?? ""} · ${area?.name ?? ""} · ${t(`work.status.${item.status}`)} · ${t("summaryDoc.updated", { at: when(item.updatedAt), rev: item.rev })}`, ""];
+  const out: string[] = [`# ${item.title}`, "", `> ${ws?.name ?? ""} · ${t(`work.status.${item.status}`)} · ${t("summaryDoc.updated", { at: when(item.updatedAt), rev: item.rev })}`, ""];
   out.push(`## ${t("summaryDoc.goal")}`, item.goal || "-", "");
   if (item.doneCriteria.length) out.push(`## ${t("summaryDoc.done")}`, ...item.doneCriteria.map((c) => `- ${c}`), "");
   out.push(`## ${t("summaryDoc.now")}`);

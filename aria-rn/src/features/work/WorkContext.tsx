@@ -22,8 +22,6 @@ import {
   newSource,
   undoChange,
   unlinkSource,
-  PERSONAL_AREA_KEYS,
-  COMPANY_AREA_KEYS,
   type AiTool,
   type Importance,
   type Source,
@@ -82,7 +80,7 @@ interface WorkApi {
   /** 업무 하나를 바꾸고 저장한다 */
   update: (itemId: string, fn: (item: WorkItem) => WorkItem) => Promise<SaveState>;
   retry: (itemId: string) => Promise<void>;
-  createItem: (input: { workspaceId: string; areaId: string; title: string; templateKey?: TemplateKey | null; due?: string | null; importance?: Importance }) => Promise<WorkItem | null>;
+  createItem: (input: { workspaceId: string; title: string; templateKey?: TemplateKey | null; due?: string | null; importance?: Importance }) => Promise<WorkItem | null>;
   addSource: (input: Parameters<typeof newSource>[0], linkTo?: string | null) => Promise<{ source: Source | null; link?: "linked" | "already" | "needs_confirm" }>;
   linkExisting: (itemId: string, sourceId: string, confirmCross?: boolean) => Promise<"linked" | "already" | "needs_confirm">;
   unlink: (itemId: string, sourceId: string) => Promise<void>;
@@ -139,7 +137,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
   /** 다 읽은 사용자 — 지금 사용자와 같아야 준비된 것 */
   const [loadedUid, setLoadedUid] = useState<string | null>(null);
   const ready = !!uid && loadedUid === uid;
-  const [state, setState] = useState<WorkState>({ manifest: defaultManifest({ personal: "", company: "", areas: {} }), items: [], sources: [] });
+  const [state, setState] = useState<WorkState>({ manifest: defaultManifest({ personal: "", company: "", dev: "", reading: "" }), items: [], sources: [] });
   const [storage, setStorage] = useState<"device" | "drive">("device");
   const [drive, setDrive] = useState<WorkApi["drive"]>({ status: localDriveUrl ? "disconnected" : !DRIVE_PLATFORM_SUPPORTED ? "unavailable" : driveConfig ? "disconnected" : "not_configured", folderUrl: null, error: null, local: !!localDriveUrl });
   const [saves, setSaves] = useState<WorkApi["saves"]>({});
@@ -163,7 +161,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       defaultManifest({
         personal: tRef.current("ws.personal"),
         company: tRef.current("ws.company"),
-        areas: Object.fromEntries([...PERSONAL_AREA_KEYS, ...COMPANY_AREA_KEYS].map((k) => [k, tRef.current(`area.${k}`)])),
+        dev: tRef.current("ws.dev"),
+        reading: tRef.current("ws.reading"),
       }),
     [],
   );

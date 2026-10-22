@@ -50,10 +50,10 @@ const DOC = [
   "- 새 공고는 목록을 다시 수집해야 한다.",
 ].join("\n");
 
-const ws = () => defaultManifest({ personal: "개인", company: "회사", areas: { jobChange: "이직준비", personal: "개인업무", dev: "개발", sideJob: "부업", general: "공통" } }).workspaces;
+const ws = () => defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" }).workspaces;
 
 function setup(tool: "claude" | "codex" | "gemma" = "gemma", extra: Source[] = []) {
-  let item: WorkItem = createWorkItem({ workspaceId: "ws-personal", areaId: "area-jobChange", title: "그룹바이 재수집", template: { goal: "새 공고를 다시 수집", doneCriteria: ["5분 간격"], actions: [] } }, NOW);
+  let item: WorkItem = createWorkItem({ workspaceId: "ws-personal", title: "그룹바이 재수집", template: { goal: "새 공고를 다시 수집", doneCriteria: ["5분 간격"], actions: [] } }, NOW);
   const doc = newSource({ workspaceId: "ws-personal", provider: "note", title: "진행현황", text: DOC }, NOW);
   for (const s of [doc, ...extra]) {
     const r = linkSource(item, s, NOW);

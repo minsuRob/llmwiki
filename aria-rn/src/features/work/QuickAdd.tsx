@@ -39,7 +39,9 @@ export function QuickAdd() {
     if (!v) return;
     setBusy(true);
     const isUrl = /^https?:\/\/\S+$/.test(v);
-    const r = await addSource(isUrl ? { workspaceId, provider: "link", title: v, url: v } : { workspaceId, provider: "note", title: v.split("\n")[0].slice(0, 80), text: v }, target);
+    // 이을 업무를 고르지 않았으면 받은 것(정리 대기)으로, 골랐으면 바로 엮인 것으로
+    const meta = { triage: target ? ("filed" as const) : ("inbox" as const), origin: { via: "app" as const } };
+    const r = await addSource(isUrl ? { workspaceId, provider: "link", title: v, url: v, ...meta } : { workspaceId, provider: "note", title: v.split("\n")[0].slice(0, 80), text: v, ...meta }, target);
     setBusy(false);
     if (!r.source) return setNote({ text: t("source.saveFailed"), bad: true });
     setText("");

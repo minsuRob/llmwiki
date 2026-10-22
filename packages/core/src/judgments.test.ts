@@ -11,7 +11,7 @@ const DECIDE = "2026-10-20T11:00:00.000Z";
 const L = Object.fromEntries(
   ["title", "meta", "goal", "doneCriteria", "status", "summaryNone", "summaryStale", "decisions", "decisionsNone", "sources", "sourcesNone", "sourceAccess", "sourceNoExcerpt", "excludedCross", "scope", "taskDone", "openQuestions", "openNone", "nextActions", "returnFormat", "returnGuide", "rules", "rulesTitle", "droppedBudget"].map((k) => [k, k]),
 ) as unknown as HandoffLabels;
-const manifest = () => defaultManifest({ personal: "개인", company: "회사", areas: { jobChange: "이직준비", personal: "개인업무", dev: "개발", sideJob: "부업", general: "공통" } });
+const manifest = () => defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" });
 
 const RESULT = (run: string) =>
   `<!-- llmwiki-run {"executor":"gemma","model":"gemma-4-E4B q4_0","latencyMs":461100} -->
@@ -22,7 +22,7 @@ ${JSON.stringify({ run, summary: "s", tasks: [{ title: "씨그로 지원", due: 
 \`\`\``;
 
 function setup(workspaceId = "ws-personal"): { state: WorkState; item: WorkItem } {
-  let item = createWorkItem({ workspaceId, areaId: workspaceId === "ws-personal" ? "area-jobChange" : "area-general", title: "지원 정리" }, NOW);
+  let item = createWorkItem({ workspaceId, title: "지원 정리" }, NOW);
   const src = newSource({ workspaceId, provider: "note", title: "메모", text: "- 씨그로: 2026-11-06 마감" }, NOW);
   const r = linkSource(item, src, NOW);
   if (r.kind === "linked") item = r.item;

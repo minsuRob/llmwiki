@@ -22,7 +22,6 @@ export interface JudgmentRecord {
   workspaceId: string;
   /** 비공개 주제의 업무인가 */
   privateWorkspace: boolean;
-  areaId: string;
   task: JudgmentTask;
   runId: string | null;
   executor: AiTool | null;
@@ -59,7 +58,6 @@ export function deriveJudgments(state: WorkState, opts: JudgmentOptions = {}): J
         workItemId: item.id,
         workspaceId: item.workspaceId,
         privateWorkspace: priv,
-        areaId: item.areaId,
         runId: run?.id ?? runId ?? null,
         executor: run?.tool ?? null,
         model: run?.model ?? null,

@@ -16,7 +16,7 @@ import { PATHS, WorkRepo } from "./workStore.ts";
 import { startLocalDrive } from "../../../tools/local-drive/server.mjs";
 
 const NOW = "2026-10-19T09:00:00.000Z";
-const manifest = () => defaultManifest({ personal: "개인", company: "회사", areas: { general: "공통" } });
+const manifest = () => defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" });
 const names = { root: "llmwiki 작업실", summaries: "업무 요약", appData: "앱 데이터" };
 
 let dir = "";
@@ -52,7 +52,7 @@ test("로컬 Drive — 작업실 폴더가 디스크에 생기고, 업무 상태
   const store = new DriveFileStore(deps, names);
   const repo = new WorkRepo(store, manifest(), (i) => `# ${i.title}\n상태: ${i.status}`);
   await repo.load();
-  const item = createWorkItem({ workspaceId: "ws-company", areaId: "area-general", title: "10월 실적 보고" }, NOW);
+  const item = createWorkItem({ workspaceId: "ws-company", title: "10월 실적 보고" }, NOW);
   const r = await repo.saveItem(setWorkStatus(item, "waiting", NOW), NOW);
   assert.equal(r.status, "saved");
   const stateFile = join(server.root, "llmwiki 작업실", "앱 데이터", `${item.id}.json`);
@@ -90,7 +90,7 @@ test("로컬 Drive — 원본을 디스크에서 고치면 버전이 오르고, 
   assert.ok(m1.ok);
   if (!m1.ok) return;
   let src: Source = newSource({ workspaceId: "ws-company", provider: "drive", externalId: f.id, title: m1.meta.name, remoteVersion: m1.meta.version, format: "sheet" }, NOW);
-  let item: WorkItem = createWorkItem({ workspaceId: "ws-company", areaId: "area-general", title: "보고" }, NOW);
+  let item: WorkItem = createWorkItem({ workspaceId: "ws-company", title: "보고" }, NOW);
   const l = linkSource(item, src, NOW);
   if (l.kind === "linked") item = l.item;
   item = setSummary(item, "10월 120억", [src], NOW);
@@ -114,7 +114,7 @@ test("로컬 Drive — 디스크에서 상태 파일을 바깥에서 고치면 �
   const store = new DriveFileStore(deps, names);
   const repo = new WorkRepo(store, manifest());
   await repo.load();
-  let item = createWorkItem({ workspaceId: "ws-company", areaId: "area-general", title: "충돌 시험" }, NOW);
+  let item = createWorkItem({ workspaceId: "ws-company", title: "충돌 시험" }, NOW);
   const s = await repo.saveItem(item, NOW);
   if (s.status === "saved") item = s.value;
   const stateFile = join(server.root, "llmwiki 작업실", "앱 데이터", `${item.id}.json`);
@@ -131,7 +131,7 @@ test("로컬 Drive — 권한이 끊기면(401) 저장 실패로 알린다", asy
   const repo = new WorkRepo(new DriveFileStore(deps, names), manifest());
   await repo.load();
   await fetch(`${server.url}/__revoke`);
-  const r = await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", areaId: "area-general", title: "x" }, NOW), NOW);
+  const r = await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: "x" }, NOW), NOW);
   await fetch(`${server.url}/__renew`);
   assert.equal(r.status, "failed");
   assert.equal(r.status === "failed" && r.code, "auth_expired");
@@ -144,7 +144,7 @@ test("로컬 Drive — 불러오기는 목록 1번 + 파일마다 내려받기 1
   await writer.load();
   const ids: string[] = [];
   for (let i = 0; i < 5; i++) {
-    const it = createWorkItem({ workspaceId: "ws-company", areaId: "area-general", title: `업무 ${i}` }, NOW);
+    const it = createWorkItem({ workspaceId: "ws-company", title: `업무 ${i}` }, NOW);
     ids.push(it.id);
     assert.equal((await writer.saveItem(it, NOW)).status, "saved");
   }
@@ -178,7 +178,7 @@ test("빠른 읽기 — 새 저장소가 폴더를 동시에 찾아도 한 번�
   assert.ok(calls <= 6, `폴더 찾기 · 만들기는 한 번씩(${calls})`);
 
   const repo = new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "");
-  for (let i = 0; i < 12; i++) assert.equal((await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", areaId: "area-general", title: `병렬 ${i}` }, NOW), NOW)).status, "saved");
+  for (let i = 0; i < 12; i++) assert.equal((await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: `병렬 ${i}` }, NOW), NOW)).status, "saved");
   const s = await new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "").load();
   assert.equal(s.items.filter((i) => i.title.startsWith("병렬 ")).length, 12);
 });

@@ -250,7 +250,6 @@ export default function WorkDetailScreen() {
     );
   }
   const ws = state.manifest.workspaces.find((w) => w.id === item.workspaceId);
-  const area = ws?.areas.find((a) => a.id === item.areaId);
   const sources = state.sources.filter((s) => item.sourceIds.includes(s.id));
   const latestChange = item.changes[0];
   const oldDecisions = item.decisions.filter((d) => d.status === "superseded" || d.status === "rejected");
@@ -271,7 +270,7 @@ export default function WorkDetailScreen() {
       <View style={{ gap: 6 }}>
         <Text style={{ fontSize: 22, fontWeight: "800", color: c.text }}>{item.title}</Text>
         <Muted c={c}>
-          {ws?.name} · {area?.name} · {t(`importance.${item.importance}`)}
+          {ws?.name} · {t(`importance.${item.importance}`)}
           {item.due ? ` · ${t("work.dueOn", { due: item.due })}` : ""} · rev {item.rev}
         </Muted>
         <StatusStrip c={c} item={item} />

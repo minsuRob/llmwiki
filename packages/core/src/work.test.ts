@@ -68,11 +68,11 @@ const L: HandoffLabels = {
   droppedBudget: "예산 때문에 발췌를 넣지 못한 자료: {titles}",
 };
 
-const manifest = () => defaultManifest({ personal: "개인", company: "회사", areas: { jobChange: "이직준비", personal: "개인업무", dev: "개발", sideJob: "부업", general: "공통" } });
+const manifest = () => defaultManifest({ personal: "개인", company: "회사", dev: "개발", reading: "독서" });
 
 function report() {
   return createWorkItem(
-    { workspaceId: "ws-company", areaId: "area-general", title: "10월 실적 보고", templateKey: "report", template: { goal: "10월 실적을 정리해 팀장에게 보고", doneCriteria: ["보고서 확정본"], actions: ["자료 모으기", "초안 쓰기", "검토 받기"] } },
+    { workspaceId: "ws-company", title: "10월 실적 보고", templateKey: "report", template: { goal: "10월 실적을 정리해 팀장에게 보고", doneCriteria: ["보고서 확정본"], actions: ["자료 모으기", "초안 쓰기", "검토 받기"] } },
     NOW,
   );
 }
@@ -259,7 +259,7 @@ test("오늘 — 마감 · 중요도 · 선행 작업으로 추천하고 이유�
   const now = new Date(2026, 9, 19, 9, 0);
   let a = report();
   a = { ...a, importance: "high", actions: a.actions.map((t, i) => (i === 0 ? { ...t, due: "2026-10-20" } : t)) };
-  const b = createWorkItem({ workspaceId: "ws-personal", areaId: "area-dev", title: "포트폴리오", template: { goal: "", doneCriteria: [], actions: ["README 쓰기"] } }, NOW);
+  const b = createWorkItem({ workspaceId: "ws-personal", title: "포트폴리오", template: { goal: "", doneCriteria: [], actions: ["README 쓰기"] } }, NOW);
   const state: WorkState = { manifest: manifest(), items: [a, b], sources: [] };
   const recs = recommend(state, now);
   assert.equal(recs[0].title, "자료 모으기");
@@ -345,12 +345,14 @@ test("원문은 해시 이름으로 한 번만 저장된다(재시도해도 하�
   assert.equal(await repo.readRaw("abc"), "원문");
 });
 
-test("예전 스키마 파일도 빠진 칸을 채워 읽는다(아무것도 지우지 않는다)", () => {
+test("예전 스키마 파일도 빠진 칸을 채워 읽고, 영역만 지운다(나머지는 보존)", () => {
   const old = { id: "x", title: "옛 업무", workspaceId: "ws-personal", areaId: "area-dev", goal: "g", status: "active", createdAt: NOW, updatedAt: NOW, extra: "보존" };
   const up = upgradeItem(old) as unknown as Record<string, unknown>;
-  assert.equal(up.schemaVersion, 1);
+  assert.equal(up.schemaVersion, 2);
   assert.deepEqual(up.actions, []);
   assert.equal(up.extra, "보존");
+  assert.equal("areaId" in up, false, "영역은 어디로도 옮기지 않고 지운다");
+  assert.equal(up.workspaceId, "ws-personal");
 });
 
 test("기존 기록 이행 — 복사만 하고(원본 그대로), 두 번 옮기지 않고, 되돌릴 수 있다", () => {
@@ -496,16 +498,20 @@ test("Drive + 기기 사본 — 연결이 끊기면 사본에서 읽고, 쓰기�
 
 test("주제 — 옛 개인 · 회사 작업실을 아이콘 · 비공개로 옮기고, 더하고 · 고치고 · 빈 것만 지운다", () => {
   const old = { schemaVersion: 1, workspaces: [{ id: "ws-personal", kind: "personal", name: "개인", areas: [] }, { id: "ws-company", kind: "company", name: "회사", areas: [] }] };
-  const m = upgradeManifest(old, defaultManifest({ personal: "", company: "", areas: {} }));
+  const m = upgradeManifest(old, defaultManifest({ personal: "", company: "", dev: "", reading: "" }));
   assert.deepEqual(m.workspaces.map((w) => [w.icon, w.private]), [["person", false], ["business", true]]);
 
-  const { manifest: added, workspace } = addWorkspace(m, { name: " 독서 ", icon: "book", private: false }, "일반");
+  assert.equal(m.workspaces.some((w) => "areas" in w), false, "영역 목록은 지운다");
+  assert.deepEqual(m.triage, []);
+  assert.equal(m.workspaces.length, 2, "기존 사용자에게 개발 · 독서를 억지로 더하지 않는다");
+
+  const { manifest: added, workspace } = addWorkspace(m, { name: " 독서 ", icon: "book", private: false });
   assert.equal(workspace.name, "독서");
-  assert.deepEqual(workspace.areas, [{ id: "area-general", name: "일반" }]);
+  assert.equal("areas" in workspace, false);
   assert.equal(added.workspaces.length, 3);
   assert.equal(editWorkspace(added, workspace.id, { name: "책", private: true }).workspaces[2].private, true);
 
-  const state: WorkState = { manifest: added, items: [createWorkItem({ workspaceId: workspace.id, areaId: "area-general", title: "책 1" }, NOW)], sources: [] };
+  const state: WorkState = { manifest: added, items: [createWorkItem({ workspaceId: workspace.id, title: "책 1" }, NOW)], sources: [] };
   assert.equal(canRemoveWorkspace(state, workspace.id), "in_use", "업무가 남은 주제는 지우지 않는다");
   assert.equal(canRemoveWorkspace({ ...state, items: [] }, workspace.id), "ok");
   assert.equal(removeWorkspace(added, workspace.id).workspaces.length, 2);

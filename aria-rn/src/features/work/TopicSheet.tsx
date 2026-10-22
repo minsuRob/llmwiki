@@ -104,11 +104,7 @@ function TopicForm({
     const r = await saveManifest((m) => {
       if (editing !== "new")
         return editWorkspace(m, editing.id, { name, icon, private: priv });
-      const a = addWorkspace(
-        m,
-        { name, icon, private: priv },
-        t("topic.generalArea"),
-      );
+      const a = addWorkspace(m, { name, icon, private: priv });
       created = a.workspace.id;
       return a.manifest;
     });

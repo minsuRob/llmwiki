@@ -1,7 +1,8 @@
 /**
  * 작업실 — 업무 · 원본 자료 · 결정 · AI 작업 · 결과물 · 검토 카드(순수 함수).
  *
- * 계층: 작업실(회사 · 개인 — 자료 범위를 나눈다) → 영역(큰 범주) → 업무(목표와 진행 상태) → 할 일(Task 를 넓혀 쓴다).
+ * 계층: 범주(개발 · 독서 · 회사 · 개인 — 사람이 정하고 자료 범위를 나눈다) → 업무(목표와 진행 상태) → 할 일(Task 를 넓혀 쓴다).
+ * 받은 것: 던진 조각(Source)은 정리 대기(inbox)로 들어오고, Claude 의 정리 제안(TriageProposal)을 사람이 받아들이면 업무에 엮인다(filed).
  * 원칙
  * - 가져온 원본은 덮어쓰지 않는다. 바깥 원본이 바뀌면 버전으로 알아채고, 요약이 어느 버전을 근거로 했는지 남긴다.
  * - AI 가 낸 것(결정 · 할 일 · 결과물 최신본)은 제안으로만 들어오고, 사람이 확정해야 바뀐다.
@@ -10,19 +11,15 @@
  */
 import { newId, type Task } from "./types.ts";
 
-export const WORK_SCHEMA_VERSION = 1;
+/** 2: 영역(Area) 층을 없앴다 — 범주 바로 아래가 업무 */
+export const WORK_SCHEMA_VERSION = 2;
 
 /* ───────────────────────── 모델 ───────────────────────── */
 
 /** 옛 작업실 종류 — 읽을 때 icon · private 로 옮긴다(upgradeManifest) */
 export type WorkspaceKind = "personal" | "company";
 
-export interface Area {
-  id: string;
-  name: string;
-}
-
-/** 주제(개인 · 회사 · 취준 · 독서 …) — 사용자가 더하고 이름을 바꾼다. 업무 · 자료는 주제 하나에 속한다 */
+/** 범주(개발 · 독서 · 회사 · 개인 …) — 사람이 만들고 이름을 바꾼다. 업무 · 자료는 범주 하나에 속한다. Claude 는 범주를 만들거나 바꾸지 않는다 */
 export interface Workspace {
   id: string;
   name: string;
@@ -30,7 +27,6 @@ export interface Workspace {
   icon: string;
   /** 판단 기록 등 밖으로 내보낼 때 기본으로 뺀다(옛 회사 작업실) */
   private: boolean;
-  areas: Area[];
   /** 옛 값 — 남아 있어도 쓰지 않는다 */
   kind?: WorkspaceKind;
 }
@@ -174,7 +170,6 @@ export interface WorkItem {
   /** 저장할 때마다 1씩 — 화면 · 저장소 · 맥락 버전이 같은 수를 본다 */
   rev: number;
   workspaceId: string;
-  areaId: string;
   title: string;
   templateKey?: string | null;
   goal: string;
@@ -223,8 +218,51 @@ export interface Source {
   ingest: { status: IngestStatus; error?: string | null; at: string };
   /** 예전 데이터에서 옮겨 온 것 — 이행을 되돌릴 때 이것만 지운다 */
   migratedFrom?: { coll: string; id: string } | null;
+  /** 정리 상태 — inbox: 던졌고 아직 안 엮임 · filed: 업무 · 개념에 엮임 · dismissed: 뺌. 없으면 filed(받은 것 이전 자료) */
+  triage?: SourceTriage;
+  /** 어디서 던졌나 — app: 앱 입력 · share: 공유 시트 · mcp: Claude 등이 대화 중에 */
+  origin?: SourceOrigin | null;
+  /** 엮인 개념 이름(사람이 받아들인 것만) */
+  concepts?: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type SourceTriage = "inbox" | "filed" | "dismissed";
+
+export interface SourceOrigin {
+  via: "app" | "share" | "mcp";
+  tool?: AiTool | null;
+}
+
+/** 받은 것 정리 제안 — Claude 가 내고 사람이 받아들인다. 범주를 넘지 않는다 */
+export type TriageKind = "file_source" | "new_work" | "concept_link";
+export type TriageFlag = "no_evidence";
+
+export interface TriageProposal {
+  id: string;
+  kind: TriageKind;
+  status: "open" | "accepted" | "rejected";
+  /** 조각과 같은 범주 — 제안은 이 범주 안에서만 */
+  workspaceId: string;
+  /** 대상 조각(new_work 는 여럿일 수 있다) */
+  sourceIds: string[];
+  /** file_source: 이을 업무 */
+  itemId?: string | null;
+  /** new_work: 새 업무 제목 · 목표 */
+  title?: string;
+  goal?: string;
+  /** concept_link: 개념 이름 */
+  concept?: string;
+  /** 판단 근거로 보여 줄 말(AI 가 쓴 문장 그대로) */
+  note?: string;
+  /** AI 가 댄 근거("S1:2") */
+  refs?: string[];
+  flags?: TriageFlag[];
+  runId?: string | null;
+  tool?: AiTool | null;
+  createdAt: string;
+  decidedAt?: string | null;
 }
 
 export interface WorkPrefs {
@@ -245,6 +283,8 @@ export interface WorkManifest {
   workspaces: Workspace[];
   prefs: WorkPrefs;
   migrations: MigrationRecord[];
+  /** 받은 것 정리 제안 — 업무가 아직 없을 수 있어(new_work) 범주 목록과 함께 둔다 */
+  triage: TriageProposal[];
 }
 
 export interface WorkState {
@@ -302,28 +342,27 @@ export function undoChange(item: WorkItem, changeId: string, nowIso: string): { 
 
 /* ───────────────────────── 작업실 · 템플릿 ───────────────────────── */
 
-export const PERSONAL_AREA_KEYS = ["jobChange", "personal", "dev", "sideJob"] as const;
-export const COMPANY_AREA_KEYS = ["general"] as const;
-
 export const WORKSPACE_ICONS = ["person", "business", "briefcase", "book", "school", "code-slash", "heart", "barbell", "cash", "home", "airplane", "sparkles"] as const;
 
-/** 처음 열 때 — 개인 · 회사 주제. 이름은 앱이 번역해서 넘긴다 */
-export function defaultManifest(names: { personal: string; company: string; areas: Record<string, string> }): WorkManifest {
-  const area = (key: string): Area => ({ id: `area-${key}`, name: names.areas[key] ?? key });
+/** 처음 여는 사람의 범주 — 개인 · 회사 · 개발 · 독서(회사만 비공개). 이름은 앱이 번역해서 넘긴다 */
+export function defaultManifest(names: { personal: string; company: string; dev: string; reading: string }): WorkManifest {
   return {
     schemaVersion: WORK_SCHEMA_VERSION,
     workspaces: [
-      { id: "ws-personal", name: names.personal, icon: "person", private: false, areas: PERSONAL_AREA_KEYS.map(area) },
-      { id: "ws-company", name: names.company, icon: "business", private: true, areas: COMPANY_AREA_KEYS.map(area) },
+      { id: "ws-personal", name: names.personal, icon: "person", private: false },
+      { id: "ws-company", name: names.company, icon: "business", private: true },
+      { id: "ws-dev", name: names.dev, icon: "code-slash", private: false },
+      { id: "ws-reading", name: names.reading, icon: "book", private: false },
     ],
     prefs: { todayOrder: [] },
     migrations: [],
+    triage: [],
   };
 }
 
-/** 새 주제 — 영역은 하나(일반)로 시작한다 */
-export function addWorkspace(m: WorkManifest, input: { name: string; icon: string; private: boolean }, generalArea: string): { manifest: WorkManifest; workspace: Workspace } {
-  const workspace: Workspace = { id: `ws-${newId()}`, name: input.name.trim(), icon: input.icon, private: input.private, areas: [{ id: "area-general", name: generalArea }] };
+/** 새 범주 — 사람만 만든다 */
+export function addWorkspace(m: WorkManifest, input: { name: string; icon: string; private: boolean }): { manifest: WorkManifest; workspace: Workspace } {
+  const workspace: Workspace = { id: `ws-${newId()}`, name: input.name.trim(), icon: input.icon, private: input.private };
   return { manifest: { ...m, workspaces: [...m.workspaces, workspace] }, workspace };
 }
 
@@ -353,7 +392,7 @@ export interface TemplateText {
 }
 
 export function createWorkItem(
-  input: { workspaceId: string; areaId: string; title: string; templateKey?: string | null; template?: TemplateText | null; goal?: string; due?: string | null; importance?: Importance },
+  input: { workspaceId: string; title: string; templateKey?: string | null; template?: TemplateText | null; goal?: string; due?: string | null; importance?: Importance },
   nowIso: string,
 ): WorkItem {
   const id = newId();
@@ -366,7 +405,6 @@ export function createWorkItem(
     schemaVersion: WORK_SCHEMA_VERSION,
     rev: 0,
     workspaceId: input.workspaceId,
-    areaId: input.areaId,
     title: input.title.trim().slice(0, 200),
     templateKey: input.templateKey ?? null,
     goal: (input.goal ?? t?.goal ?? "").trim(),
@@ -390,7 +428,7 @@ export function createWorkItem(
 /* ───────────────────────── 자료 ───────────────────────── */
 
 export function newSource(
-  input: Pick<Source, "workspaceId" | "provider" | "title"> & Partial<Pick<Source, "externalId" | "path" | "mimeType" | "format" | "url" | "remoteVersion" | "remoteModifiedAt" | "text" | "migratedFrom">>,
+  input: Pick<Source, "workspaceId" | "provider" | "title"> & Partial<Pick<Source, "externalId" | "path" | "mimeType" | "format" | "url" | "remoteVersion" | "remoteModifiedAt" | "text" | "migratedFrom" | "triage" | "origin">>,
   nowIso: string,
 ): Source {
   const isText = input.provider === "note" || input.provider === "paste" || input.provider === "legacy" || (input.provider === "upload" && input.text != null);
@@ -413,6 +451,8 @@ export function newSource(
     text: input.text ?? null,
     ingest: { status: isText ? "ok" : "pending", at: nowIso },
     migratedFrom: input.migratedFrom ?? null,
+    ...(input.triage ? { triage: input.triage } : {}),
+    ...(input.origin ? { origin: input.origin } : {}),
     createdAt: nowIso,
     updatedAt: nowIso,
   };
@@ -481,8 +521,14 @@ export function setWorkStatus(item: WorkItem, status: WorkStatus, nowIso: string
   return withChange(item, { key: "change.status", params: { status } }, nowIso, (d) => ({ ...d, status }));
 }
 
-export function editWork(item: WorkItem, patch: Partial<Pick<WorkItem, "title" | "goal" | "doneCriteria" | "importance" | "due" | "areaId">>, nowIso: string): WorkItem {
+export function editWork(item: WorkItem, patch: Partial<Pick<WorkItem, "title" | "goal" | "doneCriteria" | "importance" | "due">>, nowIso: string): WorkItem {
   return withChange(item, { key: "change.edit" }, nowIso, (d) => ({ ...d, ...patch }));
+}
+
+/** 업무를 다른 범주로 — 사람만. 이어 둔 자료는 그대로(자료는 한 벌, 맥락에서는 다른 범주 자료로 따로 표시된다) */
+export function moveWorkItem(item: WorkItem, workspaceId: string, workspaceName: string, nowIso: string): WorkItem {
+  if (item.workspaceId === workspaceId) return item;
+  return withChange(item, { key: "change.moveWorkspace", params: { workspace: workspaceName } }, nowIso, (d) => ({ ...d, workspaceId }));
 }
 
 /** 사람이 쓴 현재 상황 — 근거 버전은 지금 이어 둔 자료 버전 */
@@ -593,6 +639,198 @@ export function markLatest(item: WorkItem, outputId: string, nowIso: string, opt
 
 export function latestOutput(item: WorkItem): Output | null {
   return item.outputs.find((o) => o.isLatest) ?? null;
+}
+
+/* ───────────────────────── 받은 것(인박스) — 던지고, Claude 가 제안하고, 사람이 엮는다 ───────────────────────── */
+
+/** 정리 상태 — 값이 없는 옛 자료는 이미 엮인 것으로 본다 */
+export const sourceTriage = (s: Source): SourceTriage => s.triage ?? "filed";
+
+/** 정리 대기 조각(이 범주) — 최신 위 */
+export function inboxSources(state: WorkState, workspaceId: string): Source[] {
+  return state.sources.filter((s) => s.workspaceId === workspaceId && sourceTriage(s) === "inbox").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** 이 범주의 열린 정리 제안 */
+export function openTriage(manifest: WorkManifest, workspaceId: string): TriageProposal[] {
+  return manifest.triage.filter((p) => p.status === "open" && p.workspaceId === workspaceId);
+}
+
+/** 받은 것 흐름에서 조각 하나가 보일 모습 — 정리 대기 · 제안 있음 · 엮임 · 뺌 */
+export function fragmentState(s: Source, manifest: WorkManifest): "waiting" | "proposed" | "filed" | "dismissed" {
+  const t = sourceTriage(s);
+  if (t !== "inbox") return t;
+  return manifest.triage.some((p) => p.status === "open" && p.sourceIds.includes(s.id)) ? "proposed" : "waiting";
+}
+
+const touch = (s: Source, patch: Partial<Source>, nowIso: string): Source => ({ ...s, ...patch, updatedAt: nowIso });
+
+/** 조각을 뺀다(지우지 않는다 — 보관함에 남고 되돌릴 수 있다) */
+export function dismissSource(s: Source, nowIso: string): Source {
+  return touch(s, { triage: "dismissed" }, nowIso);
+}
+
+/** 뺀 조각을 다시 정리 대기로 */
+export function restoreSource(s: Source, nowIso: string): Source {
+  return touch(s, { triage: "inbox" }, nowIso);
+}
+
+/**
+ * 조각을 다른 범주로 — 사람만(잘못 던졌을 때 칩 한 번). 범주가 바뀌면 그 조각에 걸린 열린 제안은 맞지 않으니 닫는다.
+ * 이미 이어 둔 업무와의 연결은 그대로 둔다(자료는 한 벌).
+ */
+export function moveSource(manifest: WorkManifest, s: Source, workspaceId: string, nowIso: string): { manifest: WorkManifest; source: Source } {
+  if (s.workspaceId === workspaceId) return { manifest, source: s };
+  const triage = manifest.triage.map((p) => (p.status === "open" && p.sourceIds.includes(s.id) ? { ...p, status: "rejected" as const, decidedAt: nowIso } : p));
+  return { manifest: { ...manifest, triage }, source: touch(s, { workspaceId }, nowIso) };
+}
+
+/** 손으로 잇기 — 제안 없이 사람이 바로 업무에 엮는다 */
+export function fileSource(item: WorkItem, s: Source, nowIso: string, opts: { confirmCross?: boolean } = {}): { kind: "filed"; item: WorkItem; source: Source } | { kind: "needs_confirm" } {
+  const r = linkSource(item, s, nowIso, opts);
+  if (r.kind === "needs_confirm") return { kind: "needs_confirm" };
+  return { kind: "filed", item: r.item, source: sourceTriage(s) === "filed" ? s : touch(s, { triage: "filed" }, nowIso) };
+}
+
+/** Claude 가 낸 정리 제안(검사 전) */
+export interface TriageInput {
+  kind: TriageKind;
+  sourceIds: string[];
+  itemId?: string | null;
+  title?: string;
+  goal?: string;
+  concept?: string;
+  note?: string;
+  refs?: string[];
+}
+
+/** 받지 않은 이유 — 규칙에 어긋난 제안은 제안으로도 들이지 않는다(원문은 실행 기록에 남는다) */
+export type TriageSkip = "no_source" | "unknown_source" | "cross_workspace" | "unknown_item" | "missing_field" | "duplicate";
+
+const MAX_DECIDED_TRIAGE = 100;
+
+/** 열린 것은 모두, 정한 것은 최근 것만 남긴다 — 매니페스트가 한없이 커지지 않게 */
+function pruneTriage(list: TriageProposal[]): TriageProposal[] {
+  const decided = list.filter((p) => p.status !== "open").sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? "")).slice(0, MAX_DECIDED_TRIAGE);
+  const keep = new Set(decided.map((p) => p.id));
+  return list.filter((p) => p.status === "open" || keep.has(p.id));
+}
+
+const triageKey = (p: Pick<TriageProposal, "kind" | "sourceIds" | "itemId" | "title" | "concept">) =>
+  [p.kind, [...p.sourceIds].sort().join(","), p.itemId ?? "", norm(p.title ?? ""), norm(p.concept ?? "")].join("|");
+
+/**
+ * 정리 제안을 들인다 — 앱의 결과 가져오기와 MCP 가 같은 함수를 부른다.
+ * 규칙: 조각은 모두 있어야 하고 한 범주여야 하며, 이을 업무도 같은 범주여야 한다(Claude 는 범주를 넘지 않는다).
+ * 근거(refs)가 없으면 들이되 표시한다. 같은 열린 제안은 한 번만.
+ */
+export function proposeTriage(
+  state: WorkState,
+  inputs: TriageInput[],
+  nowIso: string,
+  meta: { runId?: string | null; tool?: AiTool | null } = {},
+): { manifest: WorkManifest; added: TriageProposal[]; skipped: { index: number; reason: TriageSkip }[] } {
+  const added: TriageProposal[] = [];
+  const skipped: { index: number; reason: TriageSkip }[] = [];
+  const open = new Set(state.manifest.triage.filter((p) => p.status === "open").map(triageKey));
+  inputs.forEach((x, index) => {
+    const ids = [...new Set((x.sourceIds ?? []).filter(Boolean))];
+    if (!ids.length) return skipped.push({ index, reason: "no_source" });
+    const srcs = ids.map((id) => state.sources.find((s) => s.id === id));
+    if (srcs.some((s) => !s)) return skipped.push({ index, reason: "unknown_source" });
+    const ws = (srcs[0] as Source).workspaceId;
+    if (srcs.some((s) => (s as Source).workspaceId !== ws)) return skipped.push({ index, reason: "cross_workspace" });
+    let itemId: string | null = null;
+    if (x.kind === "file_source") {
+      const item = state.items.find((i) => i.id === x.itemId);
+      if (!item) return skipped.push({ index, reason: "unknown_item" });
+      if (item.workspaceId !== ws) return skipped.push({ index, reason: "cross_workspace" });
+      itemId = item.id;
+    }
+    const title = (x.title ?? "").trim().slice(0, 200);
+    const concept = (x.concept ?? "").trim().slice(0, 80);
+    if (x.kind === "new_work" && !title) return skipped.push({ index, reason: "missing_field" });
+    if (x.kind === "concept_link" && !concept) return skipped.push({ index, reason: "missing_field" });
+    const refs = (x.refs ?? []).filter((r) => typeof r === "string" && r.trim()).slice(0, 20);
+    const p: TriageProposal = {
+      id: newId(),
+      kind: x.kind,
+      status: "open",
+      workspaceId: ws,
+      sourceIds: ids,
+      ...(itemId ? { itemId } : {}),
+      ...(x.kind === "new_work" ? { title, goal: (x.goal ?? "").trim().slice(0, 1000) } : {}),
+      ...(x.kind === "concept_link" ? { concept } : {}),
+      ...(x.note ? { note: x.note.trim().slice(0, 500) } : {}),
+      refs,
+      ...(refs.length ? {} : { flags: ["no_evidence" as const] }),
+      runId: meta.runId ?? null,
+      tool: meta.tool ?? null,
+      createdAt: nowIso,
+    };
+    const key = triageKey(p);
+    if (open.has(key)) return skipped.push({ index, reason: "duplicate" });
+    open.add(key);
+    added.push(p);
+  });
+  return { manifest: { ...state.manifest, triage: pruneTriage([...state.manifest.triage, ...added]) }, added, skipped };
+}
+
+export type TriageAccept =
+  | { kind: "ok"; manifest: WorkManifest; items: WorkItem[]; sources: Source[]; createdItemId?: string }
+  /** 제안이 없거나 이미 정했거나, 조각 · 업무가 사라졌다 */
+  | { kind: "gone" }
+  /** 사람이 고른 다른 곳이 다른 범주 — 확인 뒤 다시 */
+  | { kind: "needs_confirm" };
+
+/**
+ * 정리 제안을 받아들인다 — 사람만. 바뀐 업무 · 조각 · 매니페스트를 돌려주고, 저장은 부르는 쪽이 한다.
+ * opts.itemId: [다른 곳] — 제안 대신 사람이 고른 업무에 잇는다. opts.title: 새 업무 제목을 고쳐서.
+ */
+export function acceptTriage(state: WorkState, proposalId: string, nowIso: string, opts: { itemId?: string; title?: string; confirmCross?: boolean } = {}): TriageAccept {
+  const p = state.manifest.triage.find((x) => x.id === proposalId);
+  if (!p || p.status !== "open") return { kind: "gone" };
+  const srcs = p.sourceIds.map((id) => state.sources.find((s) => s.id === id));
+  if (srcs.some((s) => !s)) return { kind: "gone" };
+  const sources = srcs as Source[];
+  const items: WorkItem[] = [];
+  let createdItemId: string | undefined;
+  let outSources: Source[];
+
+  if (p.kind === "concept_link" && !opts.itemId) {
+    const concept = p.concept as string;
+    outSources = sources.map((s) => {
+      const has = (s.concepts ?? []).some((c) => norm(c) === norm(concept));
+      return touch(s, { triage: "filed", concepts: has ? (s.concepts ?? []) : [...(s.concepts ?? []), concept] }, nowIso);
+    });
+  } else {
+    let item: WorkItem | undefined;
+    if (opts.itemId) {
+      item = state.items.find((i) => i.id === opts.itemId);
+      if (!item) return { kind: "gone" };
+      if (item.workspaceId !== p.workspaceId && !opts.confirmCross) return { kind: "needs_confirm" };
+    } else if (p.kind === "file_source") {
+      item = state.items.find((i) => i.id === p.itemId);
+      if (!item) return { kind: "gone" };
+    } else {
+      item = createWorkItem({ workspaceId: p.workspaceId, title: (opts.title ?? p.title ?? "").trim() || sources[0].title, goal: p.goal }, nowIso);
+      createdItemId = item.id;
+    }
+    for (const s of sources) {
+      const r = linkSource(item, s, nowIso, { confirmCross: true });
+      if (r.kind !== "needs_confirm") item = r.item;
+    }
+    items.push(item);
+    outSources = sources.map((s) => (sourceTriage(s) === "filed" ? s : touch(s, { triage: "filed" }, nowIso)));
+  }
+  const triage = state.manifest.triage.map((x) => (x.id === proposalId ? { ...x, status: "accepted" as const, decidedAt: nowIso } : x));
+  return { kind: "ok", manifest: { ...state.manifest, triage: pruneTriage(triage) }, items, sources: outSources, ...(createdItemId ? { createdItemId } : {}) };
+}
+
+/** 정리 제안을 뺀다 — 조각은 정리 대기로 남는다 */
+export function rejectTriage(manifest: WorkManifest, proposalId: string, nowIso: string): WorkManifest {
+  const triage = manifest.triage.map((x) => (x.id === proposalId && x.status === "open" ? { ...x, status: "rejected" as const, decidedAt: nowIso } : x));
+  return { ...manifest, triage: pruneTriage(triage) };
 }
 
 /* ───────────────────────── 검토 카드(제안 → 사람이 확정) ───────────────────────── */
@@ -800,6 +1038,8 @@ export function upgradeItem(raw: Record<string, unknown>): WorkItem {
     it.summary ??= null;
     it.rev ??= 0;
   }
+  // 2: 영역을 없앴다 — 값은 어디로도 옮기지 않는다(영역은 범주가 되어야 할 것이지 업무 속성이 아니다)
+  delete (it as unknown as Record<string, unknown>).areaId;
   it.schemaVersion = WORK_SCHEMA_VERSION;
   return it;
 }
@@ -818,11 +1058,12 @@ export function upgradeManifest(raw: Record<string, unknown> | null, fallback: W
   m.prefs ??= { todayOrder: [] };
   m.prefs.todayOrder ??= [];
   m.migrations ??= [];
-  m.workspaces = (m.workspaces ?? fallback.workspaces).map((w) => ({
-    ...w,
-    icon: w.icon ?? (w.kind === "company" ? "business" : "person"),
-    private: w.private ?? w.kind === "company",
-  }));
+  m.triage ??= [];
+  // 기존 사용자의 범주는 그대로 — 새 기본 범주(개발 · 독서)를 억지로 더하지 않는다. 영역(areas)은 지운다
+  m.workspaces = (m.workspaces ?? fallback.workspaces).map((w) => {
+    const { areas: _areas, ...rest } = w as Workspace & { areas?: unknown };
+    return { ...rest, icon: w.icon ?? (w.kind === "company" ? "business" : "person"), private: w.private ?? w.kind === "company" };
+  });
   m.schemaVersion = WORK_SCHEMA_VERSION;
   return m;
 }

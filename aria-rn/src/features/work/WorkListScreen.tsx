@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
-import { nextActions, pendingReview, staleSources, TEMPLATE_KEYS, type Importance, type TemplateKey, type WorkItem } from "../../../../packages/core/src/work.ts";
+import { nextActions, pendingReview, staleSources, TEMPLATE_KEYS, type Importance, type TemplateKey, type WorkItem, type WorkStatus } from "../../../../packages/core/src/work.ts";
 import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -38,9 +38,6 @@ function NewWork({ c, onDone }: { c: Palette; onDone: () => void }) {
   const { state, workspaceId, createItem } = useWork();
   const ws = state.manifest.workspaces.find((w) => w.id === workspaceId) ?? state.manifest.workspaces[0];
   const [title, setTitle] = useState("");
-  const [picked, setAreaId] = useState(ws.areas[0]?.id ?? "");
-  // 작업실을 바꾸면 그 작업실의 첫 영역
-  const areaId = ws.areas.some((a) => a.id === picked) ? picked : (ws.areas[0]?.id ?? "");
   const [tpl, setTpl] = useState<TemplateKey | "none">("none");
   const [importance, setImportance] = useState<Importance>("normal");
   const [due, setDue] = useState("");
@@ -49,7 +46,7 @@ function NewWork({ c, onDone }: { c: Palette; onDone: () => void }) {
   const submit = async () => {
     if (!title.trim() || !dueOk) return;
     setBusy(true);
-    const item = await createItem({ workspaceId: ws.id, areaId, title, templateKey: tpl === "none" ? null : tpl, importance, due: due || null });
+    const item = await createItem({ workspaceId: ws.id, title, templateKey: tpl === "none" ? null : tpl, importance, due: due || null });
     setBusy(false);
     if (item) {
       onDone();
@@ -60,7 +57,6 @@ function NewWork({ c, onDone }: { c: Palette; onDone: () => void }) {
     <Card c={c}>
       <H c={c}>{t("work.newIn", { workspace: ws.name })}</H>
       <Field c={c} value={title} onChangeText={setTitle} placeholder={t("work.titlePlaceholder")} accessibilityLabel={t("work.title")} onSubmitEditing={() => void submit()} />
-      {ws.areas.length > 1 ? <Choice c={c} label={t("work.area")} value={areaId} onChange={setAreaId} options={ws.areas.map((a) => ({ key: a.id, label: a.name }))} /> : null}
       <Choice c={c} label={t("work.template")} value={tpl} onChange={setTpl} options={[{ key: "none" as const, label: t("template.none") }, ...TEMPLATE_KEYS.map((k) => ({ key: k, label: t(`template.${k}.name`) }))]} />
       {tpl !== "none" ? <Muted c={c}>{t(`template.${tpl}.goal`)}</Muted> : null}
       <Choice c={c} label={t("work.importance")} value={importance} onChange={setImportance} options={(["high", "normal", "low"] as const).map((k) => ({ key: k, label: t(`importance.${k}`) }))} />
@@ -98,6 +94,8 @@ function Row({ c, item }: { c: Palette; item: WorkItem }) {
   );
 }
 
+const ACTIVE_GROUPS: WorkStatus[] = ["active", "waiting", "blocked", "planned"];
+
 export default function WorkListScreen() {
   const c = usePalette();
   const t = useT();
@@ -111,7 +109,6 @@ export default function WorkListScreen() {
     if (params.new) router.setParams({ new: undefined });
   };
   if (!ready) return <ActivityIndicator style={{ flex: 1, backgroundColor: c.bg }} color={c.muted} />;
-  const ws = state.manifest.workspaces.find((w) => w.id === workspaceId);
   const inWs = state.items.filter((i) => i.workspaceId === workspaceId);
   const active = inWs.filter((i) => i.status !== "done" && i.status !== "archived").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const closed = inWs.filter((i) => i.status === "done" || i.status === "archived");
@@ -120,12 +117,13 @@ export default function WorkListScreen() {
       <WorkspaceChips c={c} />
       {creating ? <NewWork c={c} onDone={close} /> : <Btn c={c} primary label={t("work.new")} onPress={() => setCreating(true)} />}
       {!active.length && !creating ? <Muted c={c}>{t("work.empty")}</Muted> : null}
-      {(ws?.areas ?? []).map((a) => {
-        const list = active.filter((i) => i.areaId === a.id);
+      {/* 범주 바로 아래가 업무 — 상태별로 묶는다(진행 중 · 대기 · 막힘 · 계획) */}
+      {ACTIVE_GROUPS.map((st) => {
+        const list = active.filter((i) => i.status === st);
         if (!list.length) return null;
         return (
-          <View key={a.id} style={{ gap: 8 }}>
-            {(ws?.areas.length ?? 0) > 1 ? <Text style={{ fontSize: 13, fontWeight: "700", color: c.muted }}>{a.name}</Text> : null}
+          <View key={st} style={{ gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: c.muted }}>{t(`work.status.${st}`)}</Text>
             {list.map((i) => (
               <Row key={i.id} c={c} item={i} />
             ))}
