@@ -417,21 +417,8 @@ function checkRefs(refs: string[] | undefined, run: AiRun, linesOf: ((sourceId: 
  * 결과를 업무에 들인다. 원문 해시가 같으면 다시 들이지 않는다(저장소가 원문을 raw/{hash}.txt 로 따로 남긴다).
  * 바로 반영: 원문 · 수행 내용 · 요약 초안(되돌리기 가능). 제안으로: 결정 · 할 일 · 마감 변경 · 최신본.
  */
-/** 실행 도구(tools/handoff/run.mjs)가 결과 맨 앞에 붙이는 한 줄 — 모델 · 걸린 시간. 없으면 null */
-export function runMeta(text: string): { executor?: string; model?: string; latencyMs?: number } | null {
-  const m = /^\s*<!--\s*llmwiki-run\s+(\{[^\n]*\})\s*-->/.exec(text);
-  if (!m) return null;
-  try {
-    const o = JSON.parse(m[1]) as Record<string, unknown>;
-    return {
-      ...(typeof o.executor === "string" ? { executor: o.executor.slice(0, 40) } : {}),
-      ...(typeof o.model === "string" ? { model: o.model.slice(0, 120) } : {}),
-      ...(typeof o.latencyMs === "number" && o.latencyMs >= 0 ? { latencyMs: Math.round(o.latencyMs) } : {}),
-    };
-  } catch {
-    return null;
-  }
-}
+export { runMeta } from "./pageHandoff.ts";
+import { runMeta } from "./pageHandoff.ts";
 
 export interface ImportOptions {
   runId?: string | null;

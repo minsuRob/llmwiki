@@ -13,8 +13,10 @@ import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
 import LexicalEditor from "../editor/LexicalEditor";
 import { confirmAsk } from "./io";
+import { PageHandoffPanel } from "./PageHandoffPanel";
 import { pageLabel } from "./PageTree";
 import { Fold, msgText, Muted, Pill, when } from "./parts";
+import { DesktopRunLines } from "./DesktopRunLines";
 import { ProposalStrip } from "./ProposalCompare";
 import { SourcePicker } from "./SourcePicker";
 import { useWork, type SaveState } from "./WorkContext";
@@ -135,6 +137,7 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
       {/* 제목이 바깥에서 바뀌면(트리에서 이름 바꾸기) 입력칸을 새로 */}
       <TitleRow key={`${page.id}:${page.title}`} c={c} page={page} />
       <Status c={c} page={page} />
+      <DesktopRunLines c={c} itemId={id} />
       {doc ? <ProposalStrip c={c} page={page} current={doc.body} onChanged={() => setEpoch((e) => e + 1)} /> : null}
 
       {doc ? (
@@ -199,6 +202,10 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
           {adding ? <SourcePicker c={c} page={page} doc={doc} onDone={() => setAdding(false)} /> : <Btn c={c} small label={t("source.add")} onPress={() => setAdding(true)} />}
         </Fold>
       ) : null}
+
+      <Fold c={c} title={t("pageHandoff.title")}>
+        <PageHandoffPanel c={c} pageId={id} />
+      </Fold>
 
       {doc ? (
         <Fold c={c} title={t("page.history")} count={doc.changes.length}>

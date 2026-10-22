@@ -10,7 +10,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { DriveFileStore } from "../../packages/core/src/drive.ts";
-import { createPage } from "../../packages/core/src/pages.ts";
+import { acceptBodyProposal, createPage, editBody, openBodyProposals, syncMeta } from "../../packages/core/src/pages.ts";
 import { addWorkspace, createWorkItem, defaultManifest } from "../../packages/core/src/work.ts";
 import { WorkRepo } from "../../packages/core/src/workStore.ts";
 import { startLocalDrive } from "../local-drive/server.mjs";
@@ -70,7 +70,8 @@ test("도구 — 쓰기는 남기기 · 제안뿐이고 확정 · 삭제 · 이�
   assert.equal(init.result.serverInfo.name, "llmwiki");
   const list = await rpc("tools/list");
   const names = list.result.tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ["llmwiki_capture", "llmwiki_inbox", "llmwiki_pages", "llmwiki_propose", "llmwiki_read", "llmwiki_work", "llmwiki_workspaces"]);
+  assert.deepEqual(names, ["llmwiki_capture", "llmwiki_inbox", "llmwiki_pages", "llmwiki_propose", "llmwiki_propose_page", "llmwiki_read", "llmwiki_work", "llmwiki_workspaces"]);
+  assert.ok(!names.some((n) => /apply|accept|delete|move|trash/.test(n)), "적용 · 삭제 · 이동 도구는 없다");
 });
 
 test("남기기 → 정리 묶음 → 제안 → 앱 저장소에 정리 대기 조각과 열린 제안이 생긴다", async () => {
@@ -156,8 +157,60 @@ test("색인이 생기면(앱이 이행 · 새 페이지) 색인만 읽고, 본�
   assert.match((await tool("llmwiki_pages", { workspace: "개인", under: top.page.id })).text, /^- 피트인/);
   const read = await tool("llmwiki_read", { page: top.page.id });
   assert.match(read.text, /# 종합\n- 피트인 1순위/);
-  assert.match(read.text, /## 하위 페이지 1개\n- 피트인 — AI 엔지니어/);
+  assert.match(read.text, /## 하위 페이지 1개\n- \[P2\] 피트인 — AI 엔지니어/);
   assert.equal((await tool("llmwiki_read", { page: "없는-페이지" })).error, true);
+});
+
+test("하위 다이제스트 · 전문(cursor) → 본문 제안 → 앱에서 받기: 새것은 바로, 그사이 사람이 고친 것은 낡음(stale)", async () => {
+  const now = new Date().toISOString();
+  const st0 = await repo.loadPages();
+  const top = createPage(st0.pages, { workspaceId: "ws-personal", title: "공고 모음", body: "# 공고 종합\n- 아직 없음" }, now);
+  let pages = top.pages;
+  const ids = [];
+  for (let i = 0; i < 60; i++) {
+    const k = createPage(pages, { workspaceId: "ws-personal", parentId: top.page.id, title: `회사${i} — 백엔드`, body: `## 주요 업무\n\n${"업무 ".repeat(400)}${i}` }, now);
+    pages = k.pages;
+    ids.push(k.page.id);
+    await repo.savePageDoc(k.doc, now);
+  }
+  await repo.savePageDoc(top.doc, now);
+  assert.equal((await repo.saveIndexWith("ws-personal", st0.pages, () => pages, now)).status, "saved");
+
+  const digest = await tool("llmwiki_read", { page: top.page.id, children: "digest" });
+  assert.match(digest.text, /## 하위 페이지 60개 — 다이제스트\n- \[P2\] 회사0 — 백엔드 \(\d+자\)/);
+  const base = /본문 지문: (\w+)/.exec(digest.text)[1];
+  const full1 = await tool("llmwiki_read", { page: top.page.id, children: "full" });
+  const next = Number(/다음 cursor: (\d+)/.exec(full1.text)?.[1]);
+  assert.ok(next > 10 && next < 60, `다음 cursor ${next}`);
+  const full2 = await tool("llmwiki_read", { page: top.page.id, children: "full", cursor: next });
+  assert.doesNotMatch(full2.text, /## \[P1\] 본문/, "이어 읽을 때는 본문을 다시 싣지 않는다");
+  assert.match(full2.text, new RegExp(`### \\[P${next + 2}\\]`));
+
+  // 제안 둘 — 하나는 그대로 받고, 하나는 그사이 사람이 고쳐 낡는다
+  const p1 = await tool("llmwiki_propose_page", { page: top.page.id, body: "# 공고 종합\n- 회사0 1순위", note: "마감 순", refs: ["P2"], base, tool: "claude" });
+  assert.equal(p1.error, false, p1.text);
+  assert.match(p1.text, /아직 적용 아님/);
+  assert.equal((await tool("llmwiki_propose_page", { page: top.page.id, body: "# 공고 종합\n- 회사0 1순위", base })).text, "이미 낸 같은 제안이에요.");
+  assert.equal((await tool("llmwiki_propose_page", { page: "없는", body: "x" })).error, true);
+  const kidBase = /본문 지문: (\w+)/.exec((await tool("llmwiki_read", { page: ids[0] })).text)[1];
+  assert.equal((await tool("llmwiki_propose_page", { page: ids[0], body: "## 주요 업무\n\nAI 가 줄임", base: kidBase })).error, false);
+
+  // 앱 쪽 — 같은 core 함수로 받는다(문서를 읽고, 원문은 raw/ 에서)
+  const app = await repo.loadPages();
+  const open = openBodyProposals(app.manifest);
+  assert.equal(open.length, 2);
+  assert.ok(open.every((p) => p.origin === "ai" && p.status === "open"), "MCP 는 열린 제안만 만든다");
+  const forTop = open.find((p) => p.pageId === top.page.id);
+  const forKid = open.find((p) => p.pageId === ids[0]);
+  const topMeta = app.pages.find((p) => p.id === top.page.id);
+  const topDoc = await repo.readDoc(topMeta);
+  const a = acceptBodyProposal(app.manifest, topMeta, topDoc, forTop.id, await repo.readRaw(forTop.rawHash), now);
+  assert.equal(a.kind, "ok", "새것은 바로 받는다");
+  const kidMeta = app.pages.find((p) => p.id === ids[0]);
+  const kidDoc = editBody(await repo.readDoc(kidMeta), "## 주요 업무\n\n사람이 먼저 고침", now);
+  const stale = acceptBodyProposal(a.manifest, syncMeta(kidMeta, kidDoc, now), kidDoc, forKid.id, await repo.readRaw(forKid.rawHash), now);
+  assert.equal(stale.kind, "stale", "그사이 사람이 고쳤으면 낡음");
+  assert.equal(acceptBodyProposal(a.manifest, syncMeta(kidMeta, kidDoc, now), kidDoc, forKid.id, await repo.readRaw(forKid.rawHash), now, { force: true }).kind, "ok");
 });
 
 test("사용자가 앱에서 새로 만든 범주에도 남길 수 있다(MCP 는 만들지 않는다)", async () => {

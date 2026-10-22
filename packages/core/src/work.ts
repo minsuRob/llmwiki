@@ -9,6 +9,7 @@
  * - 같은 결과를 두 번 가져와도 한 번만 들어간다(원문 해시).
  * - 화면에 보일 고정 문구는 여기 두지 않는다 — 문구 키(msg)와 값만 남기고 앱이 번역 파일로 그린다.
  */
+import type { PageRun } from "./pageHandoff.ts";
 import { createPage, linkSourceToPage, pageOf, syncMeta, type BodyProposal, type PageDoc, type PageMeta } from "./pages.ts";
 import { newId, type Task } from "./types.ts";
 
@@ -295,6 +296,8 @@ export interface WorkManifest {
   triageRuns?: TriageRun[];
   /** 페이지 본문 제안(pages.ts) — 열린 것은 모두, 정한 것은 최근 것만 */
   bodyProposals?: BodyProposal[];
+  /** 페이지 넘기기 기록 — 묶음의 P1 · P2 가 어느 페이지인지 · 그때 본문 지문(pageHandoff.ts). 최근 것만 */
+  pageRuns?: PageRun[];
 }
 
 export interface TriageRun {
@@ -1125,6 +1128,7 @@ export function upgradeManifest(raw: Record<string, unknown> | null, fallback: W
   m.triage ??= [];
   m.triageRuns ??= [];
   m.bodyProposals ??= [];
+  m.pageRuns ??= [];
   // 3: 열린 new_work(옛 MCP · 옛 묶음) → new_page. 목표는 note 로만 남긴다
   m.triage = m.triage.map((p) =>
     p.kind === "new_work" && p.status === "open" ? { ...p, kind: "new_page" as const, note: [p.note, p.goal].filter((v) => v?.trim()).join(" — ") || undefined, goal: undefined } : p,

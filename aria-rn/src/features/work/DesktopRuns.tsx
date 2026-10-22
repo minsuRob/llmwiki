@@ -21,10 +21,11 @@ export interface DesktopRun {
   ahead?: number;
   code?: RunErrorCode;
   message?: string;
-  counts?: { outputs: number; decisions: number; tasks: number };
   rawOnly?: boolean;
   /** 받은 것 정리 실행 — 들인 정리 제안 수 */
   triageAdded?: number;
+  /** 페이지 넘기기 실행 — 들인 본문 제안 수 */
+  pageAdded?: number;
 }
 
 interface DesktopApi {
@@ -42,13 +43,15 @@ const NONE: DesktopApi = { available: false, caps: null, runs: {}, start: async 
 
 export function DesktopRunsProvider({ children }: { children: React.ReactNode }) {
   const bridge = useMemo(() => desktop(), []);
-  const { ready, importTriageText } = useWork();
+  const { ready, importTriageText, importPageText } = useWork();
   const [caps, setCaps] = useState<DesktopCapabilities | null>(null);
   const [runs, setRuns] = useState<Record<string, DesktopRun>>({});
   const triageRef = useRef(importTriageText);
+  const pageRef = useRef(importPageText);
   useEffect(() => {
     triageRef.current = importTriageText;
-  }, [importTriageText]);
+    pageRef.current = importPageText;
+  }, [importTriageText, importPageText]);
   /** 같은 결과를 두 번 가져오지 않게(이벤트와 pending 이 겹칠 때) */
   const taking = useRef(new Set<string>());
 
@@ -78,8 +81,15 @@ export function DesktopRunsProvider({ children }: { children: React.ReactNode })
           await bridge.ack(r.runId);
           return;
         }
-        // 페이지 결과는 아직 들이지 않는다 — ack 하지 않고 셸에 남겨 둔다(다음 판에서 본문 제안으로)
-        patch(r.runId, { status: "save_failed" });
+        // 페이지 넘기기 — 대상은 페이지 id. 결과는 본문 제안으로
+        const res = await pageRef.current(r.text, { runId: r.runId, tool: r.executor as AiTool });
+        if (res.kind === "save_failed") {
+          patch(r.runId, { status: "save_failed" });
+          return; // ack 하지 않는다 — 다음에 다시
+        }
+        if (res.kind === "imported") patch(r.runId, { status: "imported", pageAdded: res.added.length, rawOnly: res.warnings.includes("no_block") });
+        else patch(r.runId, { status: res.kind === "duplicate" ? "duplicate" : "failed", ...(res.kind === "no_run" ? { code: "no_result" as RunErrorCode } : {}) });
+        await bridge.ack(r.runId);
       } finally {
         taking.current.delete(r.runId);
       }
@@ -162,7 +172,7 @@ export function useDesktopRuns(): DesktopApi {
   return useContext(Ctx) ?? NONE;
 }
 
-/** 이 업무의 실행들(최근 것이 뒤) */
+/** 이 페이지의 실행들(최근 것이 뒤) */
 export function runsOf(runs: Record<string, DesktopRun>, itemId: string): DesktopRun[] {
   return Object.values(runs)
     .filter((r) => r.itemId === itemId)

@@ -50,6 +50,7 @@ import {
   type WorkManifest,
 } from "../../../../packages/core/src/work.ts";
 import { importTriage, prepareTriage as prepareTriagePack, type TriageImport, type TriageLabels } from "../../../../packages/core/src/workTriage.ts";
+import { importPageResult, preparePageRun, type PagePackLabels, type PageResultImport } from "../../../../packages/core/src/pageHandoff.ts";
 import { planRevert, planScrapMigration } from "../../../../packages/core/src/workMigrate.ts";
 import { copyStore, KvFileStore, MirroredStore, PATHS, WorkRepo, type BodyCache, type ConflictCopy, type FileStore, type KV, type SaveOutcome } from "../../../../packages/core/src/workStore.ts";
 import { useI18n, type T } from "../../i18n";
@@ -141,6 +142,9 @@ interface WorkApi {
   prepareTriage: (tool: AiTool) => Promise<{ markdown: string; runId: string; count: number; dropped: number } | null>;
   importTriageText: (text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<TriageImport | { kind: "save_failed" }>;
   saveManifest: (fn: (m: WorkManifest) => WorkManifest) => Promise<SaveState>;
+  /** 페이지 넘기기 — 이 페이지와 하위를 AI 묶음으로(기록은 매니페스트에) · 돌아온 결과를 본문 제안으로 */
+  preparePage: (pageId: string, input: { tool: AiTool; scope: string }) => Promise<{ markdown: string; runId: string; count: number; droppedBodies: number; droppedLines: number } | null>;
+  importPageText: (text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<PageResultImport | { kind: "save_failed" }>;
   /** 본문 제안 */
   proposalBody: (p: BodyProposal) => Promise<string | null>;
   acceptBody: (proposalId: string, opts?: { force?: boolean }) => Promise<AcceptOutcome>;
@@ -171,6 +175,15 @@ function triageLabelsFrom(t: T): TriageLabels {
   const keep = Object.fromEntries(["workspace", "run", "at", "count", "titles"].map((k) => [k, `{${k}}`]));
   return Object.fromEntries(keys.map((k) => [k, t(`triagePack.${k}`, keep)])) as unknown as TriageLabels;
 }
+
+function pagePackLabelsFrom(t: T): PagePackLabels {
+  const keys = ["title", "meta", "intro", "path", "page", "children", "childrenMore", "bodies", "bodiesMore", "scope", "rulesTitle", "rules", "returnFormat", "returnGuide"] as const;
+  const keep = Object.fromEntries(["title", "run", "at", "count", "workspace", "path"].map((k) => [k, `{${k}}`]));
+  return Object.fromEntries(keys.map((k) => [k, t(`pagePack.${k}`, keep)])) as unknown as PagePackLabels;
+}
+
+/** 묶음에 본문을 넣을 하위 페이지 수 — 그 뒤는 다이제스트로만(예산은 core 가 다시 자른다) */
+const PACK_BODIES = 40;
 
 /** 이행 본문의 고정 문구 — 번역 파일 migrate.* */
 export function migrateLabelsFrom(t: T): MigrateLabels {
@@ -816,6 +829,40 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   /* ───────── 본문 제안 ───────── */
 
+  const preparePage = useCallback<WorkApi["preparePage"]>(
+    async (pageId, input) => {
+      const repo = await getRepo();
+      const meta = metaOf(pageId);
+      if (!repo || !meta) return null;
+      const kids = childrenOf(stateRef.current.pages, meta.workspaceId, meta.id).slice(0, PACK_BODIES);
+      const bodies = await repo.readBodies([meta, ...kids]);
+      const own = docsRef.current[pageId];
+      if (own) bodies.set(pageId, own.body);
+      const r = preparePageRun(stateRef.current, pageId, input, pagePackLabelsFrom(tRef.current), nowIso(), bodies);
+      if (!r) return null;
+      // 기록이 저장되지 않아도 묶음은 복사할 수 있다 — 다만 그러면 가져올 때 P1 · P2 를 되짚지 못한다
+      await saveManifest((cur) => mergeBodyProposals(cur, r.manifest));
+      return { markdown: r.markdown, runId: r.run.id, count: r.run.refKeys.length, droppedBodies: r.droppedBodies, droppedLines: r.droppedLines };
+    },
+     
+    [getRepo, saveManifest],
+  );
+
+  const importPageText = useCallback<WorkApi["importPageText"]>(
+    async (text, opts) => {
+      const repo = await getRepo();
+      if (!repo) return { kind: "save_failed" };
+      const r = importPageResult(stateRef.current, text, nowIso(), opts);
+      if (r.kind !== "imported") return r;
+      // 원문부터 — 결과 원문 · 제안마다 본문(받을 때 읽는다). 하나라도 못 쓰면 제안을 들이지 않는다
+      const raws = await Promise.all([repo.saveRaw(r.rawHash, text), ...r.added.map((a) => repo.saveRaw(a.proposal.rawHash, a.body))]);
+      if (raws.some((x) => !x.ok)) return { kind: "save_failed" };
+      const s = await saveManifest((cur) => mergeBodyProposals(cur, r.manifest));
+      return s === "saved" ? r : { kind: "save_failed" };
+    },
+    [getRepo, saveManifest],
+  );
+
   const rawText = useCallback(async (hash: string) => (await (await getRepo())?.readRaw(hash).catch(() => null)) ?? null, [getRepo]);
   const saveRawText = useCallback(async (hash: string, text: string) => !!(await (await getRepo())?.saveRaw(hash, text))?.ok, [getRepo]);
   const proposalBody = useCallback<WorkApi["proposalBody"]>((p) => rawText(p.rawHash), [rawText]);
@@ -1073,6 +1120,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       prepareTriage,
       importTriageText,
       saveManifest,
+      preparePage,
+      importPageText,
       proposalBody,
       acceptBody,
       rejectBody,
@@ -1089,7 +1138,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       migrateScraps,
       revertMigration,
     }),
-    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
+    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

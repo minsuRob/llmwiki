@@ -550,7 +550,7 @@ export function rejectBodyProposal(manifest: WorkManifest, proposalId: string, n
   return { ...manifest, bodyProposals: pruneBody(bodyProposals) };
 }
 
-/** 본문 제안을 다른 쪽 최신 매니페스트에 합친다(mergeTriage 옆) — 같은 id 는 정한 쪽이 이긴다 */
+/** 본문 제안 · 이행 기록 · 페이지 넘기기 기록을 다른 쪽 최신 매니페스트에 합친다(mergeTriage 옆) — 같은 id 는 정한 쪽이 이긴다 */
 export function mergeBodyProposals(cur: WorkManifest, mine: WorkManifest): WorkManifest {
   const byId = new Map((cur.bodyProposals ?? []).map((p) => [p.id, p]));
   for (const p of mine.bodyProposals ?? []) {
@@ -559,7 +559,14 @@ export function mergeBodyProposals(cur: WorkManifest, mine: WorkManifest): WorkM
   }
   const migrations = [...(cur.migrations ?? [])];
   for (const r of mine.migrations ?? []) if (!migrations.some((x) => x.id === r.id)) migrations.push(r);
-  return { ...cur, bodyProposals: pruneBody([...byId.values()]), migrations };
+  // 페이지 넘기기 기록도 — 끝난 쪽이 이긴다(최근 20개)
+  const runs = new Map((cur.pageRuns ?? []).map((r) => [r.id, r]));
+  for (const r of mine.pageRuns ?? []) {
+    const c = runs.get(r.id);
+    if (!c || (!c.finishedAt && r.finishedAt)) runs.set(r.id, r);
+  }
+  const pageRuns = [...runs.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).slice(-20);
+  return { ...cur, bodyProposals: pruneBody([...byId.values()]), migrations, pageRuns };
 }
 
 /* ───────────────────────── 가져오기(범용) ───────────────────────── */

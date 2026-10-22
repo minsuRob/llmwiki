@@ -1,6 +1,6 @@
 /**
- * 바로 실행 상태 — 업무 상세 위 · 위임 패널 안에 한 줄씩. 패널을 닫아도 실행은 이어진다.
- * 끝나면 결과는 이미 '제안'으로 들어와 있다(아래 검토 카드).
+ * 바로 실행 상태 — 페이지 위에 한 줄씩. 넘기기 패널을 닫아도 실행은 이어진다.
+ * 끝나면 결과는 이미 '본문 제안'으로 들어와 있다(페이지 위 띠).
  */
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
@@ -42,7 +42,7 @@ function Line({ c, run, now }: { c: Palette; run: DesktopRun; now: number }) {
   const bad = run.status === "failed" || run.status === "save_failed";
   let text: string;
   if (run.status === "queued") text = t("desktop.queued", { tool, ahead: run.ahead ?? 0, elapsed });
-  else if (run.status === "imported") text = run.rawOnly ? t("desktop.importedRaw", { tool }) : t("desktop.imported", { tool, ...(run.counts ?? { outputs: 0, decisions: 0, tasks: 0 }) });
+  else if (run.status === "imported") text = run.rawOnly ? t("desktop.importedRaw", { tool }) : t("desktop.imported", { tool, count: run.pageAdded ?? 0 });
   else if (run.status === "failed") text = t("desktop.failed", { tool, reason: t(`desktop.code.${run.code ?? "exec_failed"}`) });
   else if (run.status === "running") text = t("desktop.running", { tool, elapsed });
   else text = t(`desktop.${run.status}`, { tool, elapsed });
