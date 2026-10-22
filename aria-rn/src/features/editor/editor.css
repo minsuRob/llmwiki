@@ -392,3 +392,14 @@ body:has(> #root .lex-dom) {
   font-family: Menlo, Consolas, monospace;
   font-size: 94%;
 }
+
+/* ── 읽기 전용 뷰어(LexicalViewer) — 바깥 여백 없이, 커서 없이 ── */
+.lex-root.lex-viewer {
+  padding: 0;
+}
+.lex-viewer .lex-input {
+  padding: 12px 14px 20px;
+  font-size: 15px;
+  caret-color: transparent;
+  cursor: default;
+}
