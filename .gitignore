@@ -10,3 +10,9 @@ functions/.env
 
 # 참고용 예제(받아서 보기만 함)
 vendor/
+
+# Claude Code 세션 설정 · 작업 트리(worktrees)
+.claude/
+
+# 개인 산출물(이미지 생성 · 디자인 프롬프트)
+output/
