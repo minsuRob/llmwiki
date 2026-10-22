@@ -55,6 +55,20 @@ node tools/handoff/run.mjs claude "<업무>-ai.md"
 - Gemma 가 기다리다 끊기면: `node tools/handoff/run.mjs gemma --fetch <작업 id>`
 - 실행 본문은 `tools/handoff/lib.mjs` — 터미널(`run.mjs`)과 데스크톱 셸이 같은 코드를 쓴다. 시험: `node --test 'tools/handoff/*.test.mjs'`
 
+### 받은 것 · MCP — 대화 중에 남기고 Claude 가 정리 제안
+
+오늘 화면 맨 위 입력란(또는 다른 화면의 +)에 붙여 넣으면 지금 고른 범주의 '받은 것'(정리 대기)으로 들어간다. 'Claude 에게 정리 맡기기'는 정리 대기 조각을 묶어 Claude · Codex · Gemma 에 보내고(데스크톱 셸이면 바로 실행), 돌아온 정리 제안(업무에 잇기 · 새 업무 · 개념)을 받기 · 빼기로 확정한다. 설계: [docs/inbox-today.md](docs/inbox-today.md).
+
+Claude Code · Codex 가 대화 중에 직접 남기고 정리 제안을 내게 하려면 MCP 서버를 등록한다(쓰기는 남기기 · 제안뿐, 비공개 범주는 남기기만):
+
+```bash
+claude mcp add llmwiki -- node <저장소>/tools/llmwiki-mcp/server.mjs --local-drive http://127.0.0.1:8790
+```
+
+- 도구: `llmwiki_workspaces` · `llmwiki_capture` · `llmwiki_work` · `llmwiki_read` · `llmwiki_inbox` · `llmwiki_propose`
+- 실제 Drive: `--local-drive` 대신 `LLMWIKI_DRIVE_TOKEN`(또는 `LLMWIKI_DRIVE_TOKEN_CMD`) — 토큰 받는 길은 열린 문제(docs/architecture.md 원칙 7)
+- 시험: `npm run test:mcp`
+
 ### 데스크톱 셸(Electron) — 바로 실행
 
 `desktop/` 은 배포된 웹(`https://llmwiki-minsu.web.app`)을 그대로 띄우고 실행만 더하는 얇은 셸이다. 화면은 웹 배포(`npm run deploy:web`)로 바뀌고 셸은 다시 설치하지 않아도 된다. 원칙: `docs/architecture.md` "데스크톱 셸".

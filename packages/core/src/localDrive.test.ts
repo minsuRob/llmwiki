@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import { DriveFileStore, getMeta, readText, type DriveDeps, type Fetch } from "./drive.ts";
-import { applyRemoteMeta, createWorkItem, defaultManifest, linkSource, newSource, setSummary, setWorkStatus, staleSources, type Source, type WorkItem } from "./work.ts";
+import { applyRemoteMeta, createWorkItem, defaultManifest, linkSource, mergeTriage, newSource, proposeTriage, setSummary, setWorkStatus, staleSources, type Source, type WorkItem } from "./work.ts";
 import { PATHS, WorkRepo } from "./workStore.ts";
 
 // @ts-expect-error — 순수 JS 개발 도구
@@ -181,4 +181,33 @@ test("빠른 읽기 — 새 저장소가 폴더를 동시에 찾아도 한 번�
   for (let i = 0; i < 12; i++) assert.equal((await repo.saveItem(createWorkItem({ workspaceId: "ws-personal", title: `병렬 ${i}` }, NOW), NOW)).status, "saved");
   const s = await new WorkRepo(new DriveFileStore(deps, names2), manifest(), () => "").load();
   assert.equal(s.items.filter((i) => i.title.startsWith("병렬 ")).length, 12);
+});
+
+test("두 곳이 번갈아 쓰기(앱 + MCP) — 남이 고친 매니페스트도 지금 버전으로 읽고, 충돌하면 최신본에 내 정리 제안만 얹는다(사본 없음)", async () => {
+  const mk = () => new WorkRepo(new DriveFileStore(deps, names), manifest());
+  const app = mk();
+  const mcp = mk();
+  const copiesBefore = (await mk().store.list("conflicts/")).length;
+  const NOW2 = "2026-10-22T11:00:00.000Z";
+  let a = await app.load();
+  assert.equal((await app.saveManifest(a.manifest, NOW2)).status, "saved");
+  const src = newSource({ workspaceId: "ws-personal", provider: "paste", title: "조각", text: "조각", triage: "inbox" }, NOW2);
+  await app.saveSource(src, NOW2);
+
+  // MCP 가 제안을 쓴다
+  const m = await mcp.load();
+  const p = proposeTriage(m, [{ kind: "concept_link", sourceIds: [src.id], concept: "피트인", refs: ["S1:1"] }], NOW2);
+  assert.equal((await mcp.saveManifestWith(m.manifest, (cur) => mergeTriage(cur, p.manifest), NOW2)).status, "saved");
+
+  // 앱은 낡은 매니페스트를 들고 순서를 바꾼다 — 충돌하면 최신본(제안 있음)에 같은 바꿈을 다시 얹는다
+  const r = await app.saveManifestWith(a.manifest, (cur) => ({ ...cur, prefs: { ...cur.prefs, todayOrder: ["x"] } }), NOW2);
+  assert.equal(r.status, "saved");
+  a = await mk().load();
+  assert.deepEqual(a.manifest.prefs.todayOrder, ["x"]);
+  assert.equal(a.manifest.triage.length, 1, "MCP 가 낸 제안이 남는다");
+  assert.equal((await mk().store.list("conflicts/")).length, copiesBefore, "매니페스트는 사본을 남기지 않는다");
+
+  // 다시 읽은 뒤에는 남이 쓴 것도 지금 버전으로 — 그냥 저장도 충돌하지 않는다
+  const fresh = await mcp.load();
+  assert.equal((await mcp.saveManifest(fresh.manifest, NOW2)).status, "saved");
 });

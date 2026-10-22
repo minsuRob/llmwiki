@@ -291,7 +291,7 @@ export class WorkRepo {
     return upgradeItem(JSON.parse(f.text) as Record<string, unknown>);
   }
 
-  private async put<T extends { rev: number }>(path: string, value: T, nowIso: string, parse: (text: string) => T): Promise<SaveOutcome<T>> {
+  private async put<T extends { rev: number }>(path: string, value: T, nowIso: string, parse: (text: string) => T, opts: { noCopy?: boolean } = {}): Promise<SaveOutcome<T>> {
     const next = { ...value, rev: value.rev + 1 };
     const text = JSON.stringify(next, null, 1);
     try {
@@ -299,6 +299,14 @@ export class WorkRepo {
       this.versions.set(path, version);
       return { status: "saved", value: next };
     } catch (e) {
+      if (e instanceof ConflictError && opts.noCopy) {
+        let remote: T | null = null;
+        if (e.remote) {
+          this.versions.set(path, e.remote.version);
+          remote = parse(e.remote.text);
+        }
+        return { status: "conflict", remote, copyPath: "" };
+      }
       if (e instanceof ConflictError) {
         const copyPath = PATHS.conflict(path, nowIso);
         // 내 쪽을 사본으로 — 이것까지 실패하면 저장 실패로 알린다(조용히 버리지 않는다)
@@ -335,6 +343,22 @@ export class WorkRepo {
 
   async saveSource(source: Source, nowIso: string): Promise<SaveOutcome<Source>> {
     return this.put(PATHS.source(source.id), source, nowIso, (t) => upgradeSource(JSON.parse(t) as Record<string, unknown>));
+  }
+
+  /**
+   * 매니페스트를 바꿔 쓴다 — 다른 곳(다른 기기 · MCP)이 먼저 고쳤으면 그 최신본에 fn 을 다시 적용한다(최대 3번).
+   * 바꾸는 내용을 함수로 받으므로 사본 없이 합칠 수 있다. 그래도 안 되면 conflict.
+   */
+  async saveManifestWith(cur: WorkManifest, fn: (m: WorkManifest) => WorkManifest, nowIso: string): Promise<SaveOutcome<WorkManifest>> {
+    let base = cur;
+    for (let i = 0; i < 3; i++) {
+      const next = fn(base) as WorkManifest & { rev?: number };
+      const r = await this.put(PATHS.manifest, { ...next, rev: next.rev ?? 0 }, nowIso, (t) => upgradeManifest(JSON.parse(t) as Record<string, unknown>, next) as WorkManifest & { rev: number }, { noCopy: true });
+      if (r.status !== "conflict") return r as SaveOutcome<WorkManifest>;
+      if (!r.remote) return r as SaveOutcome<WorkManifest>;
+      base = r.remote;
+    }
+    return { status: "conflict", remote: base as WorkManifest, copyPath: "" } as SaveOutcome<WorkManifest>;
   }
 
   async saveManifest(m: WorkManifest, nowIso: string): Promise<SaveOutcome<WorkManifest>> {

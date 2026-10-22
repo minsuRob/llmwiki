@@ -138,6 +138,8 @@ export class DriveFileStore implements FileStore {
   private folderIds: { root: string; summaries: string; appData: string } | null = null;
   /** 경로 → 마지막으로 본 id · 버전(list · find · write 가 채운다) */
   private known = new Map<string, { id: string; version: string }>();
+  /** 방금 목록에서 본 경로 — 바로 이어지는 읽기 한 번만 찾기 없이 읽는다. 그 뒤엔 다시 찾아 지금 버전을 본다(다른 곳 · MCP 가 고쳤을 수 있다) */
+  private fresh = new Set<string>();
 
   private deps: DriveDeps;
   private names: DriveFolderNames;
@@ -207,7 +209,10 @@ export class DriveFileStore implements FileStore {
         const p = f.appProperties?.llmwikiPath;
         if (p) {
           out.push(p);
-          if (f.version != null) this.known.set(p, { id: f.id, version: String(f.version) });
+          if (f.version != null) {
+            this.known.set(p, { id: f.id, version: String(f.version) });
+            this.fresh.add(p);
+          }
         }
       }
       pageToken = body.nextPageToken ?? "";
@@ -217,7 +222,8 @@ export class DriveFileStore implements FileStore {
 
   async read(path: string) {
     // 목록에서 본 파일은 찾기 없이 바로 — 그사이 지워졌으면(404) 한 번만 다시 찾는다
-    const cached = this.known.get(path);
+    const cached = this.fresh.has(path) ? this.known.get(path) : undefined;
+    this.fresh.delete(path);
     const f = cached ?? (await this.find(path));
     if (!f) return null;
     let res = await call(this.deps, `${api(this.deps)}/${q(f.id)}?alt=media`);

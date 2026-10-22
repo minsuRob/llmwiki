@@ -10,6 +10,7 @@ import {
   fileSource,
   fragmentState,
   inboxSources,
+  mergeTriage,
   moveSource,
   moveWorkItem,
   newSource,
@@ -212,4 +213,19 @@ test("정한 제안은 최근 100개만 남기고 열린 제안은 모두 남긴
   const open = proposeTriage({ ...st, manifest }, [{ kind: "concept_link", sourceIds: [st.a.id], concept: "열린 것", refs: ["S1:1"] }], NOW);
   assert.equal(open.manifest.triage.filter((p) => p.status !== "open").length, 100);
   assert.equal(open.manifest.triage.filter((p) => p.status === "open").length, 1);
+});
+
+test("정리 제안 합치기 — 상대가 더한 것은 남기고, 같은 제안은 정한 쪽이 이긴다", () => {
+  const st = setup();
+  const [item] = st.items;
+  const base = proposeTriage(st, [{ kind: "file_source", sourceIds: [st.a.id], itemId: item.id, refs: ["S1:1"] }], NOW).manifest;
+  // 상대(MCP)는 제안 하나를 더하고, 나(앱)는 첫 제안을 뺐다
+  const theirs = proposeTriage({ ...st, manifest: base }, [{ kind: "concept_link", sourceIds: [st.a.id], concept: "부평구", refs: ["S1:1"] }], LATER).manifest;
+  const mine = rejectTriage(base, base.triage[0].id, LATER);
+  const merged = mergeTriage(theirs, mine);
+  assert.equal(merged.triage.length, 2);
+  assert.equal(merged.triage.find((p) => p.id === base.triage[0].id)?.status, "rejected");
+  assert.equal(merged.triage.find((p) => p.concept === "부평구")?.status, "open");
+  // 거꾸로 — 열린 내 것이 상대의 정한 것을 덮지 않는다
+  assert.equal(mergeTriage(mine, base).triage[0].status, "rejected");
 });

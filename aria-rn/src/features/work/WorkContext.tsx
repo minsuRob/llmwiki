@@ -19,6 +19,7 @@ import {
   defaultManifest,
   findSameSource,
   linkSource,
+  mergeTriage,
   newSource,
   undoChange,
   unlinkSource,
@@ -467,7 +468,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const next = fn(stateRef.current.manifest);
       setState((s) => ({ ...s, manifest: next }));
       mark("manifest", "saving");
-      const r = await repo.saveManifest(next, nowIso());
+      // 다른 곳(다른 기기 · MCP)이 먼저 고쳤으면 그 최신본에 같은 바꿈을 다시 얹는다
+      const r = await repo.saveManifestWith(stateRef.current.manifest, fn, nowIso());
       if (r.status === "saved") {
         setState((s) => ({ ...s, manifest: r.value }));
         mark("manifest", "saved");
@@ -487,7 +489,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       for (const i of r.items ?? []) results.push(await saveItem(i));
       if (r.manifest) {
         const m = r.manifest;
-        results.push(await saveManifest(() => m));
+        results.push(await saveManifest((cur) => mergeTriage(cur, m)));
       }
       return results.find((x) => x !== "saved") ?? "saved";
     },
@@ -546,7 +548,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const r = prepareTriagePack(stateRef.current, workspaceId, { tool }, triageLabelsFrom(tRef.current), nowIso(), cachedText);
       if (!r) return null;
       // 기록이 저장되지 않아도 묶음은 복사할 수 있다 — 다만 그러면 가져올 때 S1 · W1 을 되짚지 못한다
-      await saveManifest(() => r.manifest);
+      await saveManifest((cur) => mergeTriage(cur, r.manifest));
       return { markdown: r.markdown, runId: r.run.id, count: r.run.sourceIds.length, dropped: r.dropped.length };
     },
     [workspaceId, cachedText, saveManifest],
@@ -560,7 +562,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       if (r.kind !== "imported") return r;
       const raw = await repo.saveRaw(r.rawHash, text);
       if (!raw.ok) return { kind: "save_failed" };
-      const s = await saveManifest(() => r.manifest);
+      const s = await saveManifest((cur) => mergeTriage(cur, r.manifest));
       return s === "saved" ? r : { kind: "save_failed" };
     },
     [getRepo, saveManifest],

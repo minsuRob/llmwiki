@@ -850,6 +850,24 @@ export function acceptTriage(state: WorkState, proposalId: string, nowIso: strin
   return { kind: "ok", manifest: { ...state.manifest, triage: pruneTriage(triage) }, items, sources: outSources, ...(createdItemId ? { createdItemId } : {}) };
 }
 
+/**
+ * 정리 제안 · 묶음 기록을 다른 쪽 최신 매니페스트에 합친다(같은 id 는 정한 쪽 · 끝난 쪽이 이긴다).
+ * 앱과 MCP 가 같은 매니페스트를 번갈아 쓸 때 — 내가 바꾼 것만 얹고 상대가 더한 것은 남긴다.
+ */
+export function mergeTriage(cur: WorkManifest, mine: WorkManifest): WorkManifest {
+  const byId = new Map(cur.triage.map((p) => [p.id, p]));
+  for (const p of mine.triage) {
+    const c = byId.get(p.id);
+    if (!c || (c.status === "open" && p.status !== "open")) byId.set(p.id, p);
+  }
+  const runs = new Map((cur.triageRuns ?? []).map((r) => [r.id, r]));
+  for (const r of mine.triageRuns ?? []) {
+    const c = runs.get(r.id);
+    if (!c || (!c.finishedAt && r.finishedAt)) runs.set(r.id, r);
+  }
+  return { ...cur, triage: pruneTriage([...byId.values()]), triageRuns: [...runs.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).slice(-20) };
+}
+
 /** 정리 제안을 뺀다 — 조각은 정리 대기로 남는다 */
 export function rejectTriage(manifest: WorkManifest, proposalId: string, nowIso: string): WorkManifest {
   const triage = manifest.triage.map((x) => (x.id === proposalId && x.status === "open" ? { ...x, status: "rejected" as const, decidedAt: nowIso } : x));

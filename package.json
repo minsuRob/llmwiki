@@ -18,7 +18,9 @@
     "desktop:dev": "LLMWIKI_DESKTOP_URL=http://localhost:8081 npm --prefix desktop run dev",
     "desktop:build": "npm --prefix desktop run build",
     "test:desktop": "npm --prefix desktop test",
-    "desktop:release": "npm --prefix desktop run release"
+    "desktop:release": "npm --prefix desktop run release",
+    "test:mcp": "node --test tools/llmwiki-mcp/server.test.mjs",
+    "mcp": "node tools/llmwiki-mcp/server.mjs"
   },
   "devDependencies": {
     "firebase": "^13.0.0"
