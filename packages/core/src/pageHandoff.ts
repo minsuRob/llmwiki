@@ -41,6 +41,8 @@ export interface PagePackLabels {
   intro: string;
   /** {path} */
   path: string;
+  /** 거른 하위만 넣을 때 — {query} · {count} · {total} */
+  filtered?: string;
   page: string;
   children: string;
   /** {count} */
@@ -107,7 +109,7 @@ function template(runId: string) {
 export function preparePageRun(
   state: PageState,
   pageId: string,
-  input: { tool: AiTool; scope: string },
+  input: { tool: AiTool; scope: string; childIds?: string[] | null; query?: string },
   L: PagePackLabels,
   nowIso: string,
   bodies: Map<string, string>,
@@ -115,7 +117,10 @@ export function preparePageRun(
   const page = pageOf(state.pages, pageId);
   if (!page || page.trashedAt) return null;
   const ws = state.manifest.workspaces.find((w) => w.id === page.workspaceId);
-  const kids = childrenOf(state.pages, page.workspaceId, page.id);
+  const all = childrenOf(state.pages, page.workspaceId, page.id);
+  // 거른 하위만(펼쳐 보기에서 고른 조건 그대로 — 그 순서로). 이 페이지의 하위가 아닌 id 는 뺀다
+  const byId = new Map(all.map((k) => [k.id, k]));
+  const kids = input.childIds ? input.childIds.map((id) => byId.get(id)).filter((k): k is PageMeta => !!k) : all;
   const runId = newId();
   const limits = executorOf(input.tool) ?? DEFAULT_BUDGET;
   let budget = limits.excerptBudget;
@@ -124,6 +129,7 @@ export function preparePageRun(
   const path = [...ancestors(state.pages, page.id).map((a) => a.title), page.title].join(" / ");
 
   const lines: string[] = [`# ${fill(L.title, { title: page.title })}`, `> ${fill(L.meta, { run: runId, at: nowIso, count: refKeys.length, workspace: ws?.name ?? page.workspaceId })}`, "", L.intro, "", fill(L.path, { path }), ""];
+  if (input.childIds && L.filtered) lines.push(`> ${fill(L.filtered, { query: input.query || "-", count: kids.length, total: all.length })}`, "");
   const own = bodies.get(page.id) ?? "";
   const ownPart = own.slice(0, Math.min(budget, limits.excerptMax * 2));
   budget -= ownPart.length;

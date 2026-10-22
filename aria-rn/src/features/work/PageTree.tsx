@@ -11,6 +11,7 @@ import { childrenOf, flattenTree, openBodyProposals, searchPageTitles, subtreeId
 import type { Palette } from "../../components/theme";
 import { Btn } from "../../components/ui";
 import { useT } from "../../i18n";
+import { ImportPagesSheet } from "./ImportPagesSheet";
 import { confirmAsk } from "./io";
 import { Muted } from "./parts";
 import { useWork } from "./WorkContext";
@@ -28,6 +29,7 @@ function Menu({ c, page, onClose, onSelect }: { c: Palette; page: PageMeta; onCl
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(page.title);
   const [moving, setMoving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const kids = childrenOf(state.pages, page.workspaceId, page.id).length;
   const item = (icon: React.ComponentProps<typeof Ionicons>["name"], label: string, onPress: () => void, danger?: boolean) => (
     <Pressable key={label} accessibilityRole="menuitem" onPress={onPress} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
@@ -41,6 +43,7 @@ function Menu({ c, page, onClose, onSelect }: { c: Palette; page: PageMeta; onCl
     await trashPage(page.id, mode);
   };
   if (moving) return <MoveDialog c={c} page={page} onClose={onClose} />;
+  if (importing) return <ImportPagesSheet c={c} workspaceId={page.workspaceId} parentId={page.id} onClose={onClose} />;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 16 }} onPress={onClose} accessibilityLabel={t("common.close")}>
@@ -67,6 +70,7 @@ function Menu({ c, page, onClose, onSelect }: { c: Palette; page: PageMeta; onCl
                 const p = await createPage({ workspaceId: page.workspaceId, parentId: page.id, title: "" });
                 if (p) onSelect(p.id);
               })}
+              {item("download-outline", t("importPages.menu"), () => setImporting(true))}
               {item("create-outline", t("page.rename"), () => setRenaming(true))}
               {item("arrow-up", t("page.moveUp"), () => void reorderPage(page.id, -1).then(onClose))}
               {item("arrow-down", t("page.moveDown"), () => void reorderPage(page.id, 1).then(onClose))}

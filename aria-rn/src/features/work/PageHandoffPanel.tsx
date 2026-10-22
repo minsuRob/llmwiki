@@ -4,7 +4,7 @@
  * 들어온 것은 언제나 본문 제안 — 받기 · 빼기는 페이지 위 띠(ProposalCompare)에서 사람이 한다.
  */
 import React, { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import type { PageResultImport } from "../../../../packages/core/src/pageHandoff.ts";
 import type { AiTool } from "../../../../packages/core/src/work.ts";
@@ -29,7 +29,7 @@ export function pageResultNote(t: T, r: PageResultImport | { kind: "save_failed"
   return { text: [t("pageHandoff.imported", { added: r.added.length, skipped: r.skipped.length }), warn].filter(Boolean).join(" "), bad: r.warnings.length > 0 || !r.added.length };
 }
 
-export function PageHandoffPanel({ c, pageId }: { c: Palette; pageId: string }) {
+export function PageHandoffPanel({ c, pageId, filter }: { c: Palette; pageId: string; filter?: { childIds: string[]; query: string; total: number } | null }) {
   const t = useT();
   const { preparePage, importPageText } = useWork();
   const shell = useDesktopRuns();
@@ -39,6 +39,7 @@ export function PageHandoffPanel({ c, pageId }: { c: Palette; pageId: string }) 
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState("");
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
+  const [onlyFiltered, setOnlyFiltered] = useState(true);
   const exec = shell.caps?.executors[tool as DesktopExecutor];
   const canRun = shell.available && !!exec?.available;
   const run = pack ? shell.runs[pack.runId] : undefined;
@@ -46,7 +47,7 @@ export function PageHandoffPanel({ c, pageId }: { c: Palette; pageId: string }) 
   const make = async () => {
     setBusy(true);
     setNote(null);
-    const p = await preparePage(pageId, { tool, scope });
+    const p = await preparePage(pageId, { tool, scope, ...(filter && onlyFiltered ? { childIds: filter.childIds, query: filter.query } : {}) });
     setBusy(false);
     if (p) setPack(p);
   };
@@ -68,6 +69,12 @@ export function PageHandoffPanel({ c, pageId }: { c: Palette; pageId: string }) 
         ))}
       </View>
       <Field c={c} value={scope} onChangeText={setScope} placeholder={t("pageHandoff.scopePlaceholder")} accessibilityLabel={t("pagePack.scope")} multiline style={{ minHeight: 56 }} />
+      {filter ? (
+        <Pressable onPress={() => (setOnlyFiltered(!onlyFiltered), setPack(null))} accessibilityRole="checkbox" accessibilityState={{ checked: onlyFiltered }} style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Text style={{ fontSize: 18, color: onlyFiltered ? c.accent : c.muted }}>{onlyFiltered ? "☑" : "☐"}</Text>
+          <Text style={{ flex: 1, fontSize: 13, color: c.text }}>{t("pageHandoff.onlyFiltered", { count: filter.childIds.length, total: filter.total, query: filter.query })}</Text>
+        </Pressable>
+      ) : null}
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Btn c={c} primary={!pack} label={t("pageHandoff.make")} busy={busy && !pack} onPress={() => void make()} />
       </View>

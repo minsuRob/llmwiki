@@ -6,11 +6,11 @@
 
 | 곳 | 맡은 일 | 더 볼 곳 |
 |---|---|---|
-| `src/app/` | 경로(얇은 파일). 아래 탭 = 오늘(`index`) · 페이지(`work/index`) · 보관함 · 편집기 · 대화. 숨은 경로 = `work/[id]`(페이지 — 넓으면 나눈 화면) · tasks · calendar · notes · jobs · synapse · settings. 탭 목록은 `_layout.tsx` 의 `TABS` · `HIDDEN` | — |
+| `src/app/` | 경로(얇은 파일). 아래 탭 = 오늘(`index`) · 페이지(`work/index`) · 보관함 · 편집기 · 대화. 숨은 경로 = `work/[id]`(페이지 — 넓으면 나눈 화면) · tasks · calendar · notes · synapse · settings. 탭 목록은 `_layout.tsx` 의 `TABS` · `HIDDEN` | — |
 | `src/features/work/` | **작업실 화면 전부**(오늘 · 페이지 트리 · 페이지 · 본문 제안 비교 · 펼쳐 보기 · 가져오기 · 보관함 · 받은 것) + 저장 경로(`WorkContext`) | `src/features/work/CLAUDE.md` |
 | `src/features/editor/` | Lexical 편집기(페이지 본문 — 마크다운 왕복) · 읽기 전용 뷰어 | `src/features/editor/CLAUDE.md` |
 | `src/features/settings/` | 설정(언어 · Drive · MCP 열쇠 · 계정 · 판단 기록) | `McpKeysCard.tsx` |
-| `src/features/{chat,tasks,calendar,notes,synapse,jobs}/` | **옛 기능**(Firestore). 대화는 서버 규칙 길만(AI 없음). 취준(jobs)에는 '페이지로 가져오기'(`work/ImportPagesSheet.tsx`)가 붙어 있다 | `src/firebase/` |
+| `src/features/{chat,tasks,calendar,notes,synapse}/` | **옛 기능**(Firestore). 대화는 서버 규칙 길만(AI 없음). 옛 취준 공고 화면은 없앴다 — 데이터는 페이지의 '이 아래로 가져오기 → 옛 데이터'로 하위 페이지가 된다 | `src/firebase/` |
 | `src/features/auth/` | 로그인 화면 | — |
 | `src/firebase/` | Firebase 설정 · 익명/Google 로그인 · 옛 기능 데이터 구독(`data.tsx`) · 함수 호출(`api.ts`) | — |
 | `src/i18n/` | 문구. `app.ko.ts` · `app.en.ts` = 작업실 · 공통, `legacy.*` = 옛 화면. 두 언어 키를 같이 더한다 | — |

@@ -17,7 +17,8 @@ import { PageHandoffPanel } from "./PageHandoffPanel";
 import { pageLabel } from "./PageTree";
 import { Fold, msgText, Muted, Pill, when } from "./parts";
 import { DesktopRunLines } from "./DesktopRunLines";
-import { ExpandedView } from "./ExpandedView";
+import { describeQuery, type PageQuery } from "../../../../packages/core/src/pageQuery.ts";
+import { ExpandedView, useChildren } from "./ExpandedView";
 import { ImportPagesSheet } from "./ImportPagesSheet";
 import { ProposalStrip } from "./ProposalCompare";
 import { SourcePicker } from "./SourcePicker";
@@ -84,6 +85,60 @@ function Status({ c, page }: { c: Palette; page: PageMeta }) {
   );
 }
 
+/** 작은 값(속성) — 가져온 표의 칸 · 사람이 붙인 값. 펼쳐 보기에서 이것으로 거르고 정렬한다. 고치기는 사람만 */
+function PropsRow({ c, page }: { c: Palette; page: PageMeta }) {
+  const t = useT();
+  const { setProps } = useWork();
+  const [editing, setEditing] = useState<[string, string][] | null>(null);
+  const props = Object.entries(page.props ?? {});
+  if (editing)
+    return (
+      <View style={{ gap: 6, backgroundColor: c.row, borderRadius: 10, padding: 8 }}>
+        {editing.map(([k, v], i) => (
+          <View key={i} style={{ flexDirection: "row", gap: 6 }}>
+            <TextInput value={k} onChangeText={(x) => setEditing(editing.map((e, j) => (j === i ? [x, e[1]] : e)))} placeholder={t("props.key")} placeholderTextColor={c.muted} accessibilityLabel={t("props.key")} style={{ width: 120, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.text, paddingHorizontal: 8, paddingVertical: 5, fontSize: 13 }} />
+            <TextInput value={v} onChangeText={(x) => setEditing(editing.map((e, j) => (j === i ? [e[0], x] : e)))} placeholder={t("props.value")} placeholderTextColor={c.muted} accessibilityLabel={t("props.value")} style={{ flex: 1, borderRadius: 8, borderWidth: 1, borderColor: c.border, color: c.text, paddingHorizontal: 8, paddingVertical: 5, fontSize: 13 }} />
+          </View>
+        ))}
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <Btn c={c} small label={t("props.add")} onPress={() => setEditing([...editing, ["", ""]])} />
+          <Btn
+            c={c}
+            small
+            primary
+            label={t("common.save")}
+            onPress={() => {
+              void setProps(page.id, Object.fromEntries(editing.filter(([k]) => k.trim()).map(([k, v]) => [k.trim(), v])));
+              setEditing(null);
+            }}
+          />
+          <Btn c={c} small label={t("common.cancel")} onPress={() => setEditing(null)} />
+        </View>
+        <Muted c={c}>{t("props.hint")}</Muted>
+      </View>
+    );
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      {props.map(([k, v]) => (
+        <View key={k} style={{ flexDirection: "row", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: c.soft }}>
+          <Text style={{ fontSize: 12, color: c.muted }}>{k}</Text>
+          <Text style={{ fontSize: 12, color: c.text }}>{v}</Text>
+        </View>
+      ))}
+      <Pressable onPress={() => setEditing(props.length ? props : [["", ""]])} accessibilityRole="button" accessibilityLabel={t("props.edit")} hitSlop={6}>
+        <Text style={{ fontSize: 12, color: c.accent }}>{props.length ? t("props.edit") : t("props.addFirst")}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** 하위 거른 조건을 맡기기 패널에 넘긴다 */
+function Handoff({ c, page, query }: { c: Palette; page: PageMeta; query: PageQuery }) {
+  const { all, shown } = useChildren(page, query);
+  const filtered = shown.length !== all.length;
+  return <PageHandoffPanel c={c} pageId={page.id} filter={filtered ? { childIds: shown.map((p) => p.id), query: describeQuery(query), total: all.length } : null} />;
+}
+
 export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id: string) => void; onBack?: () => void }) {
   const c = usePalette();
   const t = useT();
@@ -95,6 +150,7 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
   const [adding, setAdding] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [query, setQuery] = useState<PageQuery>({});
   const page = pageOf(state.pages, id);
   const doc = docs[id];
   useEffect(() => {
@@ -140,6 +196,7 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
       </View>
       {/* 제목이 바깥에서 바뀌면(트리에서 이름 바꾸기) 입력칸을 새로 */}
       <TitleRow key={`${page.id}:${page.title}`} c={c} page={page} />
+      <PropsRow c={c} page={page} />
       <Status c={c} page={page} />
       <DesktopRunLines c={c} itemId={id} />
       {doc ? <ProposalStrip c={c} page={page} current={doc.body} onChanged={() => setEpoch((e) => e + 1)} /> : null}
@@ -177,7 +234,7 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
           <Btn c={c} small label={t("importPages.menu")} onPress={() => setImporting(true)} />
         </View>
         {expanded ? (
-          <ExpandedView c={c} page={page} onSelect={onSelect} />
+          <ExpandedView c={c} page={page} query={query} setQuery={setQuery} onSelect={onSelect} />
         ) : (
           <>
             {(allKids ? kids : kids.slice(0, SHOW_CHILDREN)).map((k) => (
@@ -193,7 +250,7 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
           </>
         )}
       </Fold>
-      {importing ? <ImportPagesSheet c={c} source={{ kind: "markdown", workspaceId: page.workspaceId, parentId: id }} onClose={() => setImporting(false)} /> : null}
+      {importing ? <ImportPagesSheet c={c} workspaceId={page.workspaceId} parentId={id} onClose={() => setImporting(false)} /> : null}
 
       {doc ? (
         <Fold c={c} title={t("page.sources", { count: sources.length })} count={sources.length}>
@@ -217,7 +274,7 @@ export function PageScreen({ id, onSelect, onBack }: { id: string; onSelect: (id
       ) : null}
 
       <Fold c={c} title={t("pageHandoff.title")}>
-        <PageHandoffPanel c={c} pageId={id} />
+        <Handoff c={c} page={page} query={query} />
       </Fold>
 
       {doc ? (

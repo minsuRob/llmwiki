@@ -29,6 +29,7 @@ import {
   reorderPage as reorderPageCore,
   restorePage as restorePageCore,
   setPageIcon,
+  setPageProps,
   syncMeta,
   trashPage as trashPageCore,
   undoDoc as undoDocCore,
@@ -125,6 +126,8 @@ interface WorkApi {
   createPage: (input: { workspaceId?: string; parentId?: string | null; title: string; beforeId?: string | null; body?: string }) => Promise<PageMeta | null>;
   renamePage: (id: string, title: string) => Promise<SaveState>;
   setIcon: (id: string, icon: string | null) => Promise<SaveState>;
+  /** 작은 값(속성) — 사람만 */
+  setProps: (id: string, props: Record<string, string>) => Promise<SaveState>;
   movePage: (id: string, parentId: string | null, beforeId: string | null) => Promise<SaveState | "cycle" | "cross_workspace" | "gone">;
   reorderPage: (id: string, dir: -1 | 1) => Promise<SaveState>;
   trashPage: (id: string, mode: "with_children" | "lift_children") => Promise<SaveState>;
@@ -147,7 +150,7 @@ interface WorkApi {
   importTriageText: (text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<TriageImport | { kind: "save_failed" }>;
   saveManifest: (fn: (m: WorkManifest) => WorkManifest) => Promise<SaveState>;
   /** 페이지 넘기기 — 이 페이지와 하위를 AI 묶음으로(기록은 매니페스트에) · 돌아온 결과를 본문 제안으로 */
-  preparePage: (pageId: string, input: { tool: AiTool; scope: string }) => Promise<{ markdown: string; runId: string; count: number; droppedBodies: number; droppedLines: number } | null>;
+  preparePage: (pageId: string, input: { tool: AiTool; scope: string; childIds?: string[]; query?: string }) => Promise<{ markdown: string; runId: string; count: number; droppedBodies: number; droppedLines: number } | null>;
   importPageText: (text: string, opts: { runId?: string | null; tool?: AiTool }) => Promise<PageResultImport | { kind: "save_failed" }>;
   /** 가져오기 — {제목 · 마크다운 · 바깥 id} 목록을 부모 아래로(묶음으로 쓰고 색인은 마지막). 사람이 고친 페이지는 덮어쓰지 않는다 */
   importPages: (workspaceId: string, parentId: string | null, entries: ImportEntry[]) => Promise<{ status: SaveState | "bad_parent"; created: number; updated: number; skipped: number; unchanged: number; packs: number }>;
@@ -185,8 +188,8 @@ function triageLabelsFrom(t: T): TriageLabels {
 }
 
 function pagePackLabelsFrom(t: T): PagePackLabels {
-  const keys = ["title", "meta", "intro", "path", "page", "children", "childrenMore", "bodies", "bodiesMore", "scope", "rulesTitle", "rules", "returnFormat", "returnGuide"] as const;
-  const keep = Object.fromEntries(["title", "run", "at", "count", "workspace", "path"].map((k) => [k, `{${k}}`]));
+  const keys = ["title", "meta", "intro", "path", "filtered", "page", "children", "childrenMore", "bodies", "bodiesMore", "scope", "rulesTitle", "rules", "returnFormat", "returnGuide"] as const;
+  const keep = Object.fromEntries(["title", "run", "at", "count", "total", "query", "workspace", "path"].map((k) => [k, `{${k}}`]));
   return Object.fromEntries(keys.map((k) => [k, t(`pagePack.${k}`, keep)])) as unknown as PagePackLabels;
 }
 
@@ -608,6 +611,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const renamePage = useCallback<WorkApi["renamePage"]>((id, title) => onMeta(id, (ps) => renamePageCore(ps, id, title, nowIso())), [onMeta]);
   const setIcon = useCallback<WorkApi["setIcon"]>((id, icon) => onMeta(id, (ps) => setPageIcon(ps, id, icon, nowIso())), [onMeta]);
+  const setProps = useCallback<WorkApi["setProps"]>((id, props) => onMeta(id, (ps) => setPageProps(ps, id, props, nowIso())), [onMeta]);
   const reorderPage = useCallback<WorkApi["reorderPage"]>(
     (id, dir) => {
       // 지금 보이는 순서로 옮길 자리를 정하고(다시 얹어도 같은 자리), 옮기기로 쓴다
@@ -900,7 +904,9 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       const repo = await getRepo();
       const meta = metaOf(pageId);
       if (!repo || !meta) return null;
-      const kids = childrenOf(stateRef.current.pages, meta.workspaceId, meta.id).slice(0, PACK_BODIES);
+      const all = childrenOf(stateRef.current.pages, meta.workspaceId, meta.id);
+      const byId = new Map(all.map((k) => [k.id, k]));
+      const kids = (input.childIds ? input.childIds.map((x) => byId.get(x)).filter((k): k is PageMeta => !!k) : all).slice(0, PACK_BODIES);
       const bodies = await repo.readBodies([meta, ...kids]);
       const own = docsRef.current[pageId];
       if (own) bodies.set(pageId, own.body);
@@ -1170,6 +1176,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       createPage,
       renamePage,
       setIcon,
+      setProps,
       movePage,
       reorderPage,
       trashPage,
@@ -1206,7 +1213,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       migrateScraps,
       revertMigration,
     }),
-    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, importPages, mirrorLeft, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
+    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, setProps, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, importPages, mirrorLeft, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

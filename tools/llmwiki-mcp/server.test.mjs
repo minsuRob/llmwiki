@@ -182,6 +182,10 @@ test("하위 다이제스트 · 전문(cursor) → 본문 제안 → 앱에서 �
   const digest = await tool("llmwiki_read", { page: top.page.id, children: "digest" });
   assert.match(digest.text, /## 하위 페이지 60개 — 다이제스트\n- \[P2\] 회사0 — 백엔드 \(\d+자\)/);
   const base = /본문 지문: (\w+)/.exec(digest.text)[1];
+  // 거르기 · 정렬 — 앱의 펼쳐 보기와 같은 규칙(core pageQuery)
+  const filtered = await tool("llmwiki_read", { page: top.page.id, children: "titles", q: "회사1", sort: "-title" });
+  assert.match(filtered.text, /하위 거름: "회사1" → 11\/60개/);
+  assert.match(filtered.text, /- \[P2\] 회사19 — 백엔드/, "거른 것 안에서 P# 를 매기고 내림차순");
   const full1 = await tool("llmwiki_read", { page: top.page.id, children: "full" });
   const next = Number(/다음 cursor: (\d+)/.exec(full1.text)?.[1]);
   assert.ok(next > 10 && next < 60, `다음 cursor ${next}`);

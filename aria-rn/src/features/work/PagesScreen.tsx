@@ -45,7 +45,7 @@ export default function PagesScreen({ initialId }: { initialId?: string | null }
       <View style={{ width: TREE, borderRightWidth: 1, borderRightColor: c.border, backgroundColor: c.surface, padding: 10 }}>
         <PageTree c={c} selectedId={shown} onSelect={open} />
       </View>
-      <View style={{ flex: 1 }}>{shown ? <PageScreen id={shown} onSelect={open} /> : <View style={{ padding: 24 }}><Muted c={c}>{t("page.none")}</Muted></View>}</View>
+      <View style={{ flex: 1 }}>{shown ? <PageScreen key={shown} id={shown} onSelect={open} /> : <View style={{ padding: 24 }}><Muted c={c}>{t("page.none")}</Muted></View>}</View>
     </View>
   );
 }
@@ -55,5 +55,5 @@ export function PageRoute({ id }: { id: string }) {
   const { width } = useWindowDimensions();
   // key — 다른 페이지 링크로 오면 고른 페이지를 새로
   if (isWide(width)) return <PagesScreen key={id} initialId={id} />;
-  return <PageScreen id={id} onSelect={(next) => router.push({ pathname: "/work/[id]", params: { id: next } })} onBack={() => (router.canGoBack() ? router.back() : router.replace("/work"))} />;
+  return <PageScreen key={id} id={id} onSelect={(next) => router.push({ pathname: "/work/[id]", params: { id: next } })} onBack={() => (router.canGoBack() ? router.back() : router.replace("/work"))} />;
 }

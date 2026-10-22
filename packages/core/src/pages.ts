@@ -310,6 +310,13 @@ export function renamePage(pages: PageMeta[], id: string, title: string, nowIso:
   return pages.map((p) => (p.id === id && p.title !== t ? touch(p, { title: t }, nowIso) : p));
 }
 
+/** 작은 값 고치기 — 사람만. 빈 값은 지운다 */
+export function setPageProps(pages: PageMeta[], id: string, props: Record<string, string>, nowIso: string): PageMeta[] {
+  const next = cleanProps(props);
+  const same = (a: Record<string, string> = {}, b: Record<string, string> = {}) => Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => b[k] === v);
+  return pages.map((p) => (p.id === id && !same(p.props, next) ? touch(p, { props: next }, nowIso) : p));
+}
+
 export function setPageIcon(pages: PageMeta[], id: string, icon: string | null, nowIso: string): PageMeta[] {
   return pages.map((p) => (p.id === id && (p.icon ?? null) !== icon ? touch(p, { icon }, nowIso) : p));
 }
@@ -702,6 +709,79 @@ export function splitMarkdownPages(md: string, fallbackTitle: string): ImportEnt
   if (cur) out.push({ title: cur.title, markdown: cur.lines.join("\n"), externalId: `md:${hash(cur.title)}` });
   if (!out.length && normalizeBody(pre.join("\n"))) out.push({ title: fallbackTitle, markdown: pre.join("\n"), externalId: `md:${hash(fallbackTitle)}` });
   return out;
+}
+
+const TITLE_KEYS = ["title", "name", "제목", "이름"];
+const BODY_KEYS = ["body", "markdown", "content", "text", "본문", "내용"];
+const ID_KEYS = ["id", "externalId", "key", "url"];
+
+/** CSV 한 덩어리 → 행들(따옴표 · 줄바꿈 든 칸 · "" 이스케이프) */
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  const t = text.replace(/\r\n?/g, "\n");
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (quoted) {
+      if (ch === '"' && t[i + 1] === '"') (cell += '"'), i++;
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"' && !cell) quoted = true;
+    else if (ch === ",") row.push(cell), (cell = "");
+    else if (ch === "\n") row.push(cell), rows.push(row), (row = []), (cell = "");
+    else cell += ch;
+  }
+  if (cell || row.length) row.push(cell), rows.push(row);
+  return rows.filter((r) => r.some((c) => c.trim()));
+}
+
+const scalar = (v: unknown): string | null => (v == null ? null : typeof v === "object" ? (Array.isArray(v) && v.every((x) => typeof x !== "object") ? v.join(", ") : null) : String(v));
+
+/**
+ * 표 · 목록 데이터(JSON 배열 · CSV)를 하위 페이지 항목으로 — 어떤 데이터든 같은 길.
+ * 제목 칸(title · name · 제목 …, 없으면 첫 칸) · 본문 칸(body · markdown · 본문 …) · 바깥 id 칸(id · url …, 없으면 제목 지문),
+ * 나머지 칸은 작은 값(props) — 펼쳐 보기에서 거르고 정렬한다. 형식이 아니면 null(마크다운으로 읽을 것).
+ */
+export function rowsToEntries(text: string): ImportEntry[] | null {
+  const t = text.trim();
+  let rows: Record<string, unknown>[] | null = null;
+  if (/^[[{]/.test(t)) {
+    try {
+      const o = JSON.parse(t) as unknown;
+      const list = Array.isArray(o) ? o : o && typeof o === "object" ? Object.values(o as object).find(Array.isArray) : null;
+      if (Array.isArray(list) && list.every((x) => x && typeof x === "object" && !Array.isArray(x))) rows = list as Record<string, unknown>[];
+    } catch {
+      return null;
+    }
+  } else {
+    const csv = parseCsv(t);
+    if (csv.length >= 2 && csv[0].length >= 2 && csv.slice(1).every((r) => r.length === csv[0].length)) {
+      const head = csv[0].map((h) => h.trim());
+      rows = csv.slice(1).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+    }
+  }
+  if (!rows?.length) return null;
+  const keys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  const find = (cands: string[]) => keys.find((k) => cands.includes(k.toLowerCase()) || cands.includes(k));
+  const titleKey = find(TITLE_KEYS) ?? keys[0];
+  const bodyKey = find(BODY_KEYS);
+  const idKey = find(ID_KEYS);
+  return rows
+    .map((r) => {
+      const title = (scalar(r[titleKey]) ?? "").trim();
+      const props: Record<string, string> = {};
+      for (const k of keys) {
+        // 제목 · 본문 칸, 그리고 id 뿐인 칸은 작은 값에 넣지 않는다(url 같은 것은 남긴다)
+        if (k === titleKey || k === bodyKey || (k === idKey && ["id", "externalid", "key"].includes(k.toLowerCase()))) continue;
+        const v = scalar(r[k]);
+        if (v != null && v.trim() && v.length <= MAX_PROP) props[k] = v.trim();
+      }
+      const id = idKey ? scalar(r[idKey]) : null;
+      return { title, markdown: bodyKey ? (scalar(r[bodyKey]) ?? "") : "", externalId: id?.trim() ? `row:${id.trim()}` : `row:${hash(title)}`, props };
+    })
+    .filter((e) => e.title);
 }
 
 /** 묶음 크기 — Drive 요청 수를 줄이되 파일 하나가 너무 커지지 않게 */

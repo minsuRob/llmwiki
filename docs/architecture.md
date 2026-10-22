@@ -6,7 +6,7 @@
 
 | 역할 | 하는 일 | 코드 |
 |---|---|---|
-| ① 앱 — 페이지 트리 | 범주 아래 페이지 · 하위 페이지(노션처럼). 본문은 마크다운 하나, 사람이 쓰고 AI 본문 제안을 받거나 뺀다 | `aria-rn/src/features/work` · 규칙 `packages/core/src/pages.ts` · `work.ts` |
+| ① 앱 — 페이지 트리 | 범주 아래 페이지 · 하위 페이지(노션처럼). 본문은 마크다운 하나, 사람이 쓰고 AI 본문 제안을 받거나 뺀다. **범용이 1원칙** — 특정 데이터용 탭을 두지 않고, 많은 데이터(공고 500개 등)도 한 페이지의 하위 + 속성으로 두고 같은 거르기 · 정렬로 본다 | `aria-rn/src/features/work` · 규칙 `packages/core/src/pages.ts` · `work.ts` |
 | ② AI — 작업 | Claude · Codex · Gemma 가 페이지 묶음(P1 · P2 …)을 받아 일하고 `llmwiki-page` 로 새 본문을 돌려준다 → 본문 제안 | `packages/core/src/pageHandoff.ts` · `executors.ts` · `tools/handoff` |
 | ③ Google Drive — 보관 | 페이지 색인 · 문서 · 가져오기 묶음 · 원본 자료 · 결과 원문 · 사람이 읽는 사본(제목.md)을 사용자의 Drive 에 둔다 | `packages/core/src/drive.ts` · `workStore.ts` |
 

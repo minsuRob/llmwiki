@@ -6,7 +6,8 @@
 
 | 파일 | 맡은 일 | 시험 |
 |---|---|---|
-| `pages.ts` | **페이지 트리(스키마 3)** — 색인(`PageMeta`) · 문서(`PageDoc`) · 순서 키 · 트리 바꾸기(만들기 · 이름 · 옮기기(순환 · 범주 막음) · 휴지통 · 되살리기) · 본문(`editBody` · 되돌리기 200KB 상한) · **본문 제안**(`proposeBody` → `acceptBodyProposal`(낡으면 stale → force) · `rejectBodyProposal` · `mergeBodyProposals`) · 가져오기(`importPlan` · `packBodies` · `splitMarkdownPages`) · 사람이 읽는 사본(`mirrorTodo`) · v2 이행(`migrateToPages`) | `pages.test.ts` |
+| `pages.ts` | **페이지 트리(스키마 3)** — 색인(`PageMeta`) · 문서(`PageDoc`) · 순서 키 · 트리 바꾸기(만들기 · 이름 · 옮기기(순환 · 범주 막음) · 휴지통 · 되살리기) · 본문(`editBody` · 되돌리기 200KB 상한) · **본문 제안**(`proposeBody` → `acceptBodyProposal`(낡으면 stale → force) · `rejectBodyProposal` · `mergeBodyProposals`) · 가져오기(`importPlan` · `packBodies` · `splitMarkdownPages` · `rowsToEntries`(CSV · JSON → 하위 + 속성)) · 속성 고치기(`setPageProps`) · 사람이 읽는 사본(`mirrorTodo`) · v2 이행(`migrateToPages`) | `pages.test.ts` |
+| `pageQuery.ts` | 하위 페이지 **거르기 · 정렬**(`facetsOf` — 값 적은 속성은 칩 · 날짜 · 글, `queryPages`, `parseWhere`) — 앱 펼쳐 보기 · AI 넘기기 · MCP `llmwiki_read` 가 같이 쓴다 | `pageQuery.test.ts` |
 | `work.ts` | 범주 · 조각(Source) · **받은 것**(inbox · 정리 제안 들이기/받기/빼기 · `mergeTriage`) · 매니페스트 · 이행(`upgradeSource` · `upgradeManifest`) | `inbox.test.ts` · `work.test.ts` |
 | `workV2.ts` | 옛 업무(스키마 2) 파일 모양 · `upgradeItem` — 이행과 시험만 쓴다 | `pages.test.ts` |
 | `pageHandoff.ts` | 페이지 **넘기기** — 묶음(`preparePageRun`, P1 · P2…, 하위는 다이제스트) · 전문 나눠 읽기(`fullChunk`, cursor) · 결과 해석(```` ```llmwiki-page ````) · 들이기(`importPageResult` → 본문 제안) · `runMeta` | `pageHandoff.test.ts` |
