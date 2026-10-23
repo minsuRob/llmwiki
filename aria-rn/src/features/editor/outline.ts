@@ -501,10 +501,10 @@ function $copyBlock<T extends LexicalNode>(node: T): T {
   return copy;
 }
 
-/** Cmd+D(Notion) — 블록과 자식을 통째로 바로 뒤에 복제하고 커서는 복제본 끝으로 */
-export function $outlineDuplicate(node: LexicalNode): boolean {
+/** Cmd+D(Notion) — 블록과 자식을 통째로 바로 뒤에 복제하고 커서는 복제본 끝으로. 복제본(맨 위 블록)을 돌려준다 */
+export function $outlineDuplicate(node: LexicalNode): LexicalNode | null {
   const at = $outlineAt(node);
-  if (!at) return false;
+  if (!at) return null;
   const { scope, entries, index } = at;
   const end = subtreeEnd(entries, index);
   const copies = entries.slice(index, end).map((e) => ({ ...e, node: $copyBlock(e.node), start: undefined, letters: undefined }));
@@ -512,6 +512,34 @@ export function $outlineDuplicate(node: LexicalNode): boolean {
   $writeOutline(scope, entries);
   const first = copies[0].node;
   if ($isElementNode(first)) first.selectEnd();
+  return first;
+}
+
+/** 고른 블록 묶음(first ~ last, 같은 범위)을 자식까지 통째로 그 뒤에 한 번에 복제한다(Notion) — 맨 위 블록 복제본들을 돌려준다 */
+export function $outlineDuplicateRange(first: LexicalNode, last: LexicalNode): LexicalNode[] | null {
+  const a = $outlineAt(first);
+  const b = $outlineAt(last);
+  if (!a || !b || !a.scope.is(b.scope) || b.index < a.index) return null;
+  const { scope, entries } = a;
+  const end = subtreeEnd(entries, b.index);
+  const copies = entries.slice(a.index, end).map((e) => ({ ...e, node: $copyBlock(e.node), start: undefined, letters: undefined }));
+  const tops: LexicalNode[] = [];
+  for (let k = 0; k < copies.length; k = subtreeEnd(copies, k)) tops.push(copies[k].node);
+  entries.splice(end, 0, ...copies);
+  $writeOutline(scope, entries);
+  return tops;
+}
+
+/** 블록을 자식과 함께 지운다(블록 선택에서 Backspace · Delete) — 범위가 비면 빈 문단 하나를 남긴다 */
+export function $outlineRemove(node: LexicalNode): boolean {
+  const at = $outlineAt(node);
+  if (!at) return false;
+  const { scope, entries, index } = at;
+  const end = subtreeEnd(entries, index);
+  const removed = entries.slice(index, end).map((e) => e.node);
+  entries.splice(index, end - index);
+  $writeOutline(scope, entries);
+  for (const n of removed) if (n.isAttached()) n.remove();
   return true;
 }
 

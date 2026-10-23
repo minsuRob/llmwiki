@@ -512,3 +512,20 @@ body:has(> #root .lex-dom) {
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* ── 블록 선택(BlockSelectionPlugin) — 고른 블록마다 둥근 배경, 커서 · 글 선택은 감춘다(Notion) ── */
+.lex-block-picked {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--lex-accent) 16%, transparent);
+  pointer-events: none;
+}
+.lex-root.lex-blocksel .lex-input {
+  caret-color: transparent;
+}
+.lex-root.lex-blocksel .lex-input ::selection {
+  background: transparent;
+}

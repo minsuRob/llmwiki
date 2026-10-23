@@ -19,7 +19,6 @@ import {
   INDENT_CONTENT_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   INSERT_TAB_COMMAND,
-  IS_APPLE,
   KEY_ARROW_DOWN_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
@@ -32,18 +31,15 @@ import {
 } from "lexical";
 
 import { applyBlock, type BlockKind } from "./blocks";
+import { SELECT_BLOCKS_COMMAND } from "./BlockSelectionPlugin";
+import { isCombo, TURN_INTO } from "./keys";
 import { $listItemToBlock, $selectedListItem } from "./listItems";
 import { $isPointAtEnd } from "./nestedBlocks";
 import { $outlineBackspaceBlock, $outlineBlockOf, $outlineDeleteForward, $outlineDuplicate, $outlineEmptyItemEnter, $outlineExitToggle, $outlineItemToBlock, $outlineMove, $outlineShift } from "./outline";
 import { $isToggleContainerNode, $isToggleTitleNode, $unwrapToggle, TOGGLE_OPEN_COMMAND } from "./ToggleExtension";
 
-/** Cmd(Mac) · Ctrl(그 밖) */
-function isMod(e: KeyboardEvent): boolean {
-  return IS_APPLE ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-}
-
-/** Cmd+Opt+숫자 → 블록 바꾸기(Notion 과 같은 번호). Opt 를 누르면 key 가 바뀌니 code(Digit0…)로 본다 */
-const TURN_INTO: Record<string, BlockKind> = {
+/** 블록 바꾸기 숫자(Notion 과 같은 번호) — 보조키는 keys.ts 의 TURN_INTO(Mac ⌘⌥ · 그 밖 Ctrl+Shift) */
+const TURN_INTO_KEYS: Record<string, BlockKind> = {
   Digit0: "paragraph",
   Digit1: "h1",
   Digit2: "h2",
@@ -89,9 +85,10 @@ function $moveBlock(block: LexicalNode, dir: -1 | 1): boolean {
 
 /**
  * Notion 식 블록 단축키
- * - Cmd+Opt+0~8: 블록 바꾸기(0 텍스트 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 7 토글 · 8 코드), Cmd+Shift+0: 텍스트
+ * 보조키는 Notion 과 같다 — Cmd 는 Windows · Linux 에서 Ctrl, 블록 바꾸기 Cmd+Opt 는 Ctrl+Shift(keys.ts). 글쇠는 자리(code)로 봐 한글 입력 중에도 걸린다
+ * - Cmd+Opt+0~8: 블록 바꾸기(0 텍스트 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 7 토글 · 8 코드), Mac 은 Cmd+Shift+0 도 텍스트
  * - Cmd+Enter: 할 일 체크 켜고 끄기 · 토글 펼치고 접기
- * - Cmd+D: 블록 복제
+ * - Cmd+D: 블록 복제 — 복제본을 블록 선택으로 고른다(BlockSelectionPlugin)
  * - Cmd+Shift+↑/↓: 블록 위 · 아래로 옮기기
  * - Cmd+Shift+X: 취소선(Cmd+Shift+S 와 같다)
  * - 빈 제목 · 빈 인용에서 Enter: 문단으로 바꾼다(새 줄을 만들지 않는다)
@@ -106,24 +103,23 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
     editor.registerCommand(
       KEY_DOWN_COMMAND,
       (e) => {
-        if (!isMod(e)) return false;
+        const turn = Object.keys(TURN_INTO_KEYS).find((code) => isCombo(e, code, TURN_INTO));
+        if (turn) {
+          e.preventDefault();
+          applyBlock(editor, TURN_INTO_KEYS[turn]);
+          return true;
+        }
 
-        // Cmd+Shift+0 도 텍스트로(Notion 에서 확인)
-        if (!e.altKey && e.shiftKey && e.code === "Digit0") {
+        // Mac 은 Cmd+Shift+0 도 텍스트로(Notion 에서 확인 — Windows 는 이 조합이 블록 바꾸기라 위에서 걸린다)
+        if (isCombo(e, "Digit0", { mod: true, shift: true })) {
           e.preventDefault();
           applyBlock(editor, "paragraph");
           return true;
         }
 
-        if (e.altKey && !e.shiftKey && TURN_INTO[e.code]) {
-          e.preventDefault();
-          applyBlock(editor, TURN_INTO[e.code]);
-          return true;
-        }
-
         // 명령 처리기는 이미 편집(update) 안에서 돈다 — 여기서 editor.update 를 또 부르면 뒤로 밀려
         // 처리했는지 알 수 없고 Enter 기본 동작까지 같이 돈다. $ 함수로 바로 고친다
-        if (!e.altKey && !e.shiftKey && e.key === "Enter") {
+        if (isCombo(e, "Enter", { mod: true })) {
           const block = $currentBlock();
           const list = block?.getParent();
           let handled = false;
@@ -137,33 +133,36 @@ export function registerBlockShortcuts(editor: LexicalEditor): () => void {
           return handled;
         }
 
-        if (!e.altKey && e.shiftKey && (e.code === "KeyX" || e.key.toLowerCase() === "x")) {
+        if (isCombo(e, "KeyX", { mod: true, shift: true })) {
           e.preventDefault();
           editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
           return true;
         }
 
-        if (!e.altKey && !e.shiftKey && e.key.toLowerCase() === "d") {
+        if (isCombo(e, "KeyD", { mod: true })) {
           e.preventDefault();
           const selection = $getSelection();
           const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
-          // 자식까지 통째로 바로 뒤에, 커서는 복사본으로(Notion)
-          if (anchor && !$outlineDuplicate(anchor)) {
+          // 자식까지 통째로 바로 뒤에, 복사본을 블록 선택으로 고른다(Notion)
+          let copy: LexicalNode | null = anchor ? $outlineDuplicate(anchor) : null;
+          if (!copy) {
             const block = $currentBlock();
             if (block) {
-              const copy = $deepCopy(block);
+              copy = $deepCopy(block);
               block.insertAfter(copy);
               if ($isElementNode(copy)) copy.selectEnd();
             }
           }
+          if (copy) editor.dispatchCommand(SELECT_BLOCKS_COMMAND, [copy.getKey()]);
           return true;
         }
 
-        if (!e.altKey && e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        const moveUp = isCombo(e, "ArrowUp", { mod: true, shift: true });
+        if (moveUp || isCombo(e, "ArrowDown", { mod: true, shift: true })) {
           e.preventDefault();
           const selection = $getSelection();
           const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
-          const dir = e.key === "ArrowUp" ? -1 : 1;
+          const dir = moveUp ? -1 : 1;
           // 자식과 함께 한 줄씩(Notion) — 개요 밖 블록은 형제끼리만
           if (anchor && !$outlineMove(anchor, dir)) {
             const block = $currentBlock();

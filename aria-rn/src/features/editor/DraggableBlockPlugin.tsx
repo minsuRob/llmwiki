@@ -1,12 +1,12 @@
-import { $isListItemNode } from "@lexical/list";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getNodeByKey, $getRoot, $getSelection, $isElementNode, $isRangeSelection, type ElementNode, type LexicalEditor, type NodeKey } from "lexical";
+import { $getNodeByKey, $getSelection, $isElementNode, $isRangeSelection, type NodeKey } from "lexical";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { $isCalloutNode } from "./CalloutExtension";
-import { $outlineInsertParagraph, $outlineMoveTo, $readOutline, MAX_DEPTH, subtreeEnd } from "./outline";
-import { $isToggleContainerNode } from "./ToggleNodes";
+import { SELECT_BLOCKS_COMMAND } from "./BlockSelectionPlugin";
+import { $collectRows, bottomOf, descendants, INDENT, rowAt, type Row } from "./blockRows";
+import { ALT_NAME } from "./keys";
+import { $outlineInsertParagraph, $outlineMoveTo, MAX_DEPTH } from "./outline";
 
 /*
  * 블록 왼쪽 + · ⠿ 손잡이(Lexical 놀이터의 DraggableBlockPlugin 을 Notion 실측에 맞춰 다시 짰다).
@@ -18,8 +18,6 @@ import { $isToggleContainerNode } from "./ToggleNodes";
  * 옮기기는 개요 모델(outline.ts)로 — 블록은 자식과 함께, 종류는 그대로
  */
 
-/** 한 깊이의 들여쓰기(px) — editor.css 의 --lexical-indent-base-value · 목록 칸과 같다 */
-const INDENT = 32;
 /** 손잡이 묶음 너비 · 블록과의 간격 */
 const MENU_WIDTH = 44;
 const MENU_GAP = 4;
@@ -28,111 +26,12 @@ const DRAG_THRESHOLD = 4;
 /** 끄는 중 스크롤 영역 위아래 이 안에 오면 스크롤 */
 const SCROLL_ZONE = 40;
 
-/** 화면의 블록 한 줄 */
-interface Row {
-  key: NodeKey;
-  scopeKey: NodeKey;
-  /** 이 줄이 든 범위를 담은 블록(토글 · 콜아웃) 줄, 문서 바로 아래면 null */
-  owner: NodeKey | null;
-  index: number;
-  depth: number;
-  /** 같은 범위에서 자식이 끝나는 줄 번호 */
-  subEnd: number;
-  /** 줄로 보이는 요소(토글은 제목) · 블록 전체 요소 */
-  el: HTMLElement;
-  host: HTMLElement;
-  top: number;
-  bottom: number;
-  /** 기호 · 들여쓰기를 넣은 블록 왼쪽 */
-  left: number;
-  /** 안에 다른 줄을 담는 상자(콜아웃) — 아래 절반은 상자 뒤로 */
-  box: boolean;
-  /** 자식(한 단계 깊은 블록)을 둘 수 있는지 — 제목 · 코드 · 토글 · 콜아웃 · 이미지 · 구분선은 아니다(토글 · 콜아웃은 안에 담는다) */
-  nest: boolean;
-}
-
 /** 놓을 자리 — 범위의 index 줄 앞, depth 깊이. left 는 그 깊이의 화면 왼쪽 */
 interface Slot {
   scopeKey: NodeKey;
   index: number;
   depth: number;
   left: number;
-}
-
-/** 화면에 보이는 블록을 문서 순서로 — 문서 · 열린 토글 안 · 콜아웃 안 */
-function $collectRows(editor: LexicalEditor): Row[] {
-  const rows: Row[] = [];
-  const walk = (scope: ElementNode, owner: NodeKey | null) => {
-    const entries = $readOutline(scope);
-    entries.forEach((e, index) => {
-      const node = e.node;
-      const host = editor.getElementByKey(node.getKey());
-      if (!host) return;
-      const toggle = $isToggleContainerNode(node);
-      const callout = $isCalloutNode(node);
-      const title = toggle ? node.getTitle() : null;
-      const el = (title && editor.getElementByKey(title.getKey())) || host;
-      const r = el.getBoundingClientRect();
-      // 닫힌 토글 안 블록은 그려지지 않는다
-      if (r.height === 0) return;
-      const marked = $isListItemNode(node) || toggle;
-      rows.push({
-        key: node.getKey(),
-        scopeKey: scope.getKey(),
-        owner,
-        index,
-        depth: e.depth,
-        subEnd: subtreeEnd(entries, index),
-        el,
-        host,
-        top: r.top,
-        bottom: r.bottom,
-        left: marked ? r.left : r.left + e.depth * INDENT,
-        box: callout,
-        nest: $isElementNode(node) && !node.isInline() && !toggle && !callout && !["heading", "code"].includes(node.getType()),
-      });
-      if (toggle && node.getOpen()) {
-        const content = node.getContent();
-        if (content) walk(content, node.getKey());
-      }
-      if (callout) walk(node, node.getKey());
-    });
-  };
-  walk($getRoot(), null);
-  return rows;
-}
-
-/** y 높이의 줄 — 겹치면 안쪽(뒤) 줄, 줄 사이 틈이면 가장 가까운 줄 */
-function rowAt(rows: Row[], y: number): Row | null {
-  let hit: Row | null = null;
-  for (const row of rows) if (y >= row.top && y < row.bottom) hit = row;
-  if (hit) return hit;
-  let best: Row | null = null;
-  let dist = Infinity;
-  for (const row of rows) {
-    const d = y < row.top ? row.top - y : y - row.bottom;
-    if (d < dist) {
-      dist = d;
-      best = row;
-    }
-  }
-  return best;
-}
-
-/** 줄 아래 끝 — 콜아웃은 상자 끝 */
-const bottomOf = (row: Row) => (row.box ? row.host.getBoundingClientRect().bottom : row.bottom);
-
-/** 줄의 자손(같은 범위의 자식 줄 · 안에 담긴 줄)까지 — 배경 · 끌기 제외에 쓴다 */
-function descendants(rows: Row[], i: number): Row[] {
-  const head = rows[i];
-  const out = [head];
-  for (let k = i + 1; k < rows.length; k += 1) {
-    const row = rows[k];
-    const inside = (row.scopeKey === head.scopeKey && row.index < head.subEnd) || out.some((o) => o.host !== row.host && o.host.contains(row.host));
-    if (!inside) break;
-    out.push(row);
-  }
-  return out;
 }
 
 /** 범위 안 depth 깊이의 화면 왼쪽 — 같은 범위 줄 하나를 기준으로 */
@@ -401,12 +300,11 @@ export default function DraggableBlockPlugin() {
         const wasDragging = dragging;
         dragging = false;
         if (!wasDragging) {
-          // 누르기만 하면 그 블록 끝으로 커서
-          editor.update(() => {
-            const node = $getNodeByKey(source.key);
-            if ($isElementNode(node)) node.selectEnd();
-          });
+          // 누르기만 하면 그 블록을 블록 선택으로 고른다(Notion)
           editor.focus();
+          editor.update(() => {
+            editor.dispatchCommand(SELECT_BLOCKS_COMMAND, [source.key]);
+          });
           return;
         }
         if (!drop || !target) return;
@@ -430,7 +328,7 @@ export default function DraggableBlockPlugin() {
       document.addEventListener("keydown", escape, true);
     };
 
-    // ── + — 아래(Option/Alt 는 위)에 빈 블록을 넣고 "/" 블록 메뉴를 연다(Notion)
+    // ── + — 아래(Option · Alt 는 위)에 빈 블록을 넣고 "/" 블록 메뉴를 연다(Notion)
     const plus = menu.querySelector<HTMLElement>(".lex-block-plus");
     const onPlusDown = (event: MouseEvent) => event.preventDefault();
     const onPlus = (event: MouseEvent) => {
@@ -471,7 +369,7 @@ export default function DraggableBlockPlugin() {
   return createPortal(
     <>
       <div ref={menuRef} className="lex-block-menu">
-        <button type="button" className="lex-block-plus" title="클릭해서 아래에 추가 · Option+클릭으로 위에 추가" aria-label="블록 추가">
+        <button type="button" className="lex-block-plus" title={`클릭해서 아래에 추가 · ${ALT_NAME}+클릭으로 위에 추가`} aria-label="블록 추가">
           <PlusIcon />
         </button>
         <button type="button" className="lex-block-grip" title="드래그해서 옮기기" aria-label="블록 옮기기">

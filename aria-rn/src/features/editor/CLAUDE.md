@@ -10,7 +10,7 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 - 색은 앱 팔레트를 `--lex-*` CSS 변수로 받는다. 모든 CSS 는 `.lex-root` 아래로 가둔다(`editor.css`, 웹에서 앱 페이지와 섞이지 않게).
 - **페이지 본문은 마크다운이 정본이다.** `initialMarkdown` 으로 넣고(`$fromMarkdown`), 사람이 고치면 1.5초 멈춤 · 초점을 잃을 때 `onMarkdown` 으로 넘긴다(`$toMarkdown`). 넣은 직후 내보낸 글을 기준으로 삼아 실제로 고쳤을 때만 보낸다. 다른 본문은 부르는 쪽이 `key` 로 새 편집기를.
 - 편집기 탭(`EditorScreen.tsx`)은 아직 저장하지 않는다(평문 미리보기 · JSON/HTML 원본 팝업만, `onChange`).
-- 시험: `npm run test:editor`(헤드리스 Lexical 마크다운 왕복 — `markdown.test.ts`). 화면 동작은 웹에서 직접 입력해 확인한다.
+- 시험: `npm run test:editor`(헤드리스 Lexical 마크다운 왕복 — `markdown.test.ts` · Windows 단축키 조합 — `keys.test.ts`). 화면 동작은 웹에서 직접 입력해 확인한다.
 
 ## 지도
 
@@ -24,6 +24,9 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 | `blocks.ts` | 블록 종류 목록 `BLOCKS`(텍스트 · 제목1~4 · 글머리 · 번호 · 할 일 · 토글 · 콜아웃 · 인용 · 코드 · 이미지 · 구분선) — 슬래시 메뉴와 블록 바꾸기 단축키가 같이 쓴다. 새 블록은 여기에 더한다 |
 | `outline.ts` | **블록 개요 모델** — 한 범위(문서 · 토글 안 · 콜아웃 안)를 "순서 + 깊이(0~4) + 종류" 줄(`OutlineEntry`)로 읽고(`$readOutline`) 고쳐서 다시 짓는다(`$writeOutline`). 들여쓰기 · 내어쓰기 · 옮기기 · 복제 · Enter · Backspace 가 모두 이것으로 |
 | `shortcuts.ts` | Notion 식 단축키(아래) · 한글 조합 중 Enter(`registerImeEnter`) |
+| `keys.ts` | **단축키 조합 한 곳** — `isCombo(e, code, { mod, shift, alt })`(mod = Mac ⌘ · 그 밖 Ctrl), 블록 바꾸기 `TURN_INTO`(Mac ⌘⌥ · 그 밖 Ctrl+Shift, Notion), 표시 `comboLabel`. 글쇠는 자리(`code`)로 봐 한글 입력 중에도 걸린다. 새 단축키는 이것으로(`e.key` · `metaKey` 를 직접 보지 않는다) |
+| `blockRows.ts` | 화면의 블록 줄(`$collectRows` — 문서 · 열린 토글 · 콜아웃 안) · 줄 고르기 · 자손 — 손잡이 · 끌기 · 블록 선택이 같이 쓴다 |
+| `BlockSelectionPlugin.tsx` | **블록 선택**(Notion) — Esc · Cmd+D(복제본) · 손잡이 누르기로 블록을 통째로 골라 둥근 배경. ↑↓ · Shift+↑↓ · Enter 편집 · Esc 풀기 · Backspace/Delete 지우기 · Cmd+D 묶음 복제 · Tab · Cmd+Shift+↑↓. `SELECT_BLOCKS_COMMAND` |
 | `listItems.ts` · `blockState.ts` · `listStyle.ts` · `nesting.ts` · `nestedBlocks.ts` | 목록 항목 종류 바꾸기 · 할 일이 아니게 돼도 체크 값 보존 · `a.` 목록 · 목록째 깊이 옮기기 · 중첩 블록 안 커서 자리 |
 | `ToggleNodes.ts` · `ToggleExtension.ts` | 토글(제목 + 내용, 열림 상태) 노드 · 명령 · `>` 마크다운 |
 | `CalloutExtension.ts` | 콜아웃(이모지 + 내용) |
@@ -42,7 +45,7 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 
 ## 단축키(shortcuts.ts)
 
-Cmd+Opt+0~8 블록 바꾸기(0 텍스트 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 7 토글 · 8 코드) · Cmd+Enter 체크/토글 · Cmd+D 복제 · Cmd+Shift+↑↓ 옮기기 · Tab/Shift+Tab 자식과 함께 들이고 내어 쓰기(종류는 그대로) · 목록 맨 앞 Backspace 는 같은 깊이 텍스트로 · 빈 목록 Enter 는 내어 쓰거나 텍스트로.
+Windows · Linux 는 Cmd → Ctrl, Cmd+Opt → Ctrl+Shift(Notion, `keys.ts`). Cmd+Opt+0~8 블록 바꾸기(0 텍스트 · 1~3 제목 · 4 할 일 · 5 글머리 · 6 번호 · 7 토글 · 8 코드) · Cmd+Enter 체크/토글 · Cmd+D 복제(복제본을 블록 선택) · Esc 블록 선택 · Cmd+Shift+↑↓ 옮기기 · Tab/Shift+Tab 자식과 함께 들이고 내어 쓰기(종류는 그대로) · 목록 맨 앞 Backspace 는 같은 깊이 텍스트로 · 빈 목록 Enter 는 내어 쓰거나 텍스트로.
 
 ## 바꿀 때
 

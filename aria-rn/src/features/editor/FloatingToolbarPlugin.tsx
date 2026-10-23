@@ -17,13 +17,12 @@ import {
   BLUR_COMMAND,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
-  CONTROL_OR_META,
   FOCUS_COMMAND,
   FORMAT_TEXT_COMMAND,
-  IS_APPLE,
   KEY_DOWN_COMMAND,
   KEY_ESCAPE_COMMAND,
-  isExactShortcutMatch,
+  REDO_COMMAND,
+  UNDO_COMMAND,
   type LexicalEditor,
   type LexicalNode,
   type RangeSelection,
@@ -33,6 +32,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEv
 import { createPortal } from "react-dom";
 
 import { applyBlock, BLOCKS, type BlockKind } from "./blocks";
+import { comboLabel, IS_MAC, isCombo, type Combo } from "./keys";
 
 /** 서버 렌더(웹 정적 출력)에서는 레이아웃 효과 경고가 나니 일반 효과로 */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -71,18 +71,18 @@ function Icon({ name, size = 16 }: { name: keyof typeof ICON; size?: number }) {
   );
 }
 
-/** 단축키 표시 — 애플은 ⌘, 나머지는 Ctrl+ */
-const MOD = IS_APPLE ? "⌘" : "Ctrl+";
-const SHIFT = IS_APPLE ? "⇧" : "Shift+";
+/** 단축키 표시 — Mac "⌘B" · 그 밖 "Ctrl+B"(keys.ts) */
+const MOD: Combo = { mod: true };
+const MOD_SHIFT: Combo = { mod: true, shift: true };
 
 type InlineFormat = Extract<TextFormatType, "bold" | "italic" | "underline" | "strikethrough" | "code">;
 
 const FORMATS: { format: InlineFormat; label: string; keys: string }[] = [
-  { format: "bold", label: "굵게", keys: `${MOD}B` },
-  { format: "italic", label: "기울임", keys: `${MOD}I` },
-  { format: "underline", label: "밑줄", keys: `${MOD}U` },
-  { format: "strikethrough", label: "취소선", keys: `${MOD}${SHIFT}S` },
-  { format: "code", label: "인라인 코드", keys: `${MOD}E` },
+  { format: "bold", label: "굵게", keys: comboLabel(MOD, "B") },
+  { format: "italic", label: "기울임", keys: comboLabel(MOD, "I") },
+  { format: "underline", label: "밑줄", keys: comboLabel(MOD, "U") },
+  { format: "strikethrough", label: "취소선", keys: comboLabel(MOD_SHIFT, "S") },
+  { format: "code", label: "인라인 코드", keys: comboLabel(MOD, "E") },
 ];
 
 /** Notion 의 10색 — 값은 floating-toolbar.css 의 --lex-c-* · --lex-bg-*(라이트 · 다크) */
@@ -175,11 +175,11 @@ export interface FormatShortcutHandlers {
 }
 
 /**
- * 서식 단축키 — ⌘K 링크 · ⌘E 인라인 코드 · ⌘⇧S 취소선 · ⌘⇧H 마지막 색.
- * ⌘B · I · U 는 Lexical 이 이미 처리한다. 코어 키 처리(EDITOR 우선순위)보다 먼저 받는다
+ * 서식 단축키 — ⌘B · I · U · ⌘K 링크 · ⌘E 인라인 코드 · ⌘⇧S 취소선 · ⌘⇧H 마지막 색 · ⌘Z 되돌리기 · ⌘⇧Z(Windows 는 Ctrl+Y 도) 다시 하기.
+ * 글쇠를 자리(code)로 봐 한글 입력 중에도 걸린다(Lexical 기본 처리는 글자로 봐서 "ㅠ" 가 오면 굵게가 안 된다).
+ * 코어 키 처리(EDITOR 우선순위)보다 먼저 받는다
  */
 export function registerFormatShortcuts(editor: LexicalEditor, handlers: FormatShortcutHandlers = {}): () => void {
-  const withShift = { ...CONTROL_OR_META, shiftKey: true };
   const format = (event: KeyboardEvent, f: InlineFormat) => {
     const inCode = editor.getEditorState().read(() => {
       const selection = $getSelection();
@@ -197,10 +197,25 @@ export function registerFormatShortcuts(editor: LexicalEditor, handlers: FormatS
   return editor.registerCommand(
     KEY_DOWN_COMMAND,
     (event) => {
-      if (isExactShortcutMatch(event, "k", CONTROL_OR_META)) return handled(event, handlers.onLink?.());
-      if (isExactShortcutMatch(event, "e", CONTROL_OR_META)) return format(event, "code");
-      if (isExactShortcutMatch(event, "s", withShift)) return format(event, "strikethrough");
-      if (isExactShortcutMatch(event, "h", withShift)) return handled(event, handlers.onRepeatColor?.());
+      if (event.isComposing) return false;
+      for (const [code, f] of [["KeyB", "bold"], ["KeyI", "italic"], ["KeyU", "underline"]] as const) {
+        if (isCombo(event, code, MOD)) {
+          event.preventDefault();
+          return editor.dispatchCommand(FORMAT_TEXT_COMMAND, f);
+        }
+      }
+      if (isCombo(event, "KeyZ", MOD)) {
+        event.preventDefault();
+        return editor.dispatchCommand(UNDO_COMMAND, undefined);
+      }
+      if (isCombo(event, "KeyZ", MOD_SHIFT) || (!IS_MAC && isCombo(event, "KeyY", MOD))) {
+        event.preventDefault();
+        return editor.dispatchCommand(REDO_COMMAND, undefined);
+      }
+      if (isCombo(event, "KeyK", MOD)) return handled(event, handlers.onLink?.());
+      if (isCombo(event, "KeyE", MOD)) return format(event, "code");
+      if (isCombo(event, "KeyS", MOD_SHIFT)) return format(event, "strikethrough");
+      if (isCombo(event, "KeyH", MOD_SHIFT)) return handled(event, handlers.onRepeatColor?.());
       return false;
     },
     COMMAND_PRIORITY_NORMAL,
@@ -683,7 +698,7 @@ export default function FloatingToolbarPlugin() {
           aria-label="링크"
           aria-pressed={info.link !== null}
           aria-expanded={panel === "link"}
-          title={`링크 (${MOD}K)`}
+          title={`링크 (${comboLabel(MOD, "K")})`}
         >
           <Icon name="link" />
         </button>
@@ -695,7 +710,7 @@ export default function FloatingToolbarPlugin() {
           aria-label="색"
           aria-haspopup="menu"
           aria-expanded={panel === "color"}
-          title={`색 (${MOD}${SHIFT}H 마지막 색)`}
+          title={`색 (${comboLabel(MOD_SHIFT, "H")} 마지막 색)`}
         >
           <span
             className="lex-ft-glyph"

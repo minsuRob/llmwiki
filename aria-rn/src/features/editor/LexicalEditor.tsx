@@ -13,6 +13,7 @@ import { $getRoot, BLUR_COMMAND, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_LOW } f
 import { useEffect, useRef, type CSSProperties } from "react";
 
 import type { Palette } from "../../components/theme";
+import BlockSelectionPlugin from "./BlockSelectionPlugin";
 import DraggableBlockPlugin from "./DraggableBlockPlugin";
 import { editorExtension } from "./extension";
 import LinkHoverPlugin from "./LinkHoverPlugin";
@@ -129,7 +130,7 @@ function MarkdownPlugin() {
   return null;
 }
 
-/** Cmd+Opt+숫자 블록 바꾸기 · Cmd+Enter 체크 · Cmd+D 복제 · Cmd+Shift+↑↓ 옮기기 */
+/** Cmd+Opt+숫자(Windows Ctrl+Shift+숫자) 블록 바꾸기 · Cmd+Enter 체크 · Cmd+D 복제 · Cmd+Shift+↑↓ 옮기기 */
 function BlockShortcutsPlugin() {
   const [editor] = useLexicalComposerContext();
   useEffect(() => mergeRegister(registerBlockShortcuts(editor), registerImeEnter(editor)), [editor]);
@@ -184,6 +185,7 @@ export default function LexicalEditor({
         <SlashMenuPlugin />
         <FloatingToolbarPlugin />
         <DraggableBlockPlugin />
+        <BlockSelectionPlugin />
         <LinkHoverPlugin />
         {onChange ? <ChangePlugin onChange={onChange} /> : null}
         {initialMarkdown != null ? <MarkdownSyncPlugin initial={initialMarkdown} onMarkdown={onMarkdown} /> : null}
