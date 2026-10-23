@@ -29,6 +29,7 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 | `CalloutExtension.ts` | 콜아웃(이모지 + 내용) |
 | `ImageNode.tsx` · `ImageExtension.ts` · `imageFile.ts` | 이미지 — 기기 안에서 줄여 data URL 로(서버 업로드 없음), 손잡이로 크기 조절 |
 | `DraggableBlockPlugin.tsx` | 블록 왼쪽 `+` · `⠿` 손잡이(마우스 화면만, 왼쪽 56px 자리) — 끌어 옮기기(`$outlineMoveTo`, 자식 · 토글 · 콜아웃 넘나들기), `+` 는 아래(Option 은 위)에 새 블록 + `/` 메뉴. 놓을 자리: 커서 높이로 줄 사이 경계(위 절반 = 블록 위 · 아래 절반 = 블록 아래 · 자기 블록 위 = 제자리)를 고르고, 그 경계에 놓일 수 있는 깊이(아래 줄 부모를 뺏지 않는 깊이 ~ 위 줄의 자식, 토글 · 콜아웃 끝이면 그 밖까지) 중 끄는 블록 가로 위치에 가장 가까운 것 |
+| `LinkHoverPlugin.tsx` · `link-hover.css` | 링크 창(Notion 실측, 마우스 화면만) — 링크에 올리면 아래에 🌐 주소(누르면 새 탭) · 복사 · 편집. 편집은 페이지 또는 URL · 링크 제목 · 링크 제거(Enter · Esc · 바깥 누르기로 넣고 닫기, 자동 링크는 고치면 보통 링크로). 링크 글자를 그냥 누르면 새 탭 |
 | `SlashMenuPlugin.tsx` · `ToolbarPlugin.tsx` · `FloatingToolbarPlugin.tsx` · `PlaceholderPlugin.tsx` | `/` 블록 메뉴 · 위 도구 막대 · 선택 위 서식 막대(링크 포함) · 빈 블록 안내(Notion 한국어판 문구) |
 | `theme.ts` · `editor.css` | 노드 → CSS 클래스 · 모양(`.lex-viewer` 는 뷰어 전용) |
 | `EditorScreen.tsx` | 편집기 탭 화면(미리보기 · 원본 팝업) |

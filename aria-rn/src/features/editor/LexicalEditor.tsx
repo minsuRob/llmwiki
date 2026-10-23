@@ -15,6 +15,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import type { Palette } from "../../components/theme";
 import DraggableBlockPlugin from "./DraggableBlockPlugin";
 import { editorExtension } from "./extension";
+import LinkHoverPlugin from "./LinkHoverPlugin";
 import FloatingToolbarPlugin from "./FloatingToolbarPlugin";
 import { registerListStyles } from "./listStyle";
 import { $fromMarkdown, $toMarkdown, MARKDOWN_TRANSFORMERS, registerInstantBlocks, registerMarkdownPaste } from "./markdown";
@@ -183,6 +184,7 @@ export default function LexicalEditor({
         <SlashMenuPlugin />
         <FloatingToolbarPlugin />
         <DraggableBlockPlugin />
+        <LinkHoverPlugin />
         {onChange ? <ChangePlugin onChange={onChange} /> : null}
         {initialMarkdown != null ? <MarkdownSyncPlugin initial={initialMarkdown} onMarkdown={onMarkdown} /> : null}
       </LexicalExtensionComposer>

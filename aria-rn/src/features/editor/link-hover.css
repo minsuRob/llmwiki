@@ -1,0 +1,122 @@
+/* 링크 창(LinkHoverPlugin) — 규칙은 모두 .lex-root 아래로. 스크롤 영역(.lex-inner) 안에 transform 으로 놓는다 */
+.lex-root .lex-linkpop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 25;
+  max-width: calc(100% - 16px);
+  border: 1px solid var(--lex-border);
+  border-radius: 8px;
+  background: var(--lex-card);
+  color: var(--lex-text);
+  box-shadow: var(--lex-ft-shadow);
+  font-size: 14px;
+  line-height: 20px;
+}
+.lex-root .lex-linkpop button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .lex-root .lex-linkpop button:hover {
+    background: var(--lex-soft);
+  }
+}
+/* 보기 — 🌐 주소 · 복사 · 편집 한 줄 */
+.lex-root .lex-linkpop-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  white-space: nowrap;
+}
+.lex-root .lex-linkpop-url {
+  min-width: 0;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 6px;
+  color: var(--lex-muted) !important;
+}
+.lex-root .lex-linkpop-url svg {
+  flex: none;
+}
+.lex-root .lex-linkpop-url span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lex-root .lex-linkpop-icon {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.lex-root .lex-linkpop-text {
+  height: 28px;
+  padding: 0 8px;
+  font-weight: 500;
+}
+/* 편집 — 페이지 또는 URL · 링크 제목 · 링크 제거 */
+.lex-root .lex-linkpop.editing {
+  width: 340px;
+}
+.lex-root .lex-linkpop-form {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 6px;
+}
+.lex-root .lex-linkpop-label {
+  margin: 2px 2px 6px;
+  font-size: 12px;
+  color: var(--lex-muted);
+}
+.lex-root .lex-linkpop-input {
+  height: 32px;
+  margin-bottom: 10px;
+  padding: 0 8px;
+  border: 1px solid var(--lex-border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--lex-surface, var(--lex-card));
+  color: var(--lex-text);
+  font: inherit;
+}
+.lex-root .lex-linkpop-input:focus {
+  border-color: var(--lex-accent);
+  box-shadow: 0 0 0 1px var(--lex-accent);
+}
+.lex-root .lex-linkpop-input.error {
+  border-color: var(--lex-c-red);
+  box-shadow: none;
+}
+.lex-root .lex-linkpop-error {
+  margin: -6px 2px 10px;
+  font-size: 12px;
+  color: var(--lex-c-red);
+}
+.lex-root .lex-linkpop-sep {
+  height: 1px;
+  margin: 0 -10px 4px;
+  background: var(--lex-border);
+}
+.lex-root .lex-linkpop-row {
+  height: 32px;
+  padding: 0 6px;
+}
+/* 편집 중인 링크 글자 — Notion 처럼 고른 듯 칠한다 */
+.lex-root .lex-input a.lex-link-editing {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--lex-accent) 25%, transparent);
+}
+/* 링크는 누르면 열리니 손가락 커서(마우스 화면만) */
+@media (hover: hover) and (pointer: fine) {
+  .lex-root .lex-input a {
+    cursor: pointer;
+  }
+}
