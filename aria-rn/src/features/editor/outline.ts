@@ -538,3 +538,38 @@ export function $outlineDeleteForward(block: ElementNode): boolean {
   else block.select(size, size);
   return true;
 }
+
+/**
+ * 블록 끌어 옮기기(Notion) — 블록과 자식을 다른 자리(같은 범위 또는 다른 범위의 index 줄 앞)로, 맨 위 블록은 depth 깊이로.
+ * 깊이는 앞 줄 깊이 + 1 을 넘지 않게 줄인다. 옮겼으면 true
+ */
+export function $outlineMoveTo(node: LexicalNode, dest: ElementNode, index: number, depth: number): boolean {
+  const at = $outlineAt(node);
+  if (!at) return false;
+  const { scope, entries, index: from } = at;
+  const end = subtreeEnd(entries, from);
+  const base = entries[from].depth;
+  // 옮기는 블록 안(토글 · 콜아웃 안)으로는 못 들어간다
+  if (entries.slice(from, end).some((e) => e.node.is(dest) || ($isElementNode(e.node) && e.node.isParentOf(dest)))) return false;
+  const same = dest.is(scope);
+  if (same && (index === from || index === end) && depth === base) return false;
+  const target = same ? [...entries.slice(0, from), ...entries.slice(end)] : $readOutline(dest);
+  const pos = same && index > from ? Math.max(from, index - (end - from)) : index;
+  const top = Math.max(0, Math.min(depth, pos > 0 ? target[pos - 1].depth + 1 : 0));
+  const moved = entries.slice(from, end).map((e) => ({ ...e, depth: Math.min(MAX_DEPTH, e.depth - base + top), start: undefined, letters: undefined }));
+  target.splice(pos, 0, ...moved);
+  // 다른 범위면 받는 쪽을 먼저 지어 노드를 옮긴 뒤 원래 범위를 다시 짓는다
+  $writeOutline(dest, target);
+  if (!same) $writeOutline(scope, [...entries.slice(0, from), ...entries.slice(end)]);
+  return true;
+}
+
+/** 범위의 index 줄 앞에 빈 문단을 depth 깊이로 넣는다(블록 왼쪽 + 단추) */
+export function $outlineInsertParagraph(scope: ElementNode, index: number, depth: number): ElementNode {
+  const entries = $readOutline(scope);
+  const pos = Math.max(0, Math.min(index, entries.length));
+  const paragraph = $createParagraphNode();
+  entries.splice(pos, 0, { node: paragraph, depth: Math.max(0, Math.min(depth, pos > 0 ? entries[pos - 1].depth + 1 : 0)), listType: null, checked: false });
+  $writeOutline(scope, entries);
+  return paragraph;
+}

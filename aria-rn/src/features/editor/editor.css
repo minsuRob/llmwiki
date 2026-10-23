@@ -403,3 +403,110 @@ body:has(> #root .lex-dom) {
   caret-color: transparent;
   cursor: default;
 }
+
+/* ── 블록 손잡이(DraggableBlockPlugin) — 마우스가 있는 화면만. 왼쪽에 손잡이 자리를 비운다 ── */
+.lex-block-menu,
+.lex-drop-line,
+.lex-drop-shade {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lex-root.lex-blockdrag .lex-input {
+    padding-left: 56px;
+  }
+  .lex-root.lex-blockdrag .lex-placeholder {
+    left: 56px;
+  }
+  .lex-drop-line,
+  .lex-drop-shade {
+    display: block;
+  }
+}
+.lex-block-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  gap: 0;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: opacity 120ms ease;
+}
+.lex-block-menu.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lex-block-menu {
+    display: flex;
+  }
+}
+.lex-block-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--lex-muted);
+  cursor: pointer;
+}
+.lex-block-menu .lex-block-grip {
+  width: 18px;
+  cursor: grab;
+}
+.lex-block-menu button:hover {
+  background: var(--lex-soft);
+  color: var(--lex-text);
+}
+.lex-drop-line,
+.lex-drop-shade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+.lex-drop-line {
+  z-index: 4;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--lex-accent);
+}
+.lex-drop-shade {
+  z-index: 3;
+  border-radius: 4px;
+  background: var(--lex-accent);
+}
+.lex-drop-line.visible {
+  opacity: 0.8;
+}
+.lex-drop-shade.visible {
+  opacity: 0.08;
+}
+.lex-root .lex-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  min-height: 0;
+  max-width: 420px;
+  max-height: 160px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0.45;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.lex-root.lex-dragging,
+.lex-root.lex-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+  -webkit-user-select: none;
+}

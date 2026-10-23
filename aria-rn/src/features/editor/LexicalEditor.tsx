@@ -13,6 +13,7 @@ import { $getRoot, BLUR_COMMAND, CLEAR_HISTORY_COMMAND, COMMAND_PRIORITY_LOW } f
 import { useEffect, useRef, type CSSProperties } from "react";
 
 import type { Palette } from "../../components/theme";
+import DraggableBlockPlugin from "./DraggableBlockPlugin";
 import { editorExtension } from "./extension";
 import FloatingToolbarPlugin from "./FloatingToolbarPlugin";
 import { registerListStyles } from "./listStyle";
@@ -168,7 +169,7 @@ export default function LexicalEditor({
     "--lex-border": palette.border,
   } as CSSProperties;
   return (
-    <div className={"lex-root" + (IS_DOM ? " lex-dom" : "") + (dark ? " lex-dark" : "")} style={vars}>
+    <div className={"lex-root lex-blockdrag" + (IS_DOM ? " lex-dom" : "") + (dark ? " lex-dark" : "")} style={vars}>
       <LexicalExtensionComposer extension={editorExtension} contentEditable={null}>
         <div className="lex-container">
           <ToolbarPlugin />
@@ -181,6 +182,7 @@ export default function LexicalEditor({
         <BlockShortcutsPlugin />
         <SlashMenuPlugin />
         <FloatingToolbarPlugin />
+        <DraggableBlockPlugin />
         {onChange ? <ChangePlugin onChange={onChange} /> : null}
         {initialMarkdown != null ? <MarkdownSyncPlugin initial={initialMarkdown} onMarkdown={onMarkdown} /> : null}
       </LexicalExtensionComposer>
