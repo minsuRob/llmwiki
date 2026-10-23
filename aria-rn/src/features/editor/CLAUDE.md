@@ -28,7 +28,7 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 | `ToggleNodes.ts` · `ToggleExtension.ts` | 토글(제목 + 내용, 열림 상태) 노드 · 명령 · `>` 마크다운 |
 | `CalloutExtension.ts` | 콜아웃(이모지 + 내용) |
 | `ImageNode.tsx` · `ImageExtension.ts` · `imageFile.ts` | 이미지 — 기기 안에서 줄여 data URL 로(서버 업로드 없음), 손잡이로 크기 조절 |
-| `DraggableBlockPlugin.tsx` | 블록 왼쪽 `+` · `⠿` 손잡이(마우스 화면만, 왼쪽 56px 자리) — 끌어 옮기기(`$outlineMoveTo`, 자식 · 토글 · 콜아웃 넘나들기), `+` 는 아래(Option 은 위)에 새 블록 + `/` 메뉴. 놓을 자리는 Notion 실측: 위 절반 = 그 블록 앞, 아래 절반 = 화면 다음 줄 앞(그 줄 깊이) |
+| `DraggableBlockPlugin.tsx` | 블록 왼쪽 `+` · `⠿` 손잡이(마우스 화면만, 왼쪽 56px 자리) — 끌어 옮기기(`$outlineMoveTo`, 자식 · 토글 · 콜아웃 넘나들기), `+` 는 아래(Option 은 위)에 새 블록 + `/` 메뉴. 놓을 자리: 커서 높이로 줄 사이 경계(위 절반 = 블록 위 · 아래 절반 = 블록 아래 · 자기 블록 위 = 제자리)를 고르고, 그 경계에 놓일 수 있는 깊이(아래 줄 부모를 뺏지 않는 깊이 ~ 위 줄의 자식, 토글 · 콜아웃 끝이면 그 밖까지) 중 끄는 블록 가로 위치에 가장 가까운 것 |
 | `SlashMenuPlugin.tsx` · `ToolbarPlugin.tsx` · `FloatingToolbarPlugin.tsx` · `PlaceholderPlugin.tsx` | `/` 블록 메뉴 · 위 도구 막대 · 선택 위 서식 막대(링크 포함) · 빈 블록 안내(Notion 한국어판 문구) |
 | `theme.ts` · `editor.css` | 노드 → CSS 클래스 · 모양(`.lex-viewer` 는 뷰어 전용) |
 | `EditorScreen.tsx` | 편집기 탭 화면(미리보기 · 원본 팝업) |
