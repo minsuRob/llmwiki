@@ -96,11 +96,13 @@ body:has(> #root .lex-dom) {
   caret-color: var(--lex-accent);
   tab-size: 1;
 }
+/* 빈 문서 안내 — 첫 문단 글자 자리(입력 여백 + 문단 여백 3px 2px, 줄 높이 1.5)에서 2px 띄워 커서가 안내 첫 글자와 겹치지 않게 */
 .lex-placeholder {
   position: absolute;
-  top: 14px;
-  left: 12px;
+  top: 17px;
+  left: 16px;
   font-size: 16px;
+  line-height: 1.5;
   color: var(--lex-muted);
   pointer-events: none;
   user-select: none;
@@ -415,7 +417,7 @@ body:has(> #root .lex-dom) {
     padding-left: 56px;
   }
   .lex-root.lex-blockdrag .lex-placeholder {
-    left: 56px;
+    left: 60px;
   }
   .lex-drop-line,
   .lex-drop-shade {
