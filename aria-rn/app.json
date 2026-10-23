@@ -7,7 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "ink.markhub.llmwiki",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "개발 빌드가 같은 네트워크의 번들 서버(Metro)에 연결합니다."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +28,8 @@
       "output": "single"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./plugins/withSceneLifecycle"
     ],
     "scheme": "llmwiki"
   }
