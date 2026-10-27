@@ -1,8 +1,8 @@
 /**
- * 오늘 — 고른 범주(대주제)의 개요. 맨 위 페이지(소주제)마다 카드 하나, 그 하위를 한 줄씩.
+ * 오늘 — 고른 범주(대주제)의 개요. 맨 위 페이지(소주제)마다 카드 하나: 하위 개수 + AI 가 쓴 요약 2~3줄. 목록은 늘어놓지 않는다(페이지 · 펼쳐 보기에서).
  *
- * 범주는 머리 드롭다운(WorkspaceSwitcher)으로 고른다. 칸은 소주제의 목록 보기(core pageView.ts) — 정한 보기가 없으면 값 모양으로 짐작.
- * AI 보기 제안(칸 · 하위 값)은 카드 위 띠에서 받기 · 빼기. 본문은 읽지 않는다 — 색인만.
+ * 범주는 머리 드롭다운(WorkspaceSwitcher)으로 고른다. 요약 · 칸은 소주제의 목록 보기(core pageView.ts).
+ * AI 보기 제안(요약 · 칸 · 하위 값)은 카드 위 띠에서 받기 · 빼기. 본문은 읽지 않는다 — 색인만.
  * 받은 것(입력란 · 조각 흐름)은 잠시 내렸다: InboxCard.tsx.
  */
 import { router } from "expo-router";
@@ -10,13 +10,13 @@ import React, { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import { openBodyProposals, type PageMeta } from "../../../../packages/core/src/pages.ts";
-import { openViewProposals, overviewOf, rowCells, type ColumnKind, type ViewColumn, type ViewProposal } from "../../../../packages/core/src/pageView.ts";
+import { openViewProposals, overviewOf, rowCells, summaryOf, type ColumnKind, type ViewColumn, type ViewProposal } from "../../../../packages/core/src/pageView.ts";
 import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
 import { ConflictPanel } from "./ConflictPanel";
 import { pageLabel } from "./PageTree";
-import { Card, H, Muted, Pill } from "./parts";
+import { Card, H, Muted } from "./parts";
 import { useWork } from "./WorkContext";
 
 const SHOWN = 8;
@@ -80,7 +80,9 @@ function ViewBand({ c, p }: { c: Palette; p: ViewProposal }) {
   const cols = p.columns?.map((x) => x.label).join(" · ");
   return (
     <View style={{ gap: 4, borderLeftWidth: 2, borderLeftColor: c.accent, paddingLeft: 8 }}>
-      <Text style={{ fontSize: 13, color: c.text, fontWeight: "600" }}>{cols ? t("today.viewProposal", { columns: cols }) : t("today.viewOnlyValues", { count: p.valueCount })}</Text>
+      <Text style={{ fontSize: 13, color: c.text, fontWeight: "600" }}>{p.summary ? t("today.summaryProposal") : cols ? t("today.viewProposal", { columns: cols }) : t("today.viewOnlyValues", { count: p.valueCount })}</Text>
+      {p.summary ? <Text style={{ fontSize: 14, lineHeight: 21, color: c.text }}>{p.summary.text}</Text> : null}
+      {p.summary && cols ? <Muted c={c}>{t("today.viewProposal", { columns: cols })}</Muted> : null}
       {cols && p.valueCount ? <Muted c={c}>{t("today.viewValues", { count: p.valueCount })}</Muted> : null}
       {p.note ? <Muted c={c}>{p.note}</Muted> : null}
       {p.flags?.length ? <Muted c={c} danger>{t("today.viewFlags", { flags: p.flags.join(", ") })}</Muted> : null}
@@ -89,6 +91,22 @@ function ViewBand({ c, p }: { c: Palette; p: ViewProposal }) {
         <Btn c={c} small label={t("today.viewReject")} disabled={busy} onPress={() => void run(() => rejectView(p.id))} />
       </View>
       {failed ? <Muted c={c} danger>{t("today.viewFailed")}</Muted> : null}
+    </View>
+  );
+}
+
+/** 개수 + 요약 2~3줄. 요약이 없으면 받는 길을, 요약 뒤 하위 수가 바뀌었으면 그 사실을 */
+function Summary({ c, g, kids, pending }: { c: Palette; g: PageMeta; kids: PageMeta[]; pending: boolean }) {
+  const t = useT();
+  const s = summaryOf(g, kids);
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ fontSize: 13, color: c.muted }}>
+        {s.unit ?? t("today.unit")} <Text style={{ fontSize: 22, fontWeight: "700", color: c.text }}>{s.count}</Text>
+        {t("today.counter")}
+      </Text>
+      {s.text ? <Text style={{ fontSize: 14, lineHeight: 21, color: c.text }}>{s.text}</Text> : pending ? null : <Muted c={c}>{t("today.noSummary")}</Muted>}
+      {s.stale ? <Muted c={c}>{t("today.summaryStale", { from: g.view?.summary?.count ?? 0, to: s.count })}</Muted> : null}
     </View>
   );
 }
@@ -110,18 +128,14 @@ export default function TodayScreen() {
       {groups.map((g) => (
         <Card key={g.page.id} c={c}>
           <Pressable onPress={() => open(g.page.id)} accessibilityRole="link" accessibilityLabel={t("today.openPage", { title: g.page.title })}>
-            <H c={c} right={<Pill c={c} label={String(g.children.length)} tone="muted" />}>
-              {pageLabel(g.page, t("page.untitled"))}
-            </H>
+            <H c={c}>{pageLabel(g.page, t("page.untitled"))}</H>
           </Pressable>
           {views
             .filter((v) => v.pageId === g.page.id)
             .map((v) => (
               <ViewBand key={v.id} c={c} p={v} />
             ))}
-          {g.guessed && g.children.length ? <Muted c={c}>{t("today.guessed")}</Muted> : null}
-          {!g.children.length && g.columns.length ? <Muted c={c}>{t("today.noChildren", { columns: g.columns.map((x) => x.label).join(" · ") })}</Muted> : null}
-          <Rows c={c} pages={g.children} columns={g.columns} proposed={proposed} />
+          <Summary c={c} g={g.page} kids={g.children} pending={views.some((v) => v.pageId === g.page.id)} />
         </Card>
       ))}
 

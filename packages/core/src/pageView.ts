@@ -5,6 +5,8 @@
  *   status 상태(값 몇 개 — 칩) · date 날짜(정렬 · 지난 것) · tag 분류 · flag 표시(참일 때만 이름이 꼬리표로) · text 글.
  * - 보기는 소주제 페이지의 색인(PageMeta.view)에 둔다. 없으면 하위의 값 모양으로 짐작한다(guessView).
  * - AI 는 주제 이름과 하위를 보고 '보기 제안'을 낸다 — 칸(columns)과, 필요하면 하위마다 채울 값(values).
+ *   요약(summary)도 낸다 — 하위를 세는 말(unit: 구인 · 팁 …)과 전체를 2~3줄로. 오늘 탭은 목록 대신 '개수 + 요약'만 보인다.
+ *   요약한 때의 하위 수를 적어 두어, 그 뒤 하위가 늘거나 줄면 '요약 뒤 바뀜'을 보인다.
  *   MCP llmwiki_propose_view · 페이지 넘기기 결과(view · props)가 같은 함수(proposeView)를 부른다.
  *   검사: 페이지가 있고 살아 있어야, 묶음 범주 안이어야(cross_workspace), 값은 그 페이지의 하위에만, 지시문은 표시.
  * - 받기 · 빼기는 사람만(applyViewProposal · decideViewProposal). 받으면 보기가 바뀌고 하위 속성에 값이 더해진다.
@@ -27,8 +29,19 @@ export interface ViewColumn {
   kind: ColumnKind;
 }
 
+export interface ViewSummary {
+  /** 전체 요약 2~3줄 */
+  text: string;
+  /** 하위를 세는 말(구인 · 팁 · 자료) — 없으면 '하위' */
+  unit?: string | null;
+  /** 요약할 때의 하위 수 */
+  count: number;
+  at: string;
+}
+
 export interface PageView {
   columns: ViewColumn[];
+  summary?: ViewSummary | null;
   /** 누가 정했나 — ai: AI 제안을 사람이 받음 · human: 사람이 고침 */
   by: "ai" | "human";
   at: string;
@@ -41,6 +54,8 @@ export interface ViewProposal {
   workspaceId: string;
   /** 새 보기(없으면 값만 채우는 제안) */
   columns?: ViewColumn[] | null;
+  /** 새 요약 — 제안할 때의 하위 수와 함께 */
+  summary?: { text: string; unit?: string | null; count: number } | null;
   /** 하위 페이지 id → 더할 속성. 정하면 비운다(매니페스트를 가볍게) */
   values: Record<string, Record<string, string>>;
   /** 값을 낸 하위 수(정한 뒤에도 남는다) */
@@ -62,6 +77,8 @@ const MAX_LABEL = 30;
 const MAX_VALUE = 200;
 const MAX_VALUE_PAGES = 600;
 const MAX_DECIDED = 50;
+const MAX_SUMMARY = 400;
+const MAX_UNIT = 12;
 
 /* ───────────────────────── 값 모양 ───────────────────────── */
 
@@ -144,7 +161,7 @@ export function overviewOf(pages: PageMeta[], workspaceId: string, withProposal:
   const loose: PageMeta[] = [];
   for (const page of childrenOf(pages, workspaceId, null)) {
     const children = childrenOf(pages, workspaceId, page.id);
-    if (!children.length && !page.view?.columns?.length && !withProposal.has(page.id)) loose.push(page);
+    if (!children.length && !page.view?.columns?.length && !page.view?.summary && !withProposal.has(page.id)) loose.push(page);
     else groups.push({ page, children, ...viewOf(page, children) });
   }
   return { groups, loose };
@@ -171,8 +188,18 @@ export function cleanColumns(raw: unknown): ViewColumn[] {
 
 /** 보기를 바꾼다(null 이면 지워서 짐작으로) — 사람이 고칠 때 */
 export function setPageView(pages: PageMeta[], id: string, columns: ViewColumn[] | null, nowIso: string, by: PageView["by"] = "human"): PageMeta[] {
-  const view: PageView | null = columns?.length ? { columns: cleanColumns(columns), by, at: nowIso } : null;
-  return pages.map((p) => (p.id === id ? { ...p, view, rev: p.rev + 1, updatedAt: nowIso } : p));
+  return pages.map((p) => {
+    if (p.id !== id) return p;
+    const cols = columns?.length ? cleanColumns(columns) : [];
+    const view: PageView | null = cols.length || p.view?.summary ? { columns: cols, ...(p.view?.summary ? { summary: p.view.summary } : {}), by, at: nowIso } : null;
+    return { ...p, view, rev: p.rev + 1, updatedAt: nowIso };
+  });
+}
+
+/** 개수 + 요약 — 오늘 탭 카드. stale: 요약한 뒤 하위 수가 바뀌었다 */
+export function summaryOf(page: PageMeta, children: PageMeta[]): { count: number; unit: string | null; text: string | null; stale: boolean } {
+  const s = page.view?.summary;
+  return { count: children.length, unit: s?.unit ?? null, text: s?.text ?? null, stale: !!s && s.count !== children.length };
 }
 
 /* ───────────────────────── AI 보기 제안 ───────────────────────── */
@@ -182,6 +209,9 @@ export type ViewSkip = "unknown_page" | "trashed" | "private" | "cross_workspace
 export interface ViewInput {
   pageId: string;
   columns?: unknown;
+  /** 전체 요약 2~3줄 · 하위를 세는 말 */
+  summary?: string | null;
+  unit?: string | null;
   /** 하위 페이지 id → 속성 */
   values?: Record<string, Record<string, unknown>> | null;
   note?: string;
@@ -230,18 +260,22 @@ export function proposeView(
     if (Object.keys(clean).length) values[id] = clean;
   }
   const valueCount = Object.keys(values).length;
-  if (!columns.length && !valueCount) return { kind: "skipped", reason: "empty" };
+  const summaryText = String(input.summary ?? "").trim().split("\n").map((l) => l.trim()).filter(Boolean).join("\n").slice(0, MAX_SUMMARY);
+  const unit = String(input.unit ?? "").trim().slice(0, MAX_UNIT) || null;
+  const summary = summaryText ? { text: summaryText, unit, count: kids.size } : null;
+  if (!columns.length && !valueCount && !summary) return { kind: "skipped", reason: "empty" };
 
   const note = (input.note ?? "").trim().slice(0, 1000);
-  const hash = hashText(JSON.stringify([page.id, columns, values]));
+  const hash = hashText(JSON.stringify([page.id, columns, values, summary]));
   if (openViewProposals(state.manifest, page.id).some((p) => p.hash === hash)) return { kind: "skipped", reason: "duplicate" };
-  const text = [note, ...columns.map((c) => c.label), ...Object.values(values).flatMap((v) => Object.values(v))].join("\n");
+  const text = [note, summary?.text ?? "", unit ?? "", ...columns.map((c) => c.label), ...Object.values(values).flatMap((v) => Object.values(v))].join("\n");
   const flags = [...new Set([...(input.flags ?? []), ...(outside ? (["bad_refs"] as BodyFlag[]) : []), ...(scanInjection(text).length ? (["injection_suspect"] as BodyFlag[]) : [])])].sort();
   const proposal: ViewProposal = {
     id: newId(),
     pageId: page.id,
     workspaceId: page.workspaceId,
     columns: columns.length ? columns : null,
+    ...(summary ? { summary } : {}),
     values,
     valueCount,
     ...(note ? { note } : {}),
@@ -262,7 +296,17 @@ export function proposeView(
 export function applyViewProposal(pages: PageMeta[], p: ViewProposal, nowIso: string): { pages: PageMeta[]; changed: number } {
   const page = pageOf(pages, p.pageId);
   if (!page || page.trashedAt) return { pages, changed: 0 };
-  let next = p.columns?.length ? setPageView(pages, page.id, p.columns, nowIso, "ai") : pages;
+  let next = pages;
+  if (p.columns?.length || p.summary) {
+    const cur = page.view;
+    const view: PageView = {
+      columns: p.columns?.length ? p.columns : (cur?.columns ?? []),
+      ...(p.summary ? { summary: { ...p.summary, at: nowIso } } : cur?.summary ? { summary: cur.summary } : {}),
+      by: "ai",
+      at: nowIso,
+    };
+    next = pages.map((x) => (x.id === page.id ? { ...x, view, rev: x.rev + 1, updatedAt: nowIso } : x));
+  }
   const kids = new Set(childrenOf(next, page.workspaceId, page.id).map((k) => k.id));
   let changed = 0;
   next = next.map((k) => {

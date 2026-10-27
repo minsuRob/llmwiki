@@ -209,12 +209,14 @@ test("하위 다이제스트 · 전문(cursor) → 본문 제안 → 앱에서 �
     columns: [{ key: "stage", label: "진행", kind: "status" }, { key: "dueDate", label: "마감", kind: "date" }],
     values: { [ids[0]]: { stage: "지원 전" }, [top.page.id]: { stage: "x" } },
     note: "구인 목록 칸",
+    unit: "구인",
+    summary: "백엔드 위주.\n마감은 11월.",
     tool: "claude",
   });
   assert.equal(view.error, false, view.text);
-  assert.match(view.text, /칸 2개\(진행 · 마감\) · 값 1개 하위/);
+  assert.match(view.text, /요약\(구인 60\) · 칸 2개\(진행 · 마감\) · 값 1개 하위/);
   assert.match(view.text, /bad_refs/);
-  assert.equal((await tool("llmwiki_propose_view", { page: top.page.id, columns: [{ key: "stage", label: "진행", kind: "status" }, { key: "dueDate", label: "마감", kind: "date" }], values: { [ids[0]]: { stage: "지원 전" } } })).text, "이미 낸 같은 제안이에요.");
+  assert.equal((await tool("llmwiki_propose_view", { page: top.page.id, columns: [{ key: "stage", label: "진행", kind: "status" }, { key: "dueDate", label: "마감", kind: "date" }], values: { [ids[0]]: { stage: "지원 전" } }, unit: "구인", summary: "백엔드 위주.\n마감은 11월." })).text, "이미 낸 같은 제안이에요.");
   assert.equal((await tool("llmwiki_propose_view", { page: top.page.id })).error, true);
   assert.match((await tool("llmwiki_pages", { workspace: "ws-personal" })).text, /보기 제안 대기/);
 

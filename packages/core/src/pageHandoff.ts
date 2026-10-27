@@ -7,7 +7,7 @@
  *   MCP 를 쓰면 llmwiki_read(children: digest | full, cursor)로 나머지를 나눠 읽는다(같은 함수).
  * - 실행자마다 예산이 다르다(executors.ts — Claude · Codex 2만 자, Gemma 5천 자). 넘치면 자르고 몇 개를 뺐는지 적는다.
  * - 결과는 ```llmwiki-page``` 블록 {run, page, body, note, refs}(여럿이면 pages: [...]). 들일 때 검사한다:
- *   목록 보기도 같은 블록으로 — view: {columns: [{key, label, kind}]} 와 하위마다 props: {키: 값} → 보기 제안 하나(pageView.ts).
+ *   목록 보기도 같은 블록으로 — view: {columns: [{key, label, kind}], summary, unit, note} 와 하위마다 props: {키: 값} → 보기 제안 하나(pageView.ts).
  *   묶음 밖 페이지 · 다른 범주(cross_workspace) · 확정 필드 · 다른 묶음의 결과 · 지시문. 들이는 것은 언제나 제안 — 받기 · 빼기는 사람.
  * - 제안의 baseHash 는 묶음을 만들 때의 본문 지문 — 그 사이 사람이 고쳤으면 받을 때 낡음(stale)으로 잡힌다.
  * 묶음의 고정 문구는 앱이 번역 파일에서 넘긴다(PagePackLabels).
@@ -101,7 +101,7 @@ export function fullChunk(children: PageMeta[], bodyOf: (p: PageMeta) => string 
 }
 
 function template(runId: string) {
-  return { run: runId, view: { columns: [], note: "" }, pages: [{ page: "P1", body: "", note: "", refs: ["P2"] }, { page: "P2", props: {} }] };
+  return { run: runId, view: { unit: "", summary: "", columns: [], note: "" }, pages: [{ page: "P1", body: "", note: "", refs: ["P2"] }, { page: "P2", props: {} }] };
 }
 
 /**
@@ -183,6 +183,9 @@ export interface ParsedPageResult {
   columns?: unknown[];
   /** 왜 이 칸인지(view.note) */
   viewNote?: string;
+  /** 전체 요약 · 세는 말(view.summary · view.unit) */
+  summary?: string;
+  unit?: string;
   /** 확정 · 적용을 시도한 필드(무시한다) */
   forbidden: string[];
   found: boolean;
@@ -211,6 +214,8 @@ export function parsePageResult(text: string): ParsedPageResult {
     out.found = true;
     if (view && Array.isArray(view.columns) && view.columns.length) out.columns = view.columns;
     if (view && str(view.note).trim()) out.viewNote = str(view.note).trim();
+    if (view && str(view.summary).trim()) out.summary = str(view.summary).trim();
+    if (view && str(view.unit).trim()) out.unit = str(view.unit).trim();
     out.run ??= str(obj.run).trim() || undefined;
     for (const k of Object.keys(obj)) if (FORBIDDEN.has(k.toLowerCase())) forbidden.add(k);
     for (const x of list) {
@@ -288,9 +293,9 @@ export function importPageResult(state: PageState, text: string, nowIso: string,
     added.push({ proposal: r.proposal, body: r.body });
   });
   const views: ViewProposal[] = [];
-  if (parsed.columns?.length || Object.keys(values).length) {
+  if (parsed.columns?.length || Object.keys(values).length || parsed.summary) {
     const note = parsed.viewNote ?? parsed.entries.find((e) => resolve(e.page) === run.pageId)?.note;
-    const v = proposeView({ manifest, pages: state.pages }, { pageId: run.pageId, columns: parsed.columns, values, note, tool: opts.tool ?? run.tool, runId: run.id, flags: runFlags }, nowIso, { workspaceId: run.workspaceId, includePrivate: true });
+    const v = proposeView({ manifest, pages: state.pages }, { pageId: run.pageId, columns: parsed.columns, values, summary: parsed.summary, unit: parsed.unit, note, tool: opts.tool ?? run.tool, runId: run.id, flags: runFlags }, nowIso, { workspaceId: run.workspaceId, includePrivate: true });
     if (v.kind === "ok") {
       manifest = v.manifest;
       views.push(v.proposal);

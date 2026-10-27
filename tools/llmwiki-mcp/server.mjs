@@ -240,7 +240,7 @@ const TOOLS = [
   {
     name: "llmwiki_propose_view",
     description:
-      "소주제(하위가 있는 페이지)의 목록 보기를 제안한다 — 하위를 한 줄씩 볼 때의 칸(columns)과, 필요하면 하위마다 채울 값(values). 범주 · 소주제 이름(경로)과 llmwiki_read(children: digest)로 하위를 본 뒤, 그 주제에 맞는 칸을 고른다(구인이면 마감 · 진행, 리서치면 출처 · 연도 …). 칸 종류: status(값 몇 개 — 진행 단계 등) · date(YYYY-MM-DD) · tag(분류) · flag(참/거짓 — true 일 때만 이름이 보임) · text(짧은 글). values 는 {하위 페이지 id: {키: 값}} — 빈 값은 그 속성을 지운다. 사용자가 앱 오늘 탭에서 받거나 뺀다 — 여기서 적용되지 않는다.",
+      "소주제(하위가 있는 페이지)의 목록 보기를 제안한다 — 오늘 탭에 보일 개수 · 요약(unit · summary), 하위를 한 줄씩 볼 때의 칸(columns), 필요하면 하위마다 채울 값(values). 범주 · 소주제 이름(경로)과 llmwiki_read(children: digest)로 하위를 본 뒤, 그 주제에 맞는 칸을 고른다(구인이면 마감 · 진행, 리서치면 출처 · 연도 …). 칸 종류: status(값 몇 개 — 진행 단계 등) · date(YYYY-MM-DD) · tag(분류) · flag(참/거짓 — true 일 때만 이름이 보임) · text(짧은 글). values 는 {하위 페이지 id: {키: 값}} — 빈 값은 그 속성을 지운다. 사용자가 앱 오늘 탭에서 받거나 뺀다 — 여기서 적용되지 않는다.",
     inputSchema: {
       type: "object",
       properties: {
@@ -251,6 +251,8 @@ const TOOLS = [
           items: { type: "object", properties: { key: { type: "string", description: "하위 속성 키" }, label: { type: "string", description: "보일 이름" }, kind: { type: "string", enum: [...COLUMN_KINDS] } }, required: ["key", "kind"] },
         },
         values: { type: "object", description: "{하위 페이지 id: {키: 값}} — 이 페이지의 하위만", additionalProperties: { type: "object", additionalProperties: { type: "string" } } },
+        unit: { type: "string", description: "하위를 세는 말(구인 · 팁 · 자료) — 오늘 탭에 '구인 8건' 처럼" },
+        summary: { type: "string", description: "하위 전체 요약 2~3줄(개수 · 공통점 · 눈에 띄는 것). 목록을 다시 늘어놓지 않는다. 오늘 탭은 목록 대신 이것만 보인다" },
         note: { type: "string", description: "왜 이 칸인지 한두 줄" },
         tool: { type: "string", enum: ["claude", "codex", "other"] },
       },
@@ -358,6 +360,7 @@ async function call(name, a) {
       if (allKids.length || page.view) {
         const v = viewOf(page, allKids);
         const cols = v.columns.map((c) => `${c.label}(${c.key} · ${c.kind})`).join(" · ") || "없음";
+        if (page.view?.summary) out.push(`요약(${page.view.summary.unit ?? "하위"} ${page.view.summary.count}, ${page.view.summary.at}): ${page.view.summary.text.replace(/\n/g, " / ")}`);
         out.push(`목록 보기: ${v.guessed ? "정하지 않음 — 짐작한 칸" : "정한 칸"} ${cols}${openViewProposals(state.manifest, page.id).length ? " · 보기 제안 대기" : ""} (llmwiki_propose_view 로 제안)`);
       }
       if (!cursor) out.push("", "## [P1] 본문", "", (await bodyOf(state, page)) ?? "(본문을 읽지 못했어요)");
@@ -428,13 +431,13 @@ async function call(name, a) {
         if (page) pickWorkspace(state, page.workspaceId, { forRead: true });
         if (state.virtual.size) throw new UserError("앱이 아직 업무를 페이지로 옮기지 않았어요. 앱을 한 번 연 뒤에 내 주세요.");
         const values = a.values && typeof a.values === "object" && !Array.isArray(a.values) ? a.values : null;
-        const r = proposeView(state, { pageId: String(a.page ?? ""), columns: a.columns, values, note: a.note, tool: toolOf(a.tool) }, nowIso(), { includePrivate: INCLUDE_PRIVATE });
+        const r = proposeView(state, { pageId: String(a.page ?? ""), columns: a.columns, values, summary: a.summary, unit: a.unit, note: a.note, tool: toolOf(a.tool) }, nowIso(), { includePrivate: INCLUDE_PRIVATE });
         result = r;
         return r.kind === "ok" ? { manifest: r.manifest } : null;
       }, mergeBodyProposals);
       if (result.kind === "skipped") throw new UserError(VIEW_SKIP[result.reason] ?? result.reason);
       const p = result.proposal;
-      const lines = [`보기 제안을 냈어요 — 칸 ${p.columns?.length ?? 0}개${p.columns?.length ? `(${p.columns.map((c) => c.label).join(" · ")})` : ""} · 값 ${p.valueCount}개 하위. 사용자가 앱 오늘 탭에서 받거나 뺍니다(아직 적용 아님).`];
+      const lines = [`보기 제안을 냈어요 — ${p.summary ? `요약(${p.summary.unit ?? "하위"} ${p.summary.count}) · ` : ""}칸 ${p.columns?.length ?? 0}개${p.columns?.length ? `(${p.columns.map((c) => c.label).join(" · ")})` : ""} · 값 ${p.valueCount}개 하위. 사용자가 앱 오늘 탭에서 받거나 뺍니다(아직 적용 아님).`];
       if (p.flags?.length) lines.push(`표시: ${p.flags.join(", ")}${p.flags.includes("bad_refs") ? " — 이 페이지 하위가 아닌 값은 버렸어요" : ""}`);
       return lines.join("\n");
     }

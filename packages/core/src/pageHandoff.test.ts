@@ -157,7 +157,7 @@ test("결과의 view · props — 묶음 페이지(P1)에 보기 제안 하나�
     "```llmwiki-page\n" +
     JSON.stringify({
       run: prep.run.id,
-      view: { columns: [{ key: "dueText", label: "마감", kind: "date" }, { key: "stage", label: "진행", kind: "status" }] },
+      view: { unit: "구인", summary: "백엔드 위주 5건.\n마감은 11월 말.", columns: [{ key: "dueText", label: "마감", kind: "date" }, { key: "stage", label: "진행", kind: "status" }] },
       pages: [
         { page: "P1", body: "# 종합\n- 정리", note: "구인 목록에 맞춘 칸" },
         { page: "P2", props: { stage: "지원 전" } },
@@ -175,6 +175,7 @@ test("결과의 view · props — 묶음 페이지(P1)에 보기 제안 하나�
   assert.deepEqual(v.columns?.map((c) => c.label), ["마감", "진행"]);
   assert.deepEqual(v.values, { [w.kids[0].id]: { stage: "지원 전" }, [w.kids[1].id]: { stage: "면접" } });
   assert.equal(v.note, "구인 목록에 맞춘 칸");
+  assert.deepEqual(v.summary, { text: "백엔드 위주 5건.\n마감은 11월 말.", unit: "구인", count: 5 });
   assert.deepEqual(r.skipped, [{ index: 3, reason: "out_of_scope" }]);
   assert.equal(r.manifest.pageRuns?.find((x) => x.id === prep.run.id)?.counts?.added, 2);
 
