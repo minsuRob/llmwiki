@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { preparePageRun, type PagePackLabels } from "./pageHandoff.ts";
-import { describeQuery, facetsOf, parseWhere, queryPages } from "./pageQuery.ts";
+import { describeQuery, facetsOf, overviewOf, parseWhere, queryPages, rowProps } from "./pageQuery.ts";
 import { createPage, importPlan, keysBetween, rowsToEntries, setPageProps, splitMarkdownPages, type PageMeta } from "./pages.ts";
 import { defaultManifest } from "./work.ts";
 
@@ -123,4 +123,33 @@ test("마크다운 붙여 넣기 — '# 제목' 마다 페이지 하나(코드 �
   assert.equal(splitMarkdownPages("# 피트인\n다른 본문", "x")[0].externalId, e[0].externalId);
   assert.deepEqual(splitMarkdownPages("제목 없는 글", "붙여 넣은 글").map((x) => x.title), ["붙여 넣은 글"]);
   assert.deepEqual(splitMarkdownPages("  \n", "x"), []);
+});
+
+test("오늘 개요 — 맨 위 페이지마다 하위(트리 순서)와 많이 쓰인 키, 하위 없는 맨 위는 loose", () => {
+  const [a, b, c] = keysBetween(null, null, 3);
+  const top = (id: string, order: string, extra: Partial<PageMeta> = {}): PageMeta => ({ ...kids(1)[0], id, parentId: null, order, title: id, props: undefined, ...extra });
+  const jobs = kids(5).map((p) => ({ ...p, parentId: "jobs" }));
+  const pages: PageMeta[] = [
+    top("plan", b),
+    top("jobs", a),
+    top("memo", c),
+    ...jobs,
+    top("gone", a, { parentId: "plan", trashedAt: NOW }),
+    top("other", a, { workspaceId: "ws-work" }),
+    top("x", a, { workspaceId: "ws-work", parentId: "other" }),
+  ];
+  const o = overviewOf(pages, "ws-personal", 2);
+  assert.deepEqual(o.groups.map((g) => g.page.id), ["jobs"]);
+  assert.deepEqual(o.groups[0].children.map((p) => p.id), jobs.map((p) => p.id));
+  assert.deepEqual(o.groups[0].keys, facetsOf(jobs).slice(0, 2).map((f) => f.key));
+  // 휴지통에 간 하위만 있으면 하위 없는 페이지로
+  assert.deepEqual(o.loose.map((p) => p.id), ["plan", "memo"]);
+  assert.deepEqual(overviewOf(pages, "ws-work").groups.map((g) => g.page.id), ["other"]);
+  assert.deepEqual(overviewOf(pages, "ws-none"), { groups: [], loose: [] });
+});
+
+test("한 줄 속성 — 키 순서대로, 없거나 빈 값은 건너뛴다", () => {
+  const p = { ...kids(1)[0], props: { company: "A사", dueDate: "2026-11-03", career: " " } };
+  assert.deepEqual(rowProps(p, ["dueDate", "career", "missing", "company"]), ["2026-11-03", "A사"]);
+  assert.deepEqual(rowProps({ ...p, props: undefined }, ["company"]), []);
 });

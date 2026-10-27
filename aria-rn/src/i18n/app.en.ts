@@ -48,9 +48,9 @@ export default {
   today: {
     more: "Show {count} more",
     less: "Show less",
-    recentPages: "Recently changed pages",
-    noRecent: "No pages yet. Create one in the Pages tab.",
-    proposalsWaiting: "{count} AI body suggestion(s) waiting",
+    empty: "No pages yet. Create one in the Pages tab.",
+    loose: "Other pages",
+    openPage: "Open “{title}”",
   },
   status: {
     sync: { device: "This device only", drive: "Synced to Drive", localDrive: "Synced to local Drive (dev)", driveOffline: "Drive disconnected (read-only)" },

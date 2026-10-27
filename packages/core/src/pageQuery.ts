@@ -6,8 +6,9 @@
  * - 날짜 키(값이 모두 YYYY-MM-DD 로 시작): from 으로 '이 날 이후만' — 값이 없는 페이지는 남긴다(마감 없음 ≠ 지남).
  * - 정렬: 제목 · 고친 때 · 트리 순서 · 아무 키. 숫자끼리는 수로, 없는 값은 언제나 뒤로.
  * 앱의 펼쳐 보기 · AI 에게 맡기기 · MCP llmwiki_read 가 같은 함수를 부른다.
+ * 오늘 개요(overviewOf · rowProps)도 여기 — 맨 위 페이지마다 하위를 한 줄씩.
  */
-import type { PageMeta } from "./pages.ts";
+import { childrenOf, type PageMeta } from "./pages.ts";
 
 export interface PageQuery {
   /** 낱말 모두 — 제목 · 작은 값(· 본문) 어딘가에 */
@@ -120,4 +121,30 @@ export function describeQuery(q: PageQuery): string {
     ...(q.text?.trim() ? [`"${q.text.trim()}"`] : []),
   ];
   return parts.join(" · ");
+}
+
+export interface OverviewGroup {
+  /** 범주 맨 위 페이지(중간주제) */
+  page: PageMeta;
+  /** 그 하위(트리 순서) */
+  children: PageMeta[];
+  /** 한 줄에 붙일 속성 키 — 하위에서 많이 쓰인 순 */
+  keys: string[];
+}
+
+/** 오늘 개요 — 범주의 맨 위 페이지마다 하위와 한 줄에 붙일 키. 하위 없는 맨 위 페이지는 loose 로(트리 순서) */
+export function overviewOf(pages: PageMeta[], workspaceId: string, maxKeys = 3): { groups: OverviewGroup[]; loose: PageMeta[] } {
+  const groups: OverviewGroup[] = [];
+  const loose: PageMeta[] = [];
+  for (const page of childrenOf(pages, workspaceId, null)) {
+    const children = childrenOf(pages, workspaceId, page.id);
+    if (!children.length) loose.push(page);
+    else groups.push({ page, children, keys: facetsOf(children).slice(0, maxKeys).map((f) => f.key) });
+  }
+  return { groups, loose };
+}
+
+/** 한 줄에 붙일 속성 값 — keys 순서로, 빈 값은 건너뛴다 */
+export function rowProps(p: PageMeta, keys: string[]): string[] {
+  return keys.map((k) => p.props?.[k]?.trim() ?? "").filter(Boolean);
 }

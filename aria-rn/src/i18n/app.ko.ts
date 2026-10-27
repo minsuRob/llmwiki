@@ -48,9 +48,9 @@ export default {
   today: {
     more: "{count}개 더 보기",
     less: "접기",
-    recentPages: "최근 바뀐 페이지",
-    noRecent: "아직 페이지가 없어요. 페이지 탭에서 새 페이지를 만들어 보세요.",
-    proposalsWaiting: "AI 본문 제안 {count}개가 기다려요",
+    empty: "아직 페이지가 없어요. 페이지 탭에서 새 페이지를 만들어 보세요.",
+    loose: "그 밖의 페이지",
+    openPage: "「{title}」 열기",
   },
   status: {
     sync: { device: "이 기기에만", drive: "Drive 동기화됨", localDrive: "로컬 Drive 동기화됨(개발용)", driveOffline: "Drive 끊김(읽기만)" },
