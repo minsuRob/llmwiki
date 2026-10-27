@@ -17,6 +17,7 @@ import type { Palette } from "../../components/theme";
 import { CalloutExtension } from "./CalloutExtension";
 import type { EditorDomProps } from "./LexicalEditor";
 import { ImageExtension } from "./ImageExtension";
+import { registerListStyles } from "./listStyle";
 import { $fromMarkdown } from "./markdown";
 import { editorTheme } from "./theme";
 import { ToggleExtension } from "./ToggleExtension";
@@ -41,6 +42,8 @@ function MarkdownSyncPlugin({ markdown }: { markdown: string }) {
   useEffect(() => {
     editor.setEditable(false);
   }, [editor]);
+  // 목록 기호(• ◦ ▪ · 1. a.)는 편집기와 같이 항목마다 단다 — 없으면 CSS 가 기호를 그리지 않는다
+  useEffect(() => registerListStyles(editor), [editor]);
   useEffect(() => {
     editor.update(
       () => {
@@ -54,7 +57,8 @@ function MarkdownSyncPlugin({ markdown }: { markdown: string }) {
   return null;
 }
 
-export default function LexicalViewer({ palette, dark, markdown }: { palette: Palette; dark: boolean; markdown: string; dom?: EditorDomProps }) {
+/** compact: 카드 안 짧은 글(오늘 탭 요약) — 테두리 · 바탕 · 여백 없이 */
+export default function LexicalViewer({ palette, dark, markdown, compact }: { palette: Palette; dark: boolean; markdown: string; compact?: boolean; dom?: EditorDomProps }) {
   const vars = {
     "--lex-bg": palette.bg,
     "--lex-surface": palette.surface,
@@ -66,7 +70,7 @@ export default function LexicalViewer({ palette, dark, markdown }: { palette: Pa
     "--lex-border": palette.border,
   } as CSSProperties;
   return (
-    <div className={"lex-root lex-viewer" + (IS_DOM ? " lex-dom" : "") + (dark ? " lex-dark" : "")} style={vars}>
+    <div className={"lex-root lex-viewer" + (IS_DOM ? " lex-dom" : "") + (dark ? " lex-dark" : "") + (compact ? " lex-compact" : "")} style={vars}>
       <LexicalExtensionComposer extension={viewerExtension} contentEditable={null}>
         <div className="lex-container">
           <div className="lex-inner">

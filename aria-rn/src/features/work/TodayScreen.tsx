@@ -7,13 +7,14 @@
  */
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, useColorScheme, View } from "react-native";
 
 import { openBodyProposals, type PageMeta } from "../../../../packages/core/src/pages.ts";
 import { openViewProposals, overviewOf, rowCells, summaryOf, type ColumnKind, type ViewColumn, type ViewProposal } from "../../../../packages/core/src/pageView.ts";
 import { usePalette, type Palette } from "../../components/theme";
 import { Btn, PAGE } from "../../components/ui";
 import { useT } from "../../i18n";
+import LexicalViewer from "../editor/LexicalViewer";
 import { ConflictPanel } from "./ConflictPanel";
 import { pageLabel } from "./PageTree";
 import { Card, H, Muted } from "./parts";
@@ -81,7 +82,7 @@ function ViewBand({ c, p }: { c: Palette; p: ViewProposal }) {
   return (
     <View style={{ gap: 4, borderLeftWidth: 2, borderLeftColor: c.accent, paddingLeft: 8 }}>
       <Text style={{ fontSize: 13, color: c.text, fontWeight: "600" }}>{p.summary ? t("today.summaryProposal") : cols ? t("today.viewProposal", { columns: cols }) : t("today.viewOnlyValues", { count: p.valueCount })}</Text>
-      {p.summary ? <Text style={{ fontSize: 14, lineHeight: 21, color: c.text }}>{p.summary.text}</Text> : null}
+      {p.summary ? <SummaryText c={c} markdown={p.summary.text} /> : null}
       {p.summary && cols ? <Muted c={c}>{t("today.viewProposal", { columns: cols })}</Muted> : null}
       {cols && p.valueCount ? <Muted c={c}>{t("today.viewValues", { count: p.valueCount })}</Muted> : null}
       {p.note ? <Muted c={c}>{p.note}</Muted> : null}
@@ -95,6 +96,12 @@ function ViewBand({ c, p }: { c: Palette; p: ViewProposal }) {
   );
 }
 
+/** 요약 — 마크다운(편집기와 같은 규칙: 글머리 · **굵게** · 링크 …)을 읽기 전용 뷰어로 */
+function SummaryText({ c, markdown }: { c: Palette; markdown: string }) {
+  const dark = useColorScheme() === "dark";
+  return <LexicalViewer palette={c} dark={dark} markdown={markdown} compact dom={{ style: { width: "100%" }, scrollEnabled: false }} />;
+}
+
 /** 개수 + 요약 2~3줄. 요약이 없으면 받는 길을, 요약 뒤 하위 수가 바뀌었으면 그 사실을 */
 function Summary({ c, g, kids, pending }: { c: Palette; g: PageMeta; kids: PageMeta[]; pending: boolean }) {
   const t = useT();
@@ -105,7 +112,7 @@ function Summary({ c, g, kids, pending }: { c: Palette; g: PageMeta; kids: PageM
         {s.unit ?? t("today.unit")} <Text style={{ fontSize: 22, fontWeight: "700", color: c.text }}>{s.count}</Text>
         {t("today.counter")}
       </Text>
-      {s.text ? <Text style={{ fontSize: 14, lineHeight: 21, color: c.text }}>{s.text}</Text> : pending ? null : <Muted c={c}>{t("today.noSummary")}</Muted>}
+      {s.text ? <SummaryText c={c} markdown={s.text} /> : pending ? null : <Muted c={c}>{t("today.noSummary")}</Muted>}
       {s.stale ? <Muted c={c}>{t("today.summaryStale", { from: g.view?.summary?.count ?? 0, to: s.count })}</Muted> : null}
     </View>
   );

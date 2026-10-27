@@ -252,7 +252,7 @@ const TOOLS = [
         },
         values: { type: "object", description: "{하위 페이지 id: {키: 값}} — 이 페이지의 하위만", additionalProperties: { type: "object", additionalProperties: { type: "string" } } },
         unit: { type: "string", description: "하위를 세는 말(구인 · 팁 · 자료) — 오늘 탭에 '구인 8건' 처럼" },
-        summary: { type: "string", description: "하위 전체 요약 2~3줄(개수 · 공통점 · 눈에 띄는 것). 목록을 다시 늘어놓지 않는다. 오늘 탭은 목록 대신 이것만 보인다" },
+        summary: { type: "string", description: "하위 전체 요약 2~3줄(개수 · 공통점 · 눈에 띄는 것). 마크다운 글머리 '- ' 2~3개, 핵심 낱말은 **굵게**, 제목 · 표는 쓰지 않는다. 목록을 다시 늘어놓지 않는다. 오늘 탭은 목록 대신 이것만 편집기 서식으로 보인다" },
         note: { type: "string", description: "왜 이 칸인지 한두 줄" },
         tool: { type: "string", enum: ["claude", "codex", "other"] },
       },

@@ -405,6 +405,21 @@ body:has(> #root .lex-dom) {
   caret-color: transparent;
   cursor: default;
 }
+/* 카드 안 짧은 글(오늘 탭 요약) — 카드가 이미 테두리 · 바탕을 가진다 */
+.lex-root.lex-viewer.lex-compact {
+  height: auto;
+  background: transparent;
+}
+.lex-viewer.lex-compact .lex-container {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.lex-viewer.lex-compact .lex-input {
+  min-height: 0;
+  padding: 0;
+  font-size: 14px;
+}
 
 /* ── 블록 손잡이(DraggableBlockPlugin) — 마우스가 있는 화면만. 왼쪽에 손잡이 자리를 비운다 ── */
 .lex-block-menu,

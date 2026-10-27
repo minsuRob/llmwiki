@@ -18,7 +18,7 @@ Notion 처럼 동작하는 블록 편집기(Lexical 0.52, 확장 API — `define
 |---|---|
 | `extension.ts` | 편집기 확장 묶음(`editorExtension`) — RichText · History · AutoFocus · List · CheckList · Link · AutoLink · Code · HorizontalRule · Image · Toggle · Callout. 모듈 범위에 두어야 다시 만들어지지 않는다 |
 | `LexicalEditor.tsx` | 편집기 본체 — 도구 막대 · 마크다운 · 블록 단축키 · 슬래시 메뉴 · 떠 있는 도구 막대 · 변경 알림(`EditorChange` = text · json · html) |
-| `LexicalViewer.tsx` | **읽기 전용** — 같은 노드 · 테마 · 마크다운 규칙으로 마크다운을 서식 있게. `markdown` prop 이 바뀌면 다시 읽는다(펼쳐 보기에서 씀) |
+| `LexicalViewer.tsx` | **읽기 전용** — 같은 노드 · 테마 · 마크다운 규칙으로 마크다운을 서식 있게(목록 기호도 편집기처럼 `registerListStyles`). `markdown` prop 이 바뀌면 다시 읽는다. 펼쳐 보기 · 오늘 탭 요약(`compact` — 테두리 · 바탕 · 여백 없이 카드 안에)에서 씀 |
 | `markdownCompat.ts` | 일반 마크다운 → 이 편집기 규칙(`> 인용` → `| 인용`, `>` 는 토글이라. 콜아웃 `> [!note]` 줄은 그대로) |
 | `markdown.ts` | `MARKDOWN_TRANSFORMERS`(순서 중요 — 토글 `<details>` · 콜아웃 · 이미지가 맨 앞) · `$toMarkdown` · `$fromMarkdown` · 바로 바꾸기(```` ``` ```` · `---`) · 여러 줄 마크다운 붙여넣기 |
 | `blocks.ts` | 블록 종류 목록 `BLOCKS`(텍스트 · 제목1~4 · 글머리 · 번호 · 할 일 · 토글 · 콜아웃 · 인용 · 코드 · 이미지 · 구분선) — 슬래시 메뉴와 블록 바꾸기 단축키가 같이 쓴다. 새 블록은 여기에 더한다 |

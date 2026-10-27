@@ -5,7 +5,7 @@
  *   status 상태(값 몇 개 — 칩) · date 날짜(정렬 · 지난 것) · tag 분류 · flag 표시(참일 때만 이름이 꼬리표로) · text 글.
  * - 보기는 소주제 페이지의 색인(PageMeta.view)에 둔다. 없으면 하위의 값 모양으로 짐작한다(guessView).
  * - AI 는 주제 이름과 하위를 보고 '보기 제안'을 낸다 — 칸(columns)과, 필요하면 하위마다 채울 값(values).
- *   요약(summary)도 낸다 — 하위를 세는 말(unit: 구인 · 팁 …)과 전체를 2~3줄로. 오늘 탭은 목록 대신 '개수 + 요약'만 보인다.
+ *   요약(summary)도 낸다 — 하위를 세는 말(unit: 구인 · 팁 …)과 전체를 2~3줄로(마크다운 — 앱은 편집기 뷰어로 그린다). 오늘 탭은 목록 대신 '개수 + 요약'만 보인다.
  *   요약한 때의 하위 수를 적어 두어, 그 뒤 하위가 늘거나 줄면 '요약 뒤 바뀜'을 보인다.
  *   MCP llmwiki_propose_view · 페이지 넘기기 결과(view · props)가 같은 함수(proposeView)를 부른다.
  *   검사: 페이지가 있고 살아 있어야, 묶음 범주 안이어야(cross_workspace), 값은 그 페이지의 하위에만, 지시문은 표시.
@@ -77,7 +77,7 @@ const MAX_LABEL = 30;
 const MAX_VALUE = 200;
 const MAX_VALUE_PAGES = 600;
 const MAX_DECIDED = 50;
-const MAX_SUMMARY = 400;
+const MAX_SUMMARY = 800;
 const MAX_UNIT = 12;
 
 /* ───────────────────────── 값 모양 ───────────────────────── */
@@ -260,7 +260,8 @@ export function proposeView(
     if (Object.keys(clean).length) values[id] = clean;
   }
   const valueCount = Object.keys(values).length;
-  const summaryText = String(input.summary ?? "").trim().split("\n").map((l) => l.trim()).filter(Boolean).join("\n").slice(0, MAX_SUMMARY);
+  // 요약은 마크다운(편집기 규칙 — 글머리 · **굵게**) — 줄 끝 공백 · 3줄 넘는 빈 줄만 정리하고 들여쓰기는 둔다
+  const summaryText = String(input.summary ?? "").replace(/\r/g, "").split("\n").map((l) => l.trimEnd()).join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_SUMMARY);
   const unit = String(input.unit ?? "").trim().slice(0, MAX_UNIT) || null;
   const summary = summaryText ? { text: summaryText, unit, count: kids.size } : null;
   if (!columns.length && !valueCount && !summary) return { kind: "skipped", reason: "empty" };

@@ -158,14 +158,14 @@ test("보기 제안 합치기 — 본문 제안 합치기에 실려 오고, 정�
 
 test("요약 — 세는 말 · 2~3줄을 제안하고, 받으면 보기에 하위 수와 함께. 칸은 그대로 두고, 하위 수가 바뀌면 stale", () => {
   const pages = setPageView([page("jobs"), ...jobs(3)], "jobs", [{ key: "stage", label: "진행", kind: "status" }], NOW);
-  const r = proposeView({ manifest: M(), pages }, { pageId: "jobs", summary: "  AI · 백엔드 위주 3건.\n\n  마감은 대부분 11월 초.  ", unit: "구인", tool: "claude" }, NOW);
+  const r = proposeView({ manifest: M(), pages }, { pageId: "jobs", summary: "  - **AI · 백엔드** 위주 3건.  \n\n\n\n  - 마감은 대부분 11월 초.  ", unit: "구인", tool: "claude" }, NOW);
   assert.ok(r.kind === "ok");
   if (r.kind !== "ok") return;
-  assert.deepEqual(r.proposal.summary, { text: "AI · 백엔드 위주 3건.\n마감은 대부분 11월 초.", unit: "구인", count: 3 });
+  assert.deepEqual(r.proposal.summary, { text: "- **AI · 백엔드** 위주 3건.\n\n  - 마감은 대부분 11월 초.", unit: "구인", count: 3 }, "마크다운 — 들여쓰기는 두고 빈 줄은 하나까지");
   const a = applyViewProposal(pages, r.proposal, LATER);
   const top = a.pages.find((p) => p.id === "jobs")!;
   assert.deepEqual(top.view?.columns.map((c) => c.key), ["stage"], "칸 없이 요약만 받으면 칸은 그대로");
-  assert.deepEqual(summaryOf(top, jobs(3)), { count: 3, unit: "구인", text: "AI · 백엔드 위주 3건.\n마감은 대부분 11월 초.", stale: false });
+  assert.deepEqual(summaryOf(top, jobs(3)), { count: 3, unit: "구인", text: "- **AI · 백엔드** 위주 3건.\n\n  - 마감은 대부분 11월 초.", stale: false });
   assert.equal(summaryOf(top, jobs(4)).stale, true);
   assert.deepEqual(summaryOf(page("x"), []), { count: 0, unit: null, text: null, stale: false });
   // 요약만 있는 빈 소주제도 카드로
