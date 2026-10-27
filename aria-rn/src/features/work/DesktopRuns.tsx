@@ -87,7 +87,7 @@ export function DesktopRunsProvider({ children }: { children: React.ReactNode })
           patch(r.runId, { status: "save_failed" });
           return; // ack 하지 않는다 — 다음에 다시
         }
-        if (res.kind === "imported") patch(r.runId, { status: "imported", pageAdded: res.added.length, rawOnly: res.warnings.includes("no_block") });
+        if (res.kind === "imported") patch(r.runId, { status: "imported", pageAdded: res.added.length + res.views.length, rawOnly: res.warnings.includes("no_block") });
         else patch(r.runId, { status: res.kind === "duplicate" ? "duplicate" : "failed", ...(res.kind === "no_run" ? { code: "no_result" as RunErrorCode } : {}) });
         await bridge.ack(r.runId);
       } finally {

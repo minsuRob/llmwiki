@@ -73,7 +73,7 @@ test("도구 — 쓰기는 남기기 · 제안뿐이고 확정 · 삭제 · 이�
   assert.equal(init.result.serverInfo.name, "llmwiki");
   const list = await rpc("tools/list");
   const names = list.result.tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ["llmwiki_capture", "llmwiki_inbox", "llmwiki_pages", "llmwiki_propose", "llmwiki_propose_page", "llmwiki_read", "llmwiki_work", "llmwiki_workspaces"]);
+  assert.deepEqual(names, ["llmwiki_capture", "llmwiki_inbox", "llmwiki_pages", "llmwiki_propose", "llmwiki_propose_page", "llmwiki_propose_view", "llmwiki_read", "llmwiki_work", "llmwiki_workspaces"]);
   assert.ok(!names.some((n) => /apply|accept|delete|move|trash/.test(n)), "적용 · 삭제 · 이동 도구는 없다");
 });
 
@@ -202,10 +202,27 @@ test("하위 다이제스트 · 전문(cursor) → 본문 제안 → 앱에서 �
   const kidBase = /본문 지문: (\w+)/.exec((await tool("llmwiki_read", { page: ids[0] })).text)[1];
   assert.equal((await tool("llmwiki_propose_page", { page: ids[0], body: "## 주요 업무\n\nAI 가 줄임", base: kidBase })).error, false);
 
+  // 목록 보기 제안 — 칸 · 하위 값. 하위가 아닌 값은 버리고 표시, 같은 제안은 한 번만
+  assert.match(digest.text, /목록 보기: 정하지 않음 — 짐작한 칸/);
+  const view = await tool("llmwiki_propose_view", {
+    page: top.page.id,
+    columns: [{ key: "stage", label: "진행", kind: "status" }, { key: "dueDate", label: "마감", kind: "date" }],
+    values: { [ids[0]]: { stage: "지원 전" }, [top.page.id]: { stage: "x" } },
+    note: "구인 목록 칸",
+    tool: "claude",
+  });
+  assert.equal(view.error, false, view.text);
+  assert.match(view.text, /칸 2개\(진행 · 마감\) · 값 1개 하위/);
+  assert.match(view.text, /bad_refs/);
+  assert.equal((await tool("llmwiki_propose_view", { page: top.page.id, columns: [{ key: "stage", label: "진행", kind: "status" }, { key: "dueDate", label: "마감", kind: "date" }], values: { [ids[0]]: { stage: "지원 전" } } })).text, "이미 낸 같은 제안이에요.");
+  assert.equal((await tool("llmwiki_propose_view", { page: top.page.id })).error, true);
+  assert.match((await tool("llmwiki_pages", { workspace: "ws-personal" })).text, /보기 제안 대기/);
+
   // 앱 쪽 — 같은 core 함수로 받는다(문서를 읽고, 원문은 raw/ 에서)
   const app = await repo.load();
   const open = openBodyProposals(app.manifest);
   assert.equal(open.length, 2);
+  assert.equal(app.manifest.viewProposals.filter((p) => p.status === "open").length, 1, "보기 제안도 매니페스트에 열린 채로");
   assert.ok(open.every((p) => p.origin === "ai" && p.status === "open"), "MCP 는 열린 제안만 만든다");
   const forTop = open.find((p) => p.pageId === top.page.id);
   const forKid = open.find((p) => p.pageId === ids[0]);

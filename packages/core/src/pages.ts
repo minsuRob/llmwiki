@@ -15,6 +15,7 @@
  */
 import { scanInjection } from "./inject.ts";
 import { newId } from "./types.ts";
+import { mergeViewProposals, type PageView } from "./pageView.ts";
 import { hashText as hash } from "./hash.ts";
 import type { AiTool, ChangeEntry, MigrationRecord, Msg, WorkManifest, Workspace } from "./work.ts";
 import type { Importance, Proposal, WorkItem, WorkStatus } from "./workV2.ts";
@@ -55,6 +56,8 @@ export interface PageMeta {
   trashedAt?: string | null;
   /** 함께 휴지통에 들어간 묶음의 맨 위 페이지 — 되살릴 때 같이 돌아온다 */
   trashedBy?: string | null;
+  /** 하위를 한 줄씩 볼 때의 칸(pageView.ts) — 없으면 하위 값 모양으로 짐작 */
+  view?: PageView | null;
 }
 
 export interface PageDoc {
@@ -558,7 +561,7 @@ export function rejectBodyProposal(manifest: WorkManifest, proposalId: string, n
   return { ...manifest, bodyProposals: pruneBody(bodyProposals) };
 }
 
-/** 본문 제안 · 이행 기록 · 페이지 넘기기 기록을 다른 쪽 최신 매니페스트에 합친다(mergeTriage 옆) — 같은 id 는 정한 쪽이 이긴다 */
+/** 본문 제안 · 보기 제안 · 이행 기록 · 페이지 넘기기 기록을 다른 쪽 최신 매니페스트에 합친다(mergeTriage 옆) — 같은 id 는 정한 쪽이 이긴다 */
 export function mergeBodyProposals(cur: WorkManifest, mine: WorkManifest): WorkManifest {
   const byId = new Map((cur.bodyProposals ?? []).map((p) => [p.id, p]));
   for (const p of mine.bodyProposals ?? []) {
@@ -574,7 +577,8 @@ export function mergeBodyProposals(cur: WorkManifest, mine: WorkManifest): WorkM
     if (!c || (!c.finishedAt && r.finishedAt)) runs.set(r.id, r);
   }
   const pageRuns = [...runs.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).slice(-20);
-  return { ...cur, bodyProposals: pruneBody([...byId.values()]), migrations, pageRuns };
+  // 보기 제안도 같은 저장에 실려 온다(pageView.ts)
+  return mergeViewProposals({ ...cur, bodyProposals: pruneBody([...byId.values()]), migrations, pageRuns }, mine);
 }
 
 /* ───────────────────────── 가져오기(범용) ───────────────────────── */

@@ -145,3 +145,41 @@ test("실행 머리줄 — 모델 · 걸린 시간", () => {
   assert.deepEqual(runMeta('<!-- llmwiki-run {"executor":"gemma","model":"gemma-4-E4B q4_0","latencyMs":461100} -->\n본문'), { executor: "gemma", model: "gemma-4-E4B q4_0", latencyMs: 461100 });
   assert.equal(runMeta("머리줄 없음"), null);
 });
+
+test("결과의 view · props — 묶음 페이지(P1)에 보기 제안 하나로, 값은 묶음 하위에만 · 본문 제안과 함께", () => {
+  const w = world(5);
+  const st = { manifest: w.manifest, pages: [...w.pages, w.top] };
+  const prep = preparePageRun(st, w.top.id, { tool: "claude", scope: "" }, L, NOW, w.bodies);
+  if (!prep) return assert.fail();
+  assert.match(prep.markdown, /"view"/, "돌려줄 형식에 view 자리가 있다");
+  const state = { ...st, manifest: prep.manifest };
+  const answer =
+    "```llmwiki-page\n" +
+    JSON.stringify({
+      run: prep.run.id,
+      view: { columns: [{ key: "dueText", label: "마감", kind: "date" }, { key: "stage", label: "진행", kind: "status" }] },
+      pages: [
+        { page: "P1", body: "# 종합\n- 정리", note: "구인 목록에 맞춘 칸" },
+        { page: "P2", props: { stage: "지원 전" } },
+        { page: "P3", props: { stage: "면접" } },
+        { page: w.other.id, props: { stage: "x" } },
+      ],
+    }) +
+    "\n```";
+  const r = importPageResult(state, answer, LATER, { runId: prep.run.id });
+  if (r.kind !== "imported") return assert.fail(r.kind);
+  assert.equal(r.added.length, 1);
+  assert.equal(r.views.length, 1);
+  const v = r.views[0];
+  assert.equal(v.pageId, w.top.id);
+  assert.deepEqual(v.columns?.map((c) => c.label), ["마감", "진행"]);
+  assert.deepEqual(v.values, { [w.kids[0].id]: { stage: "지원 전" }, [w.kids[1].id]: { stage: "면접" } });
+  assert.equal(v.note, "구인 목록에 맞춘 칸");
+  assert.deepEqual(r.skipped, [{ index: 3, reason: "out_of_scope" }]);
+  assert.equal(r.manifest.pageRuns?.find((x) => x.id === prep.run.id)?.counts?.added, 2);
+
+  // 칸만 돌려줘도 된다
+  const only = importPageResult(state, "```llmwiki-page\n" + JSON.stringify({ run: prep.run.id, view: { columns: [{ key: "dev", label: "개발", kind: "flag" }], note: "칸만" } }) + "\n```", LATER, { runId: prep.run.id });
+  assert.ok(only.kind === "imported" && only.views.length === 1 && only.added.length === 0);
+  assert.equal(only.views[0].note, "칸만", "본문이 없어도 view.note 는 남는다");
+});

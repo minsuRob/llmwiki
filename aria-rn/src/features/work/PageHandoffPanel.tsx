@@ -26,7 +26,7 @@ export function pageResultNote(t: T, r: PageResultImport | { kind: "save_failed"
   if (r.kind === "no_run") return { text: t("pageHandoff.noRun"), bad: true };
   if (r.kind === "duplicate") return { text: t("pageHandoff.duplicate"), bad: false };
   const warn = r.warnings.map((w) => t(`pageHandoff.warn.${w}`)).join(" ");
-  return { text: [t("pageHandoff.imported", { added: r.added.length, skipped: r.skipped.length }), warn].filter(Boolean).join(" "), bad: r.warnings.length > 0 || !r.added.length };
+  return { text: [r.added.length || !r.views.length ? t("pageHandoff.imported", { added: r.added.length, skipped: r.skipped.length }) : "", r.views.length ? t("pageHandoff.viewImported") : "", warn].filter(Boolean).join(" "), bad: r.warnings.length > 0 || !(r.added.length + r.views.length) };
 }
 
 export function PageHandoffPanel({ c, pageId, filter }: { c: Palette; pageId: string; filter?: { childIds: string[]; query: string; total: number } | null }) {

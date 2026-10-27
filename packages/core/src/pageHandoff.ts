@@ -7,6 +7,7 @@
  *   MCP 를 쓰면 llmwiki_read(children: digest | full, cursor)로 나머지를 나눠 읽는다(같은 함수).
  * - 실행자마다 예산이 다르다(executors.ts — Claude · Codex 2만 자, Gemma 5천 자). 넘치면 자르고 몇 개를 뺐는지 적는다.
  * - 결과는 ```llmwiki-page``` 블록 {run, page, body, note, refs}(여럿이면 pages: [...]). 들일 때 검사한다:
+ *   목록 보기도 같은 블록으로 — view: {columns: [{key, label, kind}]} 와 하위마다 props: {키: 값} → 보기 제안 하나(pageView.ts).
  *   묶음 밖 페이지 · 다른 범주(cross_workspace) · 확정 필드 · 다른 묶음의 결과 · 지시문. 들이는 것은 언제나 제안 — 받기 · 빼기는 사람.
  * - 제안의 baseHash 는 묶음을 만들 때의 본문 지문 — 그 사이 사람이 고쳤으면 받을 때 낡음(stale)으로 잡힌다.
  * 묶음의 고정 문구는 앱이 번역 파일에서 넘긴다(PagePackLabels).
@@ -15,6 +16,7 @@ import { executorOf } from "./executors.ts";
 import { hashText, normalizeResult } from "./hash.ts";
 import { scanInjection } from "./inject.ts";
 import { ancestors, childrenOf, pageOf, proposeBody, type BodyFlag, type BodyProposal, type BodySkip, type PageMeta, type PageState } from "./pages.ts";
+import { proposeView, type ViewProposal, type ViewSkip } from "./pageView.ts";
 import { newId } from "./types.ts";
 import type { AiTool, WorkManifest } from "./work.ts";
 
@@ -99,7 +101,7 @@ export function fullChunk(children: PageMeta[], bodyOf: (p: PageMeta) => string 
 }
 
 function template(runId: string) {
-  return { run: runId, page: "P1", body: "", note: "", refs: ["P2"] };
+  return { run: runId, view: { columns: [], note: "" }, pages: [{ page: "P1", body: "", note: "", refs: ["P2"] }, { page: "P2", props: {} }] };
 }
 
 /**
@@ -176,7 +178,11 @@ export function preparePageRun(
 
 export interface ParsedPageResult {
   run?: string;
-  entries: { page: string; body: string; note?: string; refs: string[] }[];
+  entries: { page: string; body: string; note?: string; refs: string[]; props?: Record<string, unknown> }[];
+  /** 목록 보기 칸(view.columns) — 그대로 넘기고 proposeView 가 거른다 */
+  columns?: unknown[];
+  /** 왜 이 칸인지(view.note) */
+  viewNote?: string;
   /** 확정 · 적용을 시도한 필드(무시한다) */
   forbidden: string[];
   found: boolean;
@@ -199,25 +205,29 @@ export function parsePageResult(text: string): ParsedPageResult {
     }
     if (!o || typeof o !== "object" || Array.isArray(o)) continue;
     const obj = o as Record<string, unknown>;
-    const list = Array.isArray(obj.pages) ? (obj.pages as Record<string, unknown>[]) : "body" in obj ? [obj] : null;
+    const view = obj.view && typeof obj.view === "object" ? (obj.view as Record<string, unknown>) : null;
+    const list = Array.isArray(obj.pages) ? (obj.pages as Record<string, unknown>[]) : "body" in obj || "props" in obj ? [obj] : view ? [] : null;
     if (!list) continue;
     out.found = true;
+    if (view && Array.isArray(view.columns) && view.columns.length) out.columns = view.columns;
+    if (view && str(view.note).trim()) out.viewNote = str(view.note).trim();
     out.run ??= str(obj.run).trim() || undefined;
     for (const k of Object.keys(obj)) if (FORBIDDEN.has(k.toLowerCase())) forbidden.add(k);
     for (const x of list) {
       if (!x || typeof x !== "object") continue;
       for (const k of Object.keys(x)) if (FORBIDDEN.has(k.toLowerCase())) forbidden.add(k);
       const body = str(x.body);
+      const props = x.props && typeof x.props === "object" && !Array.isArray(x.props) && Object.keys(x.props).length ? (x.props as Record<string, unknown>) : undefined;
       // 템플릿을 그대로 돌려준 빈 칸은 버린다
-      if (!body.trim()) continue;
-      out.entries.push({ page: str(x.page).trim() || "P1", body, note: str(x.note).trim() || undefined, refs: strs(x.refs) });
+      if (!body.trim() && !props) continue;
+      out.entries.push({ page: str(x.page).trim() || "P1", body, note: str(x.note).trim() || undefined, refs: strs(x.refs), ...(props ? { props } : {}) });
     }
   }
   out.forbidden = [...forbidden];
   return out;
 }
 
-export type PageResultSkip = BodySkip | "out_of_scope";
+export type PageResultSkip = BodySkip | ViewSkip | "out_of_scope";
 export type PageResultWarning = "forbidden_fields" | "run_mismatch" | "injection" | "no_block";
 
 export type PageResultImport =
@@ -230,6 +240,8 @@ export type PageResultImport =
       rawHash: string;
       /** 들인 제안과 그 본문(원문은 raw/{rawHash}.txt 로 — 부르는 쪽이 쓴다) */
       added: { proposal: BodyProposal; body: string }[];
+      /** 목록 보기 제안(칸 · 하위 값) — 묶음마다 하나까지 */
+      views: ViewProposal[];
       skipped: { index: number; reason: PageResultSkip }[];
       warnings: PageResultWarning[];
     };
@@ -262,9 +274,12 @@ export function importPageResult(state: PageState, text: string, nowIso: string,
   let manifest = state.manifest;
   const added: { proposal: BodyProposal; body: string }[] = [];
   const skipped: { index: number; reason: PageResultSkip }[] = [];
+  const values: Record<string, Record<string, unknown>> = {};
   parsed.entries.forEach((e, index) => {
     const pageId = resolve(e.page);
     if (!known.has(pageId)) return skipped.push({ index, reason: pageOf(state.pages, pageId) ? "out_of_scope" : "unknown_page" });
+    if (e.props && pageId !== run.pageId) values[pageId] = e.props;
+    if (!e.body.trim()) return;
     const refs = e.refs.filter((r) => /^P\d+(:\d+(-\d+)?)?$/i.test(r) && Number(/^P(\d+)/i.exec(r)?.[1]) <= run.refKeys.length);
     const flags: BodyFlag[] = [...runFlags, ...(refs.length < e.refs.length ? (["bad_refs"] as BodyFlag[]) : [])];
     const r = proposeBody({ manifest, pages: state.pages }, { pageId, body: e.body, note: e.note, refs, tool: opts.tool ?? run.tool, runId: run.id, baseHash: run.baseHashes[pageId] ?? null, flags }, nowIso, { workspaceId: run.workspaceId, includePrivate: true });
@@ -272,8 +287,18 @@ export function importPageResult(state: PageState, text: string, nowIso: string,
     manifest = r.manifest;
     added.push({ proposal: r.proposal, body: r.body });
   });
-  const pageRuns = (manifest.pageRuns ?? []).map((x) => (x.id === run.id ? { ...x, finishedAt: nowIso, rawHash, counts: { added: added.length, skipped: skipped.length } } : x));
-  return { kind: "imported", manifest: { ...manifest, pageRuns }, runId: run.id, rawHash, added, skipped, warnings };
+  const views: ViewProposal[] = [];
+  if (parsed.columns?.length || Object.keys(values).length) {
+    const note = parsed.viewNote ?? parsed.entries.find((e) => resolve(e.page) === run.pageId)?.note;
+    const v = proposeView({ manifest, pages: state.pages }, { pageId: run.pageId, columns: parsed.columns, values, note, tool: opts.tool ?? run.tool, runId: run.id, flags: runFlags }, nowIso, { workspaceId: run.workspaceId, includePrivate: true });
+    if (v.kind === "ok") {
+      manifest = v.manifest;
+      views.push(v.proposal);
+    } else skipped.push({ index: -1, reason: v.reason });
+  }
+  const count = added.length + views.length;
+  const pageRuns = (manifest.pageRuns ?? []).map((x) => (x.id === run.id ? { ...x, finishedAt: nowIso, rawHash, counts: { added: count, skipped: skipped.length } } : x));
+  return { kind: "imported", manifest: { ...manifest, pageRuns }, runId: run.id, rawHash, added, views, skipped, warnings };
 }
 
 /** 실행 도구(tools/handoff/run.mjs)가 결과 맨 앞에 붙이는 한 줄 — 모델 · 걸린 시간. 없으면 null */

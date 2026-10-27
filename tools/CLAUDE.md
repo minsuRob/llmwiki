@@ -2,7 +2,7 @@
 
 | 폴더 | 맡은 일 | 시험 |
 |---|---|---|
-| `llmwiki-mcp/` | **llmwiki MCP 서버**(stdio, 의존성 없음). Claude Code · Codex 가 대화 중에 받은 것에 남기고(`llmwiki_capture`), 페이지 트리를 읽고(`llmwiki_pages` · `llmwiki_read` children: titles · digest · full + cursor · where · q · sort — 옛 `llmwiki_work` 는 별칭), 정리 묶음을 받아(`llmwiki_inbox`) 정리 제안을 내고(`llmwiki_propose`), 페이지 본문 제안을 낸다(`llmwiki_propose_page`). 적용 · 삭제 · 옮기기 도구는 없다. core 함수를 그대로 부른다 | `npm run test:mcp`(루트) |
+| `llmwiki-mcp/` | **llmwiki MCP 서버**(stdio, 의존성 없음). Claude Code · Codex 가 대화 중에 받은 것에 남기고(`llmwiki_capture`), 페이지 트리를 읽고(`llmwiki_pages` · `llmwiki_read` children: titles · digest · full + cursor · where · q · sort — 옛 `llmwiki_work` 는 별칭), 정리 묶음을 받아(`llmwiki_inbox`) 정리 제안을 내고(`llmwiki_propose`), 페이지 본문 제안을 내고(`llmwiki_propose_page`), 소주제의 목록 보기(칸 · 하위 값)를 제안한다(`llmwiki_propose_view`). 적용 · 삭제 · 옮기기 도구는 없다. core 함수를 그대로 부른다 | `npm run test:mcp`(루트) |
 | `local-drive/` 의 시험용 시드 | `npm run local-drive` 는 `.local-drive` 에 예시 원본만 넣는다. 옛 업무(v2) 이행을 미리 해 보려면 `state/items/{id}.json` 을 `DriveFileStore` 로 써 넣고 앱을 연다 | — |
 | `handoff/` | 페이지 · 정리 묶음을 Claude CLI · Codex CLI · Gemma(오라클 서버 큐)로 돌리는 실행 본문(`lib.mjs`) · 터미널 진입점(`run.mjs`). 데스크톱 셸도 같은 코드 | `node --test 'tools/handoff/*.test.mjs'` |
 | `local-drive/` | 개발용 가짜 Google Drive(127.0.0.1, 이 컴퓨터 폴더). 앱 · MCP · 시험이 실제 Drive 대신 붙는다 | core `localDrive.test.ts` |

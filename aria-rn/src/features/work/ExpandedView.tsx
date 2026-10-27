@@ -9,6 +9,7 @@ import { FlatList, Pressable, ScrollView, Text, useColorScheme, View, type ViewT
 
 import { childrenOf, type PageMeta } from "../../../../packages/core/src/pages.ts";
 import { facetsOf, queryPages, type Facet, type PageQuery } from "../../../../packages/core/src/pageQuery.ts";
+import { viewOf } from "../../../../packages/core/src/pageView.ts";
 import type { Palette } from "../../components/theme";
 import { Btn } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -104,7 +105,10 @@ export function ExpandedView({ c, page, query, setQuery, onSelect }: { c: Palett
   const asked = useRef(new Set<string>());
   const { all, shown } = useChildren(page, query, bodySearch ? bodies : undefined);
   const facets = useMemo(() => facetsOf(all), [all]);
-  const cols = facets.map((f) => f.key);
+  // 소주제 보기의 칸이 앞(그 이름으로), 나머지 속성은 뒤에
+  const view = useMemo(() => viewOf(page, all).columns, [page, all]);
+  const labels = new Map(view.map((v) => [v.key, v.label]));
+  const cols = [...view.map((v) => v.key), ...facets.map((f) => f.key).filter((k) => !labels.has(k))];
   const filtered = shown.length !== all.length;
 
   const load = useCallback(
@@ -169,7 +173,7 @@ export function ExpandedView({ c, page, query, setQuery, onSelect }: { c: Palett
                 {["title", ...cols].map((k) => (
                   <Pressable key={k} onPress={() => sortBy(k)} accessibilityRole="button" style={{ width: k === "title" ? 320 : 140, paddingRight: 8 }}>
                     <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: query.sort?.key === k ? c.accent : c.muted }}>
-                      {k === "title" ? t("expanded.title") : k}
+                      {k === "title" ? t("expanded.title") : (labels.get(k) ?? k)}
                       {query.sort?.key === k ? (query.sort.dir === "asc" ? " ↑" : " ↓") : ""}
                     </Text>
                   </Pressable>

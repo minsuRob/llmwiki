@@ -11,6 +11,7 @@
  * 옛 업무(스키마 2) 파일 모양은 workV2.ts — 이행만 쓴다.
  */
 import type { PageRun } from "./pageHandoff.ts";
+import type { ViewProposal } from "./pageView.ts";
 import { createPage, linkSourceToPage, pageOf, syncMeta, type BodyProposal, type PageDoc, type PageMeta } from "./pages.ts";
 import { newId } from "./types.ts";
 
@@ -159,6 +160,8 @@ export interface WorkManifest {
   bodyProposals?: BodyProposal[];
   /** 페이지 넘기기 기록 — 묶음의 P1 · P2 가 어느 페이지인지 · 그때 본문 지문(pageHandoff.ts). 최근 것만 */
   pageRuns?: PageRun[];
+  /** 목록 보기 제안(pageView.ts) — 열린 것은 모두, 정한 것은 최근 것만(값은 비움) */
+  viewProposals?: ViewProposal[];
 }
 
 export interface TriageRun {
@@ -552,6 +555,7 @@ export function upgradeManifest(raw: Record<string, unknown> | null, fallback: W
   m.triage ??= [];
   m.triageRuns ??= [];
   m.bodyProposals ??= [];
+  m.viewProposals ??= [];
   m.pageRuns ??= [];
   // 3: 열린 new_work(옛 MCP · 옛 묶음) → new_page. 목표는 note 로만 남긴다
   m.triage = m.triage.map((p) =>

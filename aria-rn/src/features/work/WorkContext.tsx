@@ -56,6 +56,7 @@ import {
 } from "../../../../packages/core/src/work.ts";
 import { importTriage, prepareTriage as prepareTriagePack, type TriageImport, type TriageLabels } from "../../../../packages/core/src/workTriage.ts";
 import { importPageResult, preparePageRun, type PagePackLabels, type PageResultImport } from "../../../../packages/core/src/pageHandoff.ts";
+import { applyViewProposal, decideViewProposal, openViewProposals } from "../../../../packages/core/src/pageView.ts";
 import { planRevert, planScrapMigration } from "../../../../packages/core/src/workMigrate.ts";
 import { copyStore, KvFileStore, MirroredStore, PATHS, WorkRepo, type BodyCache, type ConflictCopy, type FileStore, type KV, type SaveOutcome } from "../../../../packages/core/src/workStore.ts";
 import { useI18n, type T } from "../../i18n";
@@ -160,6 +161,9 @@ interface WorkApi {
   proposalBody: (p: BodyProposal) => Promise<string | null>;
   acceptBody: (proposalId: string, opts?: { force?: boolean }) => Promise<AcceptOutcome>;
   rejectBody: (proposalId: string) => Promise<SaveState>;
+  /** 목록 보기 제안(pageView.ts) — 받으면 소주제 보기 · 하위 속성이 바뀐다. 사람만 */
+  acceptView: (proposalId: string) => Promise<SaveState | "gone">;
+  rejectView: (proposalId: string) => Promise<SaveState>;
   /** 결과 원문 · 제안 원문 */
   saveRawText: (hash: string, text: string) => Promise<boolean>;
   rawText: (hash: string) => Promise<string | null>;
@@ -960,6 +964,22 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
 
   const rejectBody = useCallback<WorkApi["rejectBody"]>((proposalId) => saveManifest((cur) => rejectBodyProposal(cur, proposalId, nowIso())), [saveManifest]);
 
+  const acceptView = useCallback<WorkApi["acceptView"]>(
+    async (proposalId) => {
+      const p = openViewProposals(stateRef.current.manifest).find((x) => x.id === proposalId);
+      const meta = p ? metaOf(p.pageId) : undefined;
+      if (!p || !meta) return "gone";
+      const now = nowIso();
+      // 색인(보기 · 하위 값) → 매니페스트(받음). 색인은 최신본에 다시 얹는다
+      const s = await commitPages(meta.workspaceId, (ps) => applyViewProposal(ps, p, now).pages);
+      if (s !== "saved") return s;
+      return saveManifest((cur) => decideViewProposal(cur, proposalId, "accepted", now));
+    },
+     
+    [commitPages, saveManifest],
+  );
+  const rejectView = useCallback<WorkApi["rejectView"]>((proposalId) => saveManifest((cur) => decideViewProposal(cur, proposalId, "rejected", nowIso())), [saveManifest]);
+
   /* ───────── Drive ───────── */
 
   const saveCache = useCallback(() => {
@@ -1200,6 +1220,8 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       proposalBody,
       acceptBody,
       rejectBody,
+      acceptView,
+      rejectView,
       saveRawText,
       rawText,
       repo,
@@ -1213,7 +1235,7 @@ export function WorkProvider({ children }: { children: React.ReactNode }) {
       migrateScraps,
       revertMigration,
     }),
-    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, setProps, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, importPages, mirrorLeft, proposalBody, acceptBody, rejectBody, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
+    [ready, state, storage, drive, saves, conflicts, workspaceId, setWorkspaceId, docs, openDoc, readBodies, createPage, renamePage, setIcon, setProps, movePage, reorderPage, trashPage, restorePage, saveBody, undoDoc, retry, addSource, capture, applyTriage, acceptTriage, linkExisting, unlink, prepareTriage, importTriageText, saveManifest, preparePage, importPageText, importPages, mirrorLeft, proposalBody, acceptBody, rejectBody, acceptView, rejectView, saveRawText, rawText, repo, commitPages, connectDrive, disconnectDrive, pickFromDrive, refreshSources, cachedText, resolveConflict, migrateScraps, revertMigration],
   );
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
