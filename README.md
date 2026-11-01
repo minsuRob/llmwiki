@@ -7,6 +7,7 @@ AI 와 같이 쓰는 개인 위키. Claude · Codex 와 얘기하다 남기고 �
 - 받은 것 설계 · 진행: [docs/inbox-today.md](docs/inbox-today.md)
 - 출발점(Aria 할일 비서 분석)과 지난 지시문: [docs/archive](docs/archive/README.md)
 - 로컬 모델(Gemma)·업무 위임 검증: [docs/local-models](docs/local-models/README.md)
+- 환경 · 서버(오라클 A1) · 계정 · 로컬 실행: [INFRA.md](INFRA.md)
 
 옛 기능(대화 · 할일 · 일정 · 기록 · 시냅스)은 그대로 있다 — 말하면 할일 · 일정 · 기록으로 정리하는 규칙 길(서버 AI 없음)과 개념 그래프.
 

@@ -7,6 +7,7 @@
 | `handoff/` | 페이지 · 정리 묶음을 Claude CLI · Codex CLI · Gemma(오라클 서버 큐)로 돌리는 실행 본문(`lib.mjs`) · 터미널 진입점(`run.mjs`). 데스크톱 셸도 같은 코드 | `node --test 'tools/handoff/*.test.mjs'` |
 | `local-drive/` | 개발용 가짜 Google Drive(127.0.0.1, 이 컴퓨터 폴더). 앱 · MCP · 시험이 실제 Drive 대신 붙는다 | core `localDrive.test.ts` |
 | `local-model-eval/` | 로컬 모델(Gemma) 검증 · 작업 큐(`jobd`) · `oci-jobs` MCP | `docs/local-models/` |
+| `infra/` | 접속 값 꺼내기 `get.sh`(`npm run infra -- list · <대상> · <대상> --ssh`) — Secret Manager `infra-*`. 규칙 `docs/infra/secrets.md` | — |
 
 ## llmwiki MCP 토큰
 

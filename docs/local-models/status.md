@@ -24,6 +24,6 @@
 
 | 무엇 | 어디 |
 |---|---|
-| 서버 실험 폴더 | 서버 `~/lwe` (SSH 별칭 `oci-a1`) |
+| 서버 실험 폴더 | 서버 `~/lwe` (SSH 별칭 `oci-a1`, 접속 · 복구는 [docs/infra/oracle-a1.md](../infra/oracle-a1.md)) |
 | 개인 자료 · 원시 결과 · 전체 보고서 | 개발 맥 로컬 `oci-llm-bench/llmwiki-eval/` (저장소에 올리지 않음) |
 | 서버 모델 | Gemma `~/models/gemma4/*.gguf`, Laya HF 캐시(리비전 `7b928d8`) |

@@ -20,7 +20,8 @@
     "test:desktop": "npm --prefix desktop test",
     "desktop:release": "npm --prefix desktop run release",
     "test:mcp": "node --test tools/llmwiki-mcp/server.test.mjs",
-    "mcp": "node tools/llmwiki-mcp/server.mjs"
+    "mcp": "node tools/llmwiki-mcp/server.mjs",
+    "infra": "bash tools/infra/get.sh"
   },
   "devDependencies": {
     "firebase": "^13.0.0"

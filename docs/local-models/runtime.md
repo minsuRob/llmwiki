@@ -32,6 +32,8 @@ runner: run 1건 = 위임 1건. `queued → running → review_pending | needs_a
 
 ## 서버 고정 설정
 
+서버 사양 · 접속 · 복구: [docs/infra/oracle-a1.md](../infra/oracle-a1.md).
+
 - Gemma: llama.cpp `098ce526b`, `llama-server -t 2 -c 8192 -np 1 --jinja`, temperature 0, thinking 끔.
 - Laya: `laya==0.4.12`, 리비전 `7b928d828b7b`, CPU float32, 스레드 2, `HF_HUB_OFFLINE=1`.
 - Laya 를 Gemma 와 같이 띄울 때 냉간 로드 21초(단독 6초).

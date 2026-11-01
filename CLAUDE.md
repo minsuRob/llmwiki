@@ -21,6 +21,7 @@ AI 와 같이 쓰는 개인 위키. 노션처럼 범주 아래 페이지 트리(
 | 원칙 · 데이터 위치 · 열쇠 보관 규칙 | `docs/architecture.md` (원칙 1~8 · 원칙 4 표) | — |
 | 받은 것 설계 · 진행 · 열린 문제 | `docs/inbox-today.md` | — |
 | Google OAuth 검증 상태 | `docs/google-verification.md` | — |
+| 서버 · 계정 · 접속(오라클 A1 · 기기 · GCP · 포트 · MCP 등록) | `INFRA.md` → `docs/infra/` | 접속 값은 `npm run infra -- <대상>`(Secret Manager) |
 
 `docs/archive/` 는 지난 지시문 · 분석이다. 지금 구조와 다를 수 있으니 근거로 쓰지 마라.
 
