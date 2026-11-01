@@ -15,10 +15,10 @@
 
 | 시크릿 | 필드 | 문서 |
 |---|---|---|
-| `infra-oci-a1` | `host` · `user` · `ssh_key` · `region` · `shape` · `dir` | [oracle-a1.md](oracle-a1.md) |
-| `infra-macserver` | `host` · `user` · `aliases` · `via` | [machines.md](machines.md) |
+| `infra-oci-a1` | `host` · `user` · `ssh_key` · `ssh_keys`(기기 `hostname -s` → 키 경로) · `key_on` · `instance` · `instance_ocid` · `tenancy` · `region` · `availability_domain` · `image` · `shape` · `dir` · `console` | [oracle-a1.md](oracle-a1.md) |
+| `infra-macserver` | `host` · `user` · `ssh_key` · `aliases` · `via` | [machines.md](machines.md) |
 
-`--ssh` 는 `host` · `user` · `ssh_key` 로 `~/.ssh/config` Host 블록을 찍는다(별칭은 시크릿 이름에서 `infra-` 를 뺀 것 + `aliases`).
+`--ssh` 는 `host` · `user` · 키(`ssh_keys` 에 이 기기가 있으면 그것, 없으면 `ssh_key`)로 `~/.ssh/config` Host 블록을 찍는다(별칭은 시크릿 이름에서 `infra-` 를 뺀 것 + `aliases`).
 
 ## 읽기
 

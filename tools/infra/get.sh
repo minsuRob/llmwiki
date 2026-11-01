@@ -21,9 +21,10 @@ if [ "${2:-}" = --ssh ]; then
     const v = JSON.parse(require("fs").readFileSync(0, "utf8"));
     if (!v.host) { console.error("host 가 비어 있다 — docs/infra/secrets.md 새 버전 넣기"); process.exit(1); }
     const names = [process.argv[1], ...(v.aliases ?? [])].filter((x, i, a) => a.indexOf(x) === i);
+    const key = v.ssh_keys?.[process.argv[2]] ?? v.ssh_key; // 기기마다 키가 다르면 ssh_keys{hostname -s: 경로}
     console.log(`Host ${names.join(" ")}\n  HostName ${v.host}` + (v.user ? `\n  User ${v.user}` : "")
-      + (v.ssh_key ? `\n  IdentityFile ${v.ssh_key}\n  IdentitiesOnly yes` : "") + "\n  ServerAliveInterval 30");
-  ' "$target"
+      + (key ? `\n  IdentityFile ${key}\n  IdentitiesOnly yes` : "") + "\n  ServerAliveInterval 30");
+  ' "$target" "$(hostname -s)"
 else
   printf '%s\n' "$value"
 fi

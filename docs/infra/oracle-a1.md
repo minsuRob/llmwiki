@@ -9,8 +9,11 @@ Oracle Cloud Always Free 의 Arm 인스턴스. llmwiki 의 **Gemma 실행자**�
 | 항목 | 값 |
 |---|---|
 | 모양 | Ampere A1(Arm) 2코어 · RAM 12GB · GPU 없음 |
+| 인스턴스 | `llm-bench-a1` · 리전 오사카(`ap-osaka-1`) · Ubuntu 24.04 aarch64 · 2026-10-19 생성 |
+| 콘솔 | `https://cloud.oracle.com/compute/instances?region=ap-osaka-1` (로그인: `https://cloud.oracle.com/`) |
 | SSH 별칭 | `oci-a1` (코드 기본값. `OCI_JOBS_HOST` 로 바꾼다) |
-| 접속 값(IP · 계정 · 키 · 리전) | 시크릿 `infra-oci-a1` — [secrets.md](secrets.md) |
+| 접속 값(IP · 계정 · 키 · OCID · 테넌시) | 시크릿 `infra-oci-a1` — [secrets.md](secrets.md) |
+| SSH 키 | 기기마다 다르다 — macserver `~/.ssh/oci_a1`, 개발 맥 `~/.ssh/id_ed25519`(시크릿 `ssh_keys`) |
 | 작업 폴더 | `~/lwe` |
 
 ## 서버에서 도는 것
@@ -49,12 +52,12 @@ npm run infra -- oci-a1 --ssh
 ssh oci-a1 'python3 ~/lwe/jobd/jobd.py kinds'
 ```
 
-4. 시크릿 값이 비어 있으면 Oracle Cloud 콘솔 → 컴퓨트 → 인스턴스에서 공인 IP 를 보고 [secrets.md](secrets.md) "새 버전 넣기"로 채운다.
+4. 키가 없는 기기면 `Permission denied (publickey)` 가 난다. macserver 를 거쳐 쓰거나(`ssh macserver 'ssh oci-a1 …'`), 그 기기 공개 키를 서버 `~/.ssh/authorized_keys` 에 더한다.
+5. IP 가 바뀌었으면(인스턴스를 다시 만들면 바뀐다) 콘솔 인스턴스 목록의 Public IP 를 보고 [secrets.md](secrets.md) "새 버전 넣기"로 고친다.
 
 ## 알려진 상태 (2026-11-01)
 
-- 이 맥의 `~/.ssh/config` 에 `oci-a1` 블록이 **없다**(2026-10-14 백업에도 없음). 2026-10-20 실서버 연결은 다른 기기였거나 그 뒤에 지워졌다.
-- 공인 IP · 계정을 이 맥 어디에서도 찾지 못했다 → 시크릿 `infra-oci-a1` 의 `host` · `user` 를 채워야 한다.
+- 접속 확인: macserver · 개발 맥 모두 `ssh oci-a1` 성공(호스트 `llm-bench-a1`, aarch64, 2코어, 11GB, `~/lwe` · `jobd` 작업 종류 14개). 개발 맥 공개 키는 2026-11-01 서버 `authorized_keys` 에 더했다.
 - `oci-jobs` MCP 는 이 폴더에 등록돼 있지 않다. 등록 명령은 [dev-setup.md](dev-setup.md).
 - OCI CLI(`oci`)는 설치돼 있지 않다.
 - 검증 원시 결과 폴더(`oci-llm-bench/llmwiki-eval/`)는 이 맥에 없다(다른 개발 기기에 있을 수 있다).
