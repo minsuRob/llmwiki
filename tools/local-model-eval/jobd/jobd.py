@@ -10,6 +10,8 @@
   jobd.py worker                 작업자(하나만). 큐를 FIFO 로 꺼내 실행한다
 
 작업자는 작업 종류에 맞춰 Gemma(llama-server)를 켜고 끈다: Laya 작업 전에는 끄고(메모리), Gemma 작업 전에는 켠다.
+JOBD_KEEP_GEMMA=1 이면 작업자가 시작할 때와 작업이 끝날 때마다 Gemma 를 다시 켜 둔다(바로 받기 · Oracle 유휴 회수 기준 위 메모리).
+서버에서는 systemd 서비스 lwe-jobd 로 돈다(jobd/lwe-jobd.service).
 작업마다 걸린 시간 · 최대 RSS(/usr/bin/time) · 최저 MemAvailable · 스왑을 기록한다.
 """
 import json
@@ -26,6 +28,7 @@ from pathlib import Path
 HOME = Path.home()
 LWE = HOME / "lwe"
 Q = LWE / "jobs"
+KEEP_GEMMA = os.environ.get("JOBD_KEEP_GEMMA") == "1"
 for d in ("queue", "running", "done", "logs", "in", "out"):
     (Q / d).mkdir(parents=True, exist_ok=True)
 PY_VENV = str(HOME / "venv/bin/python")
@@ -127,6 +130,8 @@ def worker():
         except (OSError, ValueError):
             pass
     lock.write_text(str(os.getpid()))
+    if KEEP_GEMMA:
+        ensure_gemma("on", print)
     while True:
         items = sorted((Q / "queue").glob("*.json"), key=lambda p: read(p)["created"])
         if not items:
@@ -172,6 +177,8 @@ def worker():
         rp.unlink(missing_ok=True)
         (Q / "running" / f"{job['id']}.pid").unlink(missing_ok=True)
         log(f"{job['status']} wall_s={job['wall_s']}")
+        if KEEP_GEMMA:
+            ensure_gemma("on", log)
         lf.close()
 
 

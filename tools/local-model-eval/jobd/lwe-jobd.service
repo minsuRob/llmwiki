@@ -1,0 +1,22 @@
+# 서버 작업 큐(jobd worker) — 부팅 때 켜고, 죽으면 다시 띄운다. Gemma(llama-server)도 이 서비스 아래에서 돈다.
+# 설치: sudo cp ~/lwe/jobd/lwe-jobd.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now lwe-jobd
+# 상태: systemctl status lwe-jobd · 로그: journalctl -u lwe-jobd
+[Unit]
+Description=llmwiki job queue worker (jobd) + Gemma
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/lwe
+Environment=JOBD_KEEP_GEMMA=1
+Environment=PYTHONUNBUFFERED=1
+# 재부팅 전 pid 가 남아 있으면 '이미 돌고 있다'로 잘못 볼 수 있다
+ExecStartPre=/bin/rm -f /home/ubuntu/lwe/jobs/worker.pid
+ExecStart=/usr/bin/python3 jobd/jobd.py worker
+Restart=always
+RestartSec=10
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
