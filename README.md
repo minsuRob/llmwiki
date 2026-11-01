@@ -2,6 +2,19 @@
 
 AI 와 같이 쓰는 개인 위키. Claude · Codex 와 얘기하다 남기고 싶은 것을 던지면(받은 것) AI 가 정리를 제안하고, 사람이 받기 · 빼기로 확정한다. 데이터는 사용자 Google Drive 에 있다.
 
+> **목차** (개발 규칙은 CLAUDE.md, 환경은 INFRA.md)
+> - 작업실(MVP) — 어제 AI 와 하던 일을 오늘 이어가기
+>   - AI 실행자 — Claude · Codex · Gemma
+>   - 받은 것 · MCP — 대화 중에 남기고 Claude 가 정리 제안
+>   - 데스크톱 셸(Electron) — 바로 실행
+>   - 데이터가 놓이는 곳
+>   - Google Drive 연결(실제 계정 — 설정 필요)
+>   - 로컬 Drive 로 검증하기(개발용 — 실제 Google Drive 아님)
+> - 기능
+> - 로컬에서 실행 · 테스트 (자체 구성)
+> - 클라우드 (배포됨)
+> - AI
+
 - 개발 안내(색인): [CLAUDE.md](CLAUDE.md) — 폴더마다 `CLAUDE.md` 가 그 영역의 지도 · 규칙 · 시험을 가진다
 - 구조와 원칙(데이터 위치 · 열쇠 보관 규칙): [docs/architecture.md](docs/architecture.md)
 - 받은 것 설계 · 진행: [docs/inbox-today.md](docs/inbox-today.md)

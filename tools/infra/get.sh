@@ -7,6 +7,8 @@ set -euo pipefail
 PROJECT="${LLMWIKI_INFRA_PROJECT:-llmwiki-minsu}"
 target="${1:-}"
 [ -n "$target" ] || { sed -n '3,5p' "$0" | sed 's/^# //'; exit 2; }
+command -v gcloud >/dev/null || { echo "gcloud 가 없다 — 'brew install --cask google-cloud-sdk' 뒤 'gcloud auth login'" >&2; exit 1; }
+command -v node >/dev/null || { echo "node 가 없다 — 'brew install node'" >&2; exit 1; }
 
 if [ "$target" = list ]; then
   gcloud secrets list --project "$PROJECT" --filter='labels.llmwiki-note=infra' --format='value(name.basename())' 2>/dev/null | sed 's/^infra-//'

@@ -9,7 +9,7 @@
 - 이름 `infra-<대상>` · 라벨 `llmwiki-note=infra` · 값은 JSON 한 덩어리.
 - 함수 시크릿(`DRIVE_TOKEN_KEY` · `GOOGLE_OAUTH_CLIENT_SECRET`, 라벨 `firebase-managed`)과 섞지 않는다. 서버(Functions)는 `infra-*` 를 읽지 않는다.
 - 비밀번호 · 개인 키 내용 · API 토큰은 넣지 않는다. 넣는 것은 "어디에 어떻게 접속하나"뿐(키는 **파일 경로**만).
-- 읽으려면 `llmwiki-minsu` 에 권한이 있는 Google 계정으로 `gcloud auth login` 이 돼 있어야 한다.
+- 읽으려면 gcloud(`brew install --cask google-cloud-sdk`)와 node 가 있고, `llmwiki-minsu` 에 권한이 있는 Google 계정으로 `gcloud auth login` 이 돼 있어야 한다. 없으면 `get.sh` 가 설치 명령을 알려 준다.
 
 ## 지금 있는 것
 

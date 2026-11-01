@@ -21,7 +21,9 @@ AI 와 같이 쓰는 개인 위키. 노션처럼 범주 아래 페이지 트리(
 | 원칙 · 데이터 위치 · 열쇠 보관 규칙 | `docs/architecture.md` (원칙 1~8 · 원칙 4 표) | — |
 | 받은 것 설계 · 진행 · 열린 문제 | `docs/inbox-today.md` | — |
 | Google OAuth 검증 상태 | `docs/google-verification.md` | — |
-| 서버 · 계정 · 접속(오라클 A1 · 기기 · GCP · 포트 · MCP 등록) | `INFRA.md` → `docs/infra/` | 접속 값은 `npm run infra -- <대상>`(Secret Manager) |
+| 오라클 서버(Gemma · 작업 큐 · 접속 복구) | `docs/infra/oracle-a1.md` | 접속 값은 `npm run infra -- <대상>`(Secret Manager) · 규칙 `docs/infra/secrets.md` |
+| Firebase · 배포 주소 · GCP 시크릿 · 개발 기기 | `docs/infra/project.md` · `google-cloud.md` · `machines.md` | 색인 `INFRA.md` |
+| 로컬 실행 · 포트 · MCP 등록 · 열쇠 파일 위치 | `docs/infra/dev-setup.md` | — |
 
 `docs/archive/` 는 지난 지시문 · 분석이다. 지금 구조와 다를 수 있으니 근거로 쓰지 마라.
 
@@ -61,3 +63,14 @@ npm run deploy:web       # 웹만 · npm run deploy 는 hosting + functions + fi
 
 - 화면을 바꾸면 브라우저로 확인한다. 개발 서버: `npm --prefix aria-rn run web:emulator`(에뮬레이터) · 로컬 Drive 는 `npm run local-drive` + `EXPO_PUBLIC_LOCAL_DRIVE_URL=http://127.0.0.1:8790`(`.claude/launch.json` 은 이 컴퓨터에만 있다).
 - 커밋은 기능 브랜치에서, 시험이 통과한 뒤 main 에. **배포 · 푸시는 사용자 확인 뒤.**
+
+## 바꾼 뒤 확인 순서
+
+순서가 중요한 것만 적었다. 해당 없는 줄은 건너뛴다. 실패하면 고치고 그 줄부터 다시.
+
+1. `packages/core` 를 바꿨으면 `npm run test:core`
+2. 서버 · MCP 를 바꿨으면 `test:functions` · `test:mcp`(필요하면 `test:api`)
+3. 앱을 바꿨으면 typecheck · lint(기존 13개 말고 새 오류 없음), 편집기면 `test:editor`
+4. 화면이 바뀌었으면 브라우저로 확인
+5. 규칙 · 구조가 바뀌었으면 그 영역 `CLAUDE.md` · `docs/architecture.md` 를 같이 고친다
+6. 커밋 → (사용자 확인 뒤) 푸시 · 배포

@@ -39,6 +39,10 @@ Oracle Cloud Always Free 의 Arm 인스턴스. llmwiki 의 **Gemma 실행자**�
 
 ## 접속 복구 — `ssh oci-a1` 이 안 될 때
 
+0. 새 기기라면 먼저 준비한다. 이미 있으면 건너뛴다:
+   - gcloud: `brew install --cask google-cloud-sdk` → `gcloud auth login`(`llmwiki-minsu` 권한 계정)
+   - SSH 키: `ls ~/.ssh/id_ed25519.pub` 가 없으면 `ssh-keygen -t ed25519`
+   - 키 등록: 이미 접속되는 기기에서 `ssh oci-a1 'cat >> ~/.ssh/authorized_keys' < 새기기.pub` 하고, 시크릿 `ssh_keys` 에 새 기기(`hostname -s`)를 더한다
 1. 접속 값 확인 — Host 블록이 찍힌다:
 
 ```bash
